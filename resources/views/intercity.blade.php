@@ -12,7 +12,7 @@
 <main id="app-viewport" class="app-viewport" style="width:100%; max-width:100%; margin:0; padding:0;">
 
         <!-- ======================================================== -->
-        <!-- TAB 1: OUTSTATION CABS                                   -->
+        <!-- TAB 1: OUTSTATION CABS (SIMPLIFIED 3-STEP SCREEN FLOW)   -->
         <!-- ======================================================== -->
         <section id="tab-cabs" class="tab-pane {{ $defaultTab === 'cabs' ? 'active' : '' }}">
             <div class="hero-banner animate-load stagger-1">
@@ -27,80 +27,177 @@
             </div>
 
             <div class="content-grid-split">
-                <!-- Left Column: Booking Controls -->
-                <div class="card animate-load stagger-2">
-                    <div class="trip-type-pill-group">
-                        <button class="trip-type-pill active" data-type="oneway">One-Way</button>
-                        <button class="trip-type-pill" data-type="roundtrip">Round Trip</button>
-                        <button class="trip-type-pill" data-type="airport">Airport</button>
+                <!-- Left Column: Simplified Progressive Booking Flow -->
+                <div class="card animate-load stagger-2" style="padding: 20px 22px;">
+                    <!-- Step Progress Navigation Bar -->
+                    <div class="cab-stepper-header">
+                        <button type="button" class="cab-step-pill active" id="pill-step-1" onclick="goToCabStep(1)">
+                            <span class="step-num" id="step-num-1">1</span>
+                            <span class="step-label">Route & Time</span>
+                        </button>
+                        <div class="step-connector"></div>
+                        <button type="button" class="cab-step-pill" id="pill-step-2" onclick="goToCabStep(2)">
+                            <span class="step-num" id="step-num-2">2</span>
+                            <span class="step-label">Choose Cab</span>
+                        </button>
+                        <div class="step-connector"></div>
+                        <button type="button" class="cab-step-pill" id="pill-step-3" onclick="goToCabStep(3)">
+                            <span class="step-num" id="step-num-3">3</span>
+                            <span class="step-label">Confirm & Ride</span>
+                        </button>
                     </div>
 
-                    <!-- Route Selectors -->
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label" for="cab-from-city">
-                                <span>Pickup City</span>
-                                <span class="material-symbols-outlined" style="font-size:14px; color:var(--primary);">trip_origin</span>
-                            </label>
-                            <div class="input-with-icon">
-                                <span class="material-symbols-outlined">my_location</span>
-                                <select id="cab-from-city" class="form-control">
-                                    <option value="pune" selected>Pune, MH</option>
-                                    <option value="mumbai">Mumbai, MH</option>
-                                    <option value="goa">Goa (Panjim / Airport)</option>
-                                    <option value="bengaluru">Bengaluru, KA</option>
-                                    <option value="hyderabad">Hyderabad, TS</option>
-                                    <option value="delhi">New Delhi, NCR</option>
-                                    <option value="jaipur">Jaipur, RJ</option>
-                                    <option value="chennai">Chennai, TN</option>
-                                </select>
+                    <!-- ======================================================== -->
+                    <!-- STEP 1: ROUTE & SCHEDULE                                 -->
+                    <!-- ======================================================== -->
+                    <div id="cab-step-1" class="cab-step-content active">
+                        <!-- Trip Type Pills -->
+                        <div class="trip-type-pill-group">
+                            <button type="button" class="trip-type-pill active" data-type="oneway">One-Way</button>
+                            <button type="button" class="trip-type-pill" data-type="roundtrip">Round Trip</button>
+                            <button type="button" class="trip-type-pill" data-type="airport">Airport Transfer</button>
+                        </div>
+
+                        <!-- Route Selection Grid -->
+                        <div class="form-row" style="align-items: flex-start;">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" for="cab-from-city">
+                                    <span>Pickup City</span>
+                                    <span class="material-symbols-outlined" style="font-size:14px; color:var(--primary);">trip_origin</span>
+                                </label>
+                                <div class="input-with-icon">
+                                    <span class="material-symbols-outlined">my_location</span>
+                                    <select id="cab-from-city" class="form-control">
+                                        <option value="pune" selected>Pune, MH</option>
+                                        <option value="mumbai">Mumbai, MH</option>
+                                        <option value="goa">Goa (Panjim / Airport)</option>
+                                        <option value="bengaluru">Bengaluru, KA</option>
+                                        <option value="hyderabad">Hyderabad, TS</option>
+                                        <option value="delhi">New Delhi, NCR</option>
+                                        <option value="jaipur">Jaipur, RJ</option>
+                                        <option value="chennai">Chennai, TN</option>
+                                    </select>
+                                </div>
+                                <div style="margin-top: 6px;">
+                                    <input type="text" id="cab-pickup-address" class="form-control" placeholder="Exact Pickup Area / Landmark (e.g. Baner, Airport T2)" value="Baner, Pune" style="font-size:12px; height:38px;">
+                                </div>
+                            </div>
+
+                            <button type="button" id="cab-swap-cities-btn" class="route-swap-btn" title="Swap Route Direction">
+                                <span class="material-symbols-outlined" style="font-size:18px;">swap_horiz</span>
+                            </button>
+
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" for="cab-to-city">
+                                    <span>Destination</span>
+                                    <span class="material-symbols-outlined" style="font-size:14px; color:var(--secondary);">location_on</span>
+                                </label>
+                                <div class="input-with-icon">
+                                    <span class="material-symbols-outlined" style="color:var(--secondary);">location_on</span>
+                                    <select id="cab-to-city" class="form-control">
+                                        <option value="goa" selected>Goa (Panjim / Calangute)</option>
+                                        <option value="pune">Pune, MH</option>
+                                        <option value="mumbai">Mumbai, MH</option>
+                                        <option value="bengaluru">Bengaluru, KA</option>
+                                        <option value="hyderabad">Hyderabad, TS</option>
+                                        <option value="delhi">New Delhi, NCR</option>
+                                        <option value="jaipur">Jaipur, RJ</option>
+                                        <option value="chennai">Chennai, TN</option>
+                                    </select>
+                                </div>
+                                <div style="margin-top: 6px;">
+                                    <input type="text" id="cab-drop-address" class="form-control" placeholder="Exact Drop Location (e.g. Panjim / Hotel Resort)" value="Panjim, Goa" style="font-size:12px; height:38px;">
+                                </div>
                             </div>
                         </div>
 
-                        <div class="form-group">
-                            <label class="form-label" for="cab-to-city">
-                                <span>Destination</span>
-                                <button type="button" id="cab-swap-cities-btn" style="background:none;border:none;cursor:pointer;color:var(--primary);display:flex;align-items:center;gap:2px;font-size:11px;font-weight:700;">
-                                    <span class="material-symbols-outlined" style="font-size:14px;">swap_horiz</span> Swap
-                                </button>
-                            </label>
-                            <div class="input-with-icon">
-                                <span class="material-symbols-outlined" style="color:var(--secondary);">location_on</span>
-                                <select id="cab-to-city" class="form-control">
-                                    <option value="goa" selected>Goa (Panjim / Calangute)</option>
-                                    <option value="pune">Pune, MH</option>
-                                    <option value="mumbai">Mumbai, MH</option>
-                                    <option value="bengaluru">Bengaluru, KA</option>
-                                    <option value="hyderabad">Hyderabad, TS</option>
-                                    <option value="delhi">New Delhi, NCR</option>
-                                    <option value="jaipur">Jaipur, RJ</option>
-                                    <option value="chennai">Chennai, TN</option>
-                                </select>
+                        <!-- Schedule Row -->
+                        <div class="form-row" style="margin-top: 6px;">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">
+                                    <span>Departure Date & Time</span>
+                                    <span class="material-symbols-outlined" style="font-size:14px; color:var(--primary);">schedule</span>
+                                </label>
+                                <div style="display:flex; gap:8px;">
+                                    <div class="input-with-icon" style="flex:1.4;">
+                                        <span class="material-symbols-outlined">calendar_today</span>
+                                        <input type="date" id="cab-pickup-date" class="form-control" style="font-size:12.5px;">
+                                    </div>
+                                    <div class="input-with-icon" style="flex:1;">
+                                        <span class="material-symbols-outlined">access_time</span>
+                                        <input type="time" id="cab-pickup-time" class="form-control" value="06:30" style="font-size:12.5px;">
+                                    </div>
+                                </div>
+                                <div class="quick-date-chips">
+                                    <button type="button" class="quick-date-chip active" onclick="setQuickCabDate('tomorrow')">Tomorrow</button>
+                                    <button type="button" class="quick-date-chip" onclick="setQuickCabDate('today')">Today</button>
+                                    <button type="button" class="quick-date-chip" onclick="setQuickCabDate('weekend')">Weekend</button>
+                                </div>
                             </div>
+
+                            <div class="form-group" id="return-date-group" style="flex: 1; display:none;">
+                                <label class="form-label">
+                                    <span>Return Schedule</span>
+                                    <span class="material-symbols-outlined" style="font-size:14px; color:var(--secondary);">event_repeat</span>
+                                </label>
+                                <div style="display:flex; gap:8px;">
+                                    <div class="input-with-icon" style="flex:1.4;">
+                                        <span class="material-symbols-outlined">calendar_today</span>
+                                        <input type="date" id="cab-return-date" class="form-control" style="font-size:12.5px;">
+                                    </div>
+                                    <div class="input-with-icon" style="flex:1;">
+                                        <span class="material-symbols-outlined">access_time</span>
+                                        <input type="time" id="cab-return-time" class="form-control" value="17:00" style="font-size:12.5px;">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Instant Highway Route Insight Strip -->
+                        <div class="cab-route-insight-strip">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span class="material-symbols-outlined" style="color:var(--gold); font-size:18px;">alt_route</span>
+                                <span><strong id="step1-route-name">Pune → Goa</strong></span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:16px; font-size:12px;">
+                                <span><strong id="step1-dist" style="color:#f8fafc;">450 km</strong> (<span id="step1-time">9h 15m</span>)</span>
+                                <span>Fastag Tolls: <strong id="step1-toll" style="color:var(--gold);">₹480 Included</strong></span>
+                            </div>
+                        </div>
+
+                        <!-- Step 1 Navigation -->
+                        <div class="cab-step-actions">
+                            <div style="font-size:12px; color:#64748b; display:flex; align-items:center; gap:4px;">
+                                <span class="material-symbols-outlined" style="font-size:15px; color:#16a34a;">check_circle</span>
+                                <span>Zero cancellation fee on upfront booking</span>
+                            </div>
+                            <button type="button" class="btn btn-accent" onclick="goToCabStep(2)">
+                                <span>Select Cab & View Fares</span>
+                                <span class="material-symbols-outlined" style="font-size:17px;">arrow_forward</span>
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Pickup Schedule -->
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Pickup Schedule</label>
-                            <div class="input-with-icon">
-                                <span class="material-symbols-outlined">calendar_today</span>
-                                <input type="text" class="form-control" value="Tomorrow at 06:30 AM">
+                    <!-- ======================================================== -->
+                    <!-- STEP 2: CHOOSE CAB FLEET                                 -->
+                    <!-- ======================================================== -->
+                    <div id="cab-step-2" class="cab-step-content">
+                        <!-- Route Recap Banner -->
+                        <div class="cab-recap-banner">
+                            <div class="cab-recap-info">
+                                <span class="material-symbols-outlined" style="color:var(--gold); font-size:18px;">navigation</span>
+                                <span id="recap-route">Pune → Goa (450 km)</span>
+                                <span style="color:#cbd5e1;">•</span>
+                                <span id="recap-datetime" style="color:#64748b;">Tomorrow at 06:30 AM</span>
                             </div>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="goToCabStep(1)">
+                                <span class="material-symbols-outlined" style="font-size:13px;">edit</span>
+                                <span>Change Route</span>
+                            </button>
                         </div>
-                        <div class="form-group" id="return-date-group" style="display:none;">
-                            <label class="form-label">Return Schedule</label>
-                            <div class="input-with-icon">
-                                <span class="material-symbols-outlined">event_repeat</span>
-                                <input type="text" class="form-control" value="3 Days Later, 05:00 PM">
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Fleet Grid -->
-                    <div style="margin-top: 8px;">
-                        <label class="form-label">Select Fleet Class</label>
+                        <label class="form-label" style="margin-bottom:8px;">Select Outstation Vehicle Class</label>
+                        <!-- Fleet Selection Grid -->
                         <div class="fleet-grid">
                             <div class="fleet-card" data-fleet="sedan">
                                 <div>
@@ -110,8 +207,8 @@
                                     </div>
                                     <div style="font-size:11.5px; color:#475569;">Dzire, Etios</div>
                                     <div class="fleet-specs">
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">group</span> 4</span>
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">luggage</span> 2</span>
+                                        <span><span class="material-symbols-outlined" style="font-size:13px;">group</span> 4 Seats</span>
+                                        <span><span class="material-symbols-outlined" style="font-size:13px;">luggage</span> 2 Bags</span>
                                         <span><span class="material-symbols-outlined" style="font-size:13px;">ac_unit</span> AC</span>
                                     </div>
                                 </div>
@@ -129,8 +226,8 @@
                                     </div>
                                     <div style="font-size:11.5px; color:#475569;">City, Verna, Ciaz</div>
                                     <div class="fleet-specs">
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">group</span> 4</span>
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">luggage</span> 3</span>
+                                        <span><span class="material-symbols-outlined" style="font-size:13px;">group</span> 4 Seats</span>
+                                        <span><span class="material-symbols-outlined" style="font-size:13px;">luggage</span> 3 Bags</span>
                                         <span><span class="material-symbols-outlined" style="font-size:13px;">ac_unit</span> Climate</span>
                                     </div>
                                 </div>
@@ -144,12 +241,12 @@
                                 <div>
                                     <div class="fleet-top">
                                         <span class="fleet-name">Executive SUV</span>
-                                        <span class="fleet-badge" style="background:rgba(212, 155, 76, 0.18); color:#8c5d1e;">Popular</span>
+                                        <span class="fleet-badge" style="background:rgba(212, 155, 76, 0.18); color:#8c5d1e;">Most Popular</span>
                                     </div>
                                     <div style="font-size:11.5px; color:#475569;">Innova Crysta, Ertiga</div>
                                     <div class="fleet-specs">
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">group</span> 6-7</span>
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">luggage</span> 4</span>
+                                        <span><span class="material-symbols-outlined" style="font-size:13px;">group</span> 6-7 Seats</span>
+                                        <span><span class="material-symbols-outlined" style="font-size:13px;">luggage</span> 4 Bags</span>
                                         <span><span class="material-symbols-outlined" style="font-size:13px;">airline_seat_recline_extra</span> Captain</span>
                                     </div>
                                 </div>
@@ -167,8 +264,8 @@
                                     </div>
                                     <div style="font-size:11.5px; color:#475569;">Camry, C-Class</div>
                                     <div class="fleet-specs">
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">group</span> 4</span>
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">luggage</span> 3</span>
+                                        <span><span class="material-symbols-outlined" style="font-size:13px;">group</span> 4 Seats</span>
+                                        <span><span class="material-symbols-outlined" style="font-size:13px;">luggage</span> 3 Bags</span>
                                         <span><span class="material-symbols-outlined" style="font-size:13px;">stars</span> Chauffeur</span>
                                     </div>
                                 </div>
@@ -178,72 +275,185 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Add-ons -->
-                    <div style="margin-top: 14px;">
-                        <label class="form-label">Trip Add-ons & Preferences</label>
-                        <div class="addons-group">
-                            <label class="addon-item">
-                                <div class="addon-label">
-                                    <input type="checkbox" id="addon-tolls" checked>
-                                    <span>Highway Tolls</span>
-                                </div>
-                                <span class="addon-price">₹480</span>
-                            </label>
-                            <label class="addon-item">
-                                <div class="addon-label">
-                                    <input type="checkbox" id="addon-pet">
-                                    <span>Pet Sanitized</span>
-                                </div>
-                                <span class="addon-price">+₹350</span>
-                            </label>
-                            <label class="addon-item">
-                                <div class="addon-label">
-                                    <input type="checkbox" id="addon-night">
-                                    <span>Night Halt</span>
-                                </div>
-                                <span class="addon-price">+₹400</span>
-                            </label>
-                            <label class="addon-item">
-                                <div class="addon-label">
-                                    <input type="checkbox" id="addon-luggage">
-                                    <span>Luggage Carrier</span>
-                                </div>
-                                <span class="addon-price">+₹200</span>
-                            </label>
+                        <!-- Trust Inclusions Highlight -->
+                        <div class="trust-inclusions-strip">
+                            <div class="trust-item">
+                                <span class="material-symbols-outlined">toll</span>
+                                <span>Tolls Included</span>
+                            </div>
+                            <div class="trust-item">
+                                <span class="material-symbols-outlined">verified</span>
+                                <span>Top Chauffeur</span>
+                            </div>
+                            <div class="trust-item">
+                                <span class="material-symbols-outlined">ac_unit</span>
+                                <span>AC Sanitized</span>
+                            </div>
+                            <div class="trust-item">
+                                <span class="material-symbols-outlined">lock</span>
+                                <span>4-Digit Ride OTP</span>
+                            </div>
+                        </div>
+
+                        <!-- Step 2 Navigation -->
+                        <div class="cab-step-actions">
+                            <button type="button" class="btn btn-secondary" onclick="goToCabStep(1)">
+                                <span class="material-symbols-outlined" style="font-size:17px;">arrow_back</span>
+                                <span>Back</span>
+                            </button>
+                            <button type="button" class="btn btn-accent" onclick="goToCabStep(3)">
+                                <span>Continue to Rider Details</span>
+                                <span class="material-symbols-outlined" style="font-size:17px;">arrow_forward</span>
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Dynamic Form Fields from Database -->
-                    @if($dynamicFields->count() > 0)
-                    <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--outline);">
-                        <label class="form-label">Custom Specifications</label>
-                        @foreach($dynamicFields as $field)
-                        <div class="form-group" style="margin-bottom: 8px;">
-                            <label style="font-size: 11.5px; font-weight: 600; color: #475569;">{{ $field->label }}</label>
-                            <input type="{{ $field->field_type }}" class="form-control" placeholder="Enter {{ $field->label }}" style="height: 40px;">
+                    <!-- ======================================================== -->
+                    <!-- STEP 3: PASSENGER, FARE REVIEW & INSTANT CONFIRMATION     -->
+                    <!-- ======================================================== -->
+                    <div id="cab-step-3" class="cab-step-content">
+                        <!-- Summary Recap Strip -->
+                        <div class="cab-recap-banner">
+                            <div class="cab-recap-info">
+                                <span class="material-symbols-outlined" style="color:var(--gold); font-size:18px;">local_taxi</span>
+                                <span><strong id="recap-fleet-title">Executive SUV</strong> (<span id="recap-route-mini">Pune → Goa</span>)</span>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="goToCabStep(2)">
+                                <span class="material-symbols-outlined" style="font-size:13px;">tune</span>
+                                <span>Change Vehicle</span>
+                            </button>
                         </div>
-                        @endforeach
-                    </div>
-                    @endif
 
-                    <!-- Promo Code -->
-                    <div style="margin-top: 12px;">
-                        <label class="form-label">Promo Code</label>
-                        <div style="display:flex; gap:8px;">
-                            <input type="text" id="cab-coupon-input" class="form-control" placeholder="Promo code (e.g. FIRSTWHEELS)" style="text-transform:uppercase;" value="FIRSTWHEELS">
-                            <button type="button" id="apply-coupon-btn" class="btn btn-secondary" style="height:44px;">Apply</button>
+                        <!-- Passenger Contact Information -->
+                        <div style="margin-bottom: 14px;">
+                            <label class="form-label">Passenger Contact (For Driver Coordination & Ride OTP)</label>
+                            <div class="form-row">
+                                <div class="form-group" style="flex:1;">
+                                    <div class="input-with-icon">
+                                        <span class="material-symbols-outlined">person</span>
+                                        <input type="text" id="cab-rider-name" class="form-control" placeholder="Full Name" value="{{ Auth::check() ? Auth::user()->name : 'Aditya Sharma' }}" required>
+                                    </div>
+                                </div>
+                                <div class="form-group" style="flex:1;">
+                                    <div class="input-with-icon">
+                                        <span class="material-symbols-outlined">call</span>
+                                        <input type="tel" id="cab-rider-phone" class="form-control" placeholder="Mobile Number (+91)" value="{{ Auth::check() ? (Auth::user()->phone ?? '+91 98220 11920') : '+91 98220 11920' }}" required>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div id="coupon-msg" class="text-xs font-semibold text-emerald-600 mt-1">🎉 FIRSTWHEELS applied (15% discount)</div>
+
+                        <!-- Add-ons & Travel Preferences -->
+                        <div style="margin-top: 10px;">
+                            <label class="form-label">Trip Add-ons & Highway Preferences</label>
+                            <div class="addons-group">
+                                <label class="addon-item">
+                                    <div class="addon-label">
+                                        <input type="checkbox" id="addon-tolls" checked>
+                                        <span>Highway Tolls</span>
+                                    </div>
+                                    <span class="addon-price">₹480</span>
+                                </label>
+                                <label class="addon-item">
+                                    <div class="addon-label">
+                                        <input type="checkbox" id="addon-pet">
+                                        <span>Pet Sanitized</span>
+                                    </div>
+                                    <span class="addon-price">+₹350</span>
+                                </label>
+                                <label class="addon-item">
+                                    <div class="addon-label">
+                                        <input type="checkbox" id="addon-night">
+                                        <span>Night Halt</span>
+                                    </div>
+                                    <span class="addon-price">+₹400</span>
+                                </label>
+                                <label class="addon-item">
+                                    <div class="addon-label">
+                                        <input type="checkbox" id="addon-luggage">
+                                        <span>Luggage Carrier</span>
+                                    </div>
+                                    <span class="addon-price">+₹200</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Dynamic Form Fields from Database -->
+                        @if($dynamicFields->count() > 0)
+                        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--outline);">
+                            <label class="form-label">Special Custom Specifications</label>
+                            @foreach($dynamicFields as $field)
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label style="font-size: 11.5px; font-weight: 600; color: #475569;">{{ $field->label }}</label>
+                                <input type="{{ $field->field_type }}" class="form-control" placeholder="Enter {{ $field->label }}" style="height: 38px; font-size:12px;">
+                            </div>
+                            @endforeach
+                        </div>
+                        @endif
+
+                        <!-- Promo Code Apply -->
+                        <div style="margin-top: 10px;">
+                            <label class="form-label">Coupon & Promo Discount</label>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="cab-coupon-input" class="form-control" placeholder="Promo code (e.g. FIRSTWHEELS)" style="text-transform:uppercase; height:42px;" value="FIRSTWHEELS">
+                                <button type="button" id="apply-coupon-btn" class="btn btn-secondary" style="height:42px; padding:0 16px;">Apply</button>
+                            </div>
+                            <div id="coupon-msg" class="text-xs font-semibold text-emerald-600 mt-1">🎉 FIRSTWHEELS applied (15% discount)</div>
+                        </div>
+
+                        <!-- Complete Transparent Fare Breakdown -->
+                        <div style="margin-top: 16px; background:#f8fafc; border: 1.5px solid var(--outline); border-radius: var(--radius-sm); padding: 14px 16px;">
+                            <div style="font-family:var(--font-display); font-weight:700; font-size:13.5px; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                                <span class="material-symbols-outlined" style="color:var(--gold); font-size:17px;">receipt_long</span>
+                                <span>Transparent Fare Summary</span>
+                            </div>
+                            <div style="display:flex; flex-direction:column; gap:6px; font-size:12.5px;">
+                                <div style="display:flex; justify-content:space-between; color:#475569;">
+                                    <span>Base Highway Distance Fare</span>
+                                    <span id="fare-base" style="font-weight:700; color:#0f172a;" class="text-tabular">₹8,100</span>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; color:#475569;">
+                                    <span>Fastag Highway Tolls</span>
+                                    <span id="fare-tolls" style="font-weight:700; color:#0f172a;" class="text-tabular">₹480</span>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; color:#475569;">
+                                    <span>Selected Add-ons</span>
+                                    <span id="fare-addons" style="font-weight:700; color:#0f172a;" class="text-tabular">₹0</span>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; color:#16a34a; font-weight:600;">
+                                    <span>Promo Discount</span>
+                                    <span id="fare-discount" class="text-tabular">-₹500</span>
+                                </div>
+                                <div style="border-top:1px dashed var(--outline); padding-top:10px; margin-top:4px; display:flex; justify-content:space-between; align-items:baseline;">
+                                    <div>
+                                        <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Total Payable</div>
+                                        <div style="font-size:10.5px; color:#16a34a;">All taxes, tolls & driver allowance included</div>
+                                    </div>
+                                    <span id="fare-grand-total" style="font-family:var(--font-display); font-size:22px; font-weight:800; color:var(--text-main);" class="text-tabular">₹8,080</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 3 Action Navigation -->
+                        <div class="cab-step-actions">
+                            <button type="button" class="btn btn-secondary" onclick="goToCabStep(2)">
+                                <span class="material-symbols-outlined" style="font-size:17px;">arrow_back</span>
+                                <span>Change Cab</span>
+                            </button>
+                            <button type="button" id="book-cab-confirm-btn" class="btn btn-accent" style="height:48px; font-size:14.5px; padding:0 24px;">
+                                <span class="material-symbols-outlined" style="font-size:19px;">verified_user</span>
+                                <span>Confirm & Book Outstation Cab</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Right Column: Live Map & Fare Summary -->
+                <!-- Right Column: Live Map & Highway Trip Companion -->
                 <div class="animate-load stagger-3">
                     <div class="card" style="padding: 14px; margin-bottom: 16px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                            <span class="card-title" style="font-size:14.5px;">
+                            <span class="card-title" style="font-size:14px;">
                                 <span class="material-symbols-outlined" style="color:var(--primary); font-size:18px;">map</span>
                                 <span>Live Highway Route</span>
                             </span>
@@ -272,44 +482,26 @@
                         </div>
                     </div>
 
-                    <!-- Fare Breakdown -->
-                    <div class="card" style="border: 1.5px solid var(--outline);">
-                        <div class="card-title" style="margin-bottom:14px; font-size:15px;">
-                            <span class="material-symbols-outlined" style="color:var(--gold); font-size:18px;">receipt_long</span>
-                            <span>Fare Breakdown</span>
+                    <!-- Safety & Peace of Mind Assurance Card -->
+                    <div class="card" style="padding: 16px; border: 1.5px solid var(--outline); background: #ffffff;">
+                        <div style="font-family:var(--font-display); font-size:13.5px; font-weight:700; color:#0f172a; margin-bottom:10px; display:flex; align-items:center; gap:7px;">
+                            <span class="material-symbols-outlined" style="color:var(--gold); font-size:18px;">security</span>
+                            <span>Intercity Wheels Assurance</span>
                         </div>
-
-                        <div style="display:flex; flex-direction:column; gap:8px; font-size:13px;">
-                            <div style="display:flex; justify-content:space-between; color:#475569;">
-                                <span>Base Distance Fare</span>
-                                <span id="fare-base" style="font-weight:700; color:#0f172a;" class="text-tabular">₹8,100</span>
+                        <div style="display:flex; flex-direction:column; gap:8px; font-size:12px; color:#475569;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span class="material-symbols-outlined" style="font-size:16px; color:#16a34a;">pin_drop</span>
+                                <span>Live GPS highway tracking shared via SMS</span>
                             </div>
-                            <div style="display:flex; justify-content:space-between; color:#475569;">
-                                <span>State Taxes & Tolls</span>
-                                <span id="fare-tolls" style="font-weight:700; color:#0f172a;" class="text-tabular">₹480</span>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span class="material-symbols-outlined" style="font-size:16px; color:#16a34a;">phone_in_talk</span>
+                                <span>24/7 Highway Control Room: <strong>1800-209-WHEELS</strong></span>
                             </div>
-                            <div style="display:flex; justify-content:space-between; color:#475569;">
-                                <span>Selected Add-ons</span>
-                                <span id="fare-addons" style="font-weight:700; color:#0f172a;" class="text-tabular">₹0</span>
-                            </div>
-                            <div style="display:flex; justify-content:space-between; color:#16a34a; font-weight:600;">
-                                <span>Promo Discount</span>
-                                <span id="fare-discount" class="text-tabular">-₹500</span>
-                            </div>
-
-                            <div style="border-top:1px dashed var(--outline); padding-top:10px; margin-top:4px; display:flex; justify-content:space-between; align-items:baseline;">
-                                <div style="display:flex; flex-direction:column;">
-                                    <span style="font-size:11.5px; color:#64748b; font-weight:700; text-transform:uppercase;">Total Payable</span>
-                                    <span style="font-size:11px; color:#16a34a;">All taxes & tolls included</span>
-                                </div>
-                                <span id="fare-grand-total" style="font-family:var(--font-display); font-size:24px; font-weight:800; color:var(--text-main);" class="text-tabular">₹8,080</span>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span class="material-symbols-outlined" style="font-size:16px; color:#16a34a;">receipt</span>
+                                <span>Automated GST tax invoice delivered instantly</span>
                             </div>
                         </div>
-
-                        <button type="button" id="book-cab-confirm-btn" class="btn btn-accent btn-block" style="margin-top:16px; height:48px; font-size:15px;">
-                            <span>Confirm Booking</span>
-                            <span class="material-symbols-outlined" style="font-size:18px;">arrow_forward</span>
-                        </button>
                     </div>
                 </div>
             </div>

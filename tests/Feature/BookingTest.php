@@ -103,6 +103,28 @@ class BookingTest extends TestCase
         ]);
     }
 
+    public function test_outstation_cab_simplified_screen_flow_renders(): void
+    {
+        $response = $this->get('/');
+        $response->assertStatus(200);
+
+        // Assert 3-step progressive stepper flow exists
+        $response->assertSee('cab-stepper-header', false);
+        $response->assertSee('pill-step-1', false);
+        $response->assertSee('pill-step-2', false);
+        $response->assertSee('pill-step-3', false);
+
+        // Step Panels
+        $response->assertSee('cab-step-1', false);
+        $response->assertSee('cab-step-2', false);
+        $response->assertSee('cab-step-3', false);
+
+        // Route, Vehicle & Confirmation CTAs
+        $response->assertSee('cab-route-insight-strip', false);
+        $response->assertSee('trust-inclusions-strip', false);
+        $response->assertSee('book-cab-confirm-btn', false);
+    }
+
     public function test_store_bus_sleeper_berth_booking(): void
     {
         $payload = [
