@@ -19,6 +19,7 @@ class HomeController extends Controller
     public function index()
     {
         $routes = RouteFare::where('is_active', true)->get();
+        $allCabRoutes = RouteFare::latest()->get();
         $drivers = Driver::where('is_online', true)->get();
         $lowerBerths = SeatLayout::where('deck', 'lower')->get();
         $upperBerths = SeatLayout::where('deck', 'upper')->get();
@@ -35,6 +36,8 @@ class HomeController extends Controller
         $berthRoutes = BerthRoute::with('seatLayouts')->latest()->get();
         $allSeatLayouts = SeatLayout::orderBy('coach_code')->orderBy('deck')->orderBy('berth_number')->get();
         $driverVehicles = DriverVehicle::with('driver')->latest()->get();
+        $localPackages = \App\Models\LocalPackage::orderBy('duration_hours')->get();
+        $airportHubs = \App\Models\AirportHub::orderBy('city')->get();
         $platformSettings = [
             'privacy_policy_url' => \App\Models\PlatformSetting::get('privacy_policy_url', '/privacy-policy'),
             'terms_conditions_url' => \App\Models\PlatformSetting::get('terms_conditions_url', '/terms-conditions'),
@@ -56,13 +59,13 @@ class HomeController extends Controller
             }
         }
 
-        $driverProfile = null;
+        $driverProfile = Driver::first();
         $driverTrips = collect();
         $driverMyVehicles = collect();
         if ($currentUser && $currentUser->role === 'driver') {
             $driverProfile = Driver::where('phone', $currentUser->phone)
                 ->orWhere('name', 'like', '%' . explode(' ', $currentUser->name)[0] . '%')
-                ->first() ?: Driver::first();
+                ->first() ?: ($driverProfile ?: Driver::first());
 
             $driverMyVehicles = DriverVehicle::where('driver_phone', $currentUser->phone)
                 ->orWhere('driver_name', 'like', '%' . explode(' ', $currentUser->name)[0] . '%')
@@ -90,10 +93,16 @@ class HomeController extends Controller
                     }
                 }
             }
+        } else {
+            if ($driverProfile) {
+                $driverMyVehicles = DriverVehicle::where('driver_id', $driverProfile->id)->latest()->get();
+                $driverTrips = Booking::with('driver')->where('assigned_driver_id', $driverProfile->id)->latest()->get();
+            }
         }
 
         return view('intercity', compact(
             'routes',
+            'allCabRoutes',
             'drivers',
             'allDrivers',
             'lowerBerths',
@@ -112,6 +121,8 @@ class HomeController extends Controller
             'allSeatLayouts',
             'driverVehicles',
             'driverMyVehicles',
+            'localPackages',
+            'airportHubs',
             'platformSettings'
         ));
     }

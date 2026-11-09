@@ -96,6 +96,10 @@
                         <span class="material-symbols-outlined">account_balance_wallet</span>
                         <span>Driver Wallet</span>
                     </button>
+                    <button class="nav-tab-btn {{ $defaultTab === 'driver-profile' ? 'active' : '' }}" data-target="driver-profile">
+                        <span class="material-symbols-outlined">badge</span>
+                        <span>Driver Profile & Fleet</span>
+                    </button>
                 @elseif($userRole === 'admin')
                     {{-- ADMIN VIEW --}}
                     <button class="nav-tab-btn {{ $defaultTab === 'admin' ? 'active' : '' }}" data-target="admin">

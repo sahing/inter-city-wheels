@@ -1,0 +1,159 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use App\Models\LocalPackage;
+
+class LocalPackageAdminController extends Controller
+{
+    /**
+     * List all local rental packages.
+     */
+    public function index(Request $request)
+    {
+        $query = LocalPackage::query();
+
+        if ($request->filled('search')) {
+            $s = $request->search;
+            $query->where(function ($q) use ($s) {
+                $q->where('package_code', 'like', "%{$s}%")
+                  ->orWhere('name', 'like', "%{$s}%")
+                  ->orWhere('city', 'like', "%{$s}%");
+            });
+        }
+
+        if ($request->filled('status') && $request->status !== 'all') {
+            $query->where('is_active', $request->status === 'active');
+        }
+
+        return response()->json([
+            'success' => true,
+            'packages' => $query->orderBy('duration_hours')->get()
+        ]);
+    }
+
+    /**
+     * Store a new local rental package.
+     */
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'package_code' => 'required|string|max:50|unique:local_packages,package_code',
+            'city' => 'nullable|string|max:100',
+            'name' => 'required|string|max:150',
+            'duration_hours' => 'required|integer|min:1',
+            'included_km' => 'required|integer|min:1',
+            'sedan_fare' => 'required|numeric|min:0',
+            'suv_fare' => 'required|numeric|min:0',
+            'extra_km_rate' => 'nullable|numeric|min:0',
+            'extra_hour_rate' => 'nullable|numeric|min:0',
+            'is_active' => 'nullable|boolean'
+        ]);
+
+        $package = LocalPackage::create([
+            'package_code' => trim($validated['package_code']),
+            'city' => trim($validated['city'] ?? 'All Cities') ?: 'All Cities',
+            'name' => trim($validated['name']),
+            'duration_hours' => (int)$validated['duration_hours'],
+            'included_km' => (int)$validated['included_km'],
+            'sedan_fare' => (float)$validated['sedan_fare'],
+            'suv_fare' => (float)$validated['suv_fare'],
+            'extra_km_rate' => (float)($validated['extra_km_rate'] ?? 14.00),
+            'extra_hour_rate' => (float)($validated['extra_hour_rate'] ?? 150.00),
+            'is_active' => $request->has('is_active') ? (bool)$request->is_active : true,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Local Package '{$package->name}' created successfully!",
+            'package' => $package
+        ], 201);
+    }
+
+    /**
+     * Show single package details.
+     */
+    public function show($id)
+    {
+        $package = LocalPackage::findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'package' => $package
+        ]);
+    }
+
+    /**
+     * Update an existing package.
+     */
+    public function update(Request $request, $id)
+    {
+        $package = LocalPackage::findOrFail($id);
+
+        $validated = $request->validate([
+            'package_code' => "sometimes|required|string|max:50|unique:local_packages,package_code,{$id}",
+            'city' => 'nullable|string|max:100',
+            'name' => 'sometimes|required|string|max:150',
+            'duration_hours' => 'sometimes|required|integer|min:1',
+            'included_km' => 'sometimes|required|integer|min:1',
+            'sedan_fare' => 'sometimes|required|numeric|min:0',
+            'suv_fare' => 'sometimes|required|numeric|min:0',
+            'extra_km_rate' => 'nullable|numeric|min:0',
+            'extra_hour_rate' => 'nullable|numeric|min:0',
+            'is_active' => 'nullable|boolean'
+        ]);
+
+        if (isset($validated['package_code'])) $package->package_code = trim($validated['package_code']);
+        if (isset($validated['city'])) $package->city = trim($validated['city']) ?: 'All Cities';
+        if (isset($validated['name'])) $package->name = trim($validated['name']);
+        if (isset($validated['duration_hours'])) $package->duration_hours = (int)$validated['duration_hours'];
+        if (isset($validated['included_km'])) $package->included_km = (int)$validated['included_km'];
+        if (isset($validated['sedan_fare'])) $package->sedan_fare = (float)$validated['sedan_fare'];
+        if (isset($validated['suv_fare'])) $package->suv_fare = (float)$validated['suv_fare'];
+        if (isset($validated['extra_km_rate'])) $package->extra_km_rate = (float)$validated['extra_km_rate'];
+        if (isset($validated['extra_hour_rate'])) $package->extra_hour_rate = (float)$validated['extra_hour_rate'];
+        if ($request->has('is_active')) $package->is_active = (bool)$request->is_active;
+
+        $package->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => "Local Package '{$package->name}' updated successfully!",
+            'package' => $package
+        ]);
+    }
+
+    /**
+     * Toggle active status.
+     */
+    public function toggleStatus($id)
+    {
+        $package = LocalPackage::findOrFail($id);
+        $package->is_active = !$package->is_active;
+        $package->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => "Local Package status changed to " . ($package->is_active ? 'Active' : 'Inactive'),
+            'is_active' => $package->is_active
+        ]);
+    }
+
+    /**
+     * Delete a package.
+     */
+    public function destroy($id)
+    {
+        $package = LocalPackage::findOrFail($id);
+        $code = $package->package_code;
+        $package->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => "Local Package '{$code}' deleted successfully."
+        ]);
+    }
+}
+

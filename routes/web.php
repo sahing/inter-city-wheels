@@ -13,6 +13,9 @@ use App\Http\Controllers\Admin\LocationAdminController;
 use App\Http\Controllers\Admin\BerthRouteAdminController;
 use App\Http\Controllers\Admin\SeatLayoutAdminController;
 use App\Http\Controllers\Admin\VehicleAdminController;
+use App\Http\Controllers\Admin\CabRouteAdminController;
+use App\Http\Controllers\Admin\LocalPackageAdminController;
+use App\Http\Controllers\Admin\AirportHubAdminController;
 use App\Http\Controllers\Admin\PlatformSettingAdminController;
 use App\Http\Controllers\Api\RouteCalculationController;
 
@@ -39,6 +42,18 @@ Route::get('/health', function () {
 Route::prefix('api')->group(function () {
     // Route & Fare Calculation
     Route::get('/routes/calculate', [RouteCalculationController::class, 'calculate'])->name('api.routes.calculate');
+    Route::get('/local-packages', function () {
+        return response()->json([
+            'success' => true,
+            'packages' => \App\Models\LocalPackage::where('is_active', true)->orderBy('duration_hours')->get()
+        ]);
+    })->name('api.localPackages.active');
+    Route::get('/airport-hubs', function () {
+        return response()->json([
+            'success' => true,
+            'airports' => \App\Models\AirportHub::where('is_active', true)->orderBy('city')->get()
+        ]);
+    })->name('api.airportHubs.active');
 
     // Bookings
     Route::post('/bookings', [BookingController::class, 'store'])->name('api.bookings.store');
@@ -52,6 +67,9 @@ Route::prefix('api')->group(function () {
     Route::post('/driver/trips/{id}/verify-otp', [DriverBiddingController::class, 'verifyStartOtp'])->name('api.driver.trips.verifyOtp');
     Route::post('/driver/trips/{id}/complete', [DriverBiddingController::class, 'completeTrip'])->name('api.driver.trips.complete');
     Route::post('/driver/wallet/withdraw', [DriverBiddingController::class, 'withdrawPayout'])->name('api.driver.wallet.withdraw');
+    Route::get('/driver/profile', [DriverBiddingController::class, 'getProfile'])->name('api.driver.profile.get');
+    Route::post('/driver/profile', [DriverBiddingController::class, 'updateProfile'])->name('api.driver.profile.update');
+    Route::post('/driver/toggle-online', [DriverBiddingController::class, 'toggleOnlineStatus'])->name('api.driver.toggleOnline');
 
     // Booking Management (Admin)
     Route::get('/admin/bookings', [BookingAdminController::class, 'index'])->name('api.admin.bookings.index');
@@ -76,6 +94,30 @@ Route::prefix('api')->group(function () {
     // Workflow Stages (Admin)
     Route::get('/admin/workflows', [WorkflowConfigController::class, 'index'])->name('api.admin.workflows.index');
     Route::put('/admin/workflows/{id}', [WorkflowConfigController::class, 'update'])->name('api.admin.workflows.update');
+
+    // Outstation Cab Routes Setup (Admin)
+    Route::get('/admin/cab-routes', [CabRouteAdminController::class, 'index'])->name('api.admin.cabRoutes.index');
+    Route::post('/admin/cab-routes', [CabRouteAdminController::class, 'store'])->name('api.admin.cabRoutes.store');
+    Route::get('/admin/cab-routes/{id}', [CabRouteAdminController::class, 'show'])->name('api.admin.cabRoutes.show');
+    Route::put('/admin/cab-routes/{id}', [CabRouteAdminController::class, 'update'])->name('api.admin.cabRoutes.update');
+    Route::post('/admin/cab-routes/{id}/toggle', [CabRouteAdminController::class, 'toggleStatus'])->name('api.admin.cabRoutes.toggle');
+    Route::delete('/admin/cab-routes/{id}', [CabRouteAdminController::class, 'destroy'])->name('api.admin.cabRoutes.destroy');
+
+    // Local Rental Packages Setup (Admin)
+    Route::get('/admin/local-packages', [LocalPackageAdminController::class, 'index'])->name('api.admin.localPackages.index');
+    Route::post('/admin/local-packages', [LocalPackageAdminController::class, 'store'])->name('api.admin.localPackages.store');
+    Route::get('/admin/local-packages/{id}', [LocalPackageAdminController::class, 'show'])->name('api.admin.localPackages.show');
+    Route::put('/admin/local-packages/{id}', [LocalPackageAdminController::class, 'update'])->name('api.admin.localPackages.update');
+    Route::post('/admin/local-packages/{id}/toggle', [LocalPackageAdminController::class, 'toggleStatus'])->name('api.admin.localPackages.toggle');
+    Route::delete('/admin/local-packages/{id}', [LocalPackageAdminController::class, 'destroy'])->name('api.admin.localPackages.destroy');
+
+    // Airport Transit Hubs & Surcharges Setup (Admin)
+    Route::get('/admin/airport-hubs', [AirportHubAdminController::class, 'index'])->name('api.admin.airportHubs.index');
+    Route::post('/admin/airport-hubs', [AirportHubAdminController::class, 'store'])->name('api.admin.airportHubs.store');
+    Route::get('/admin/airport-hubs/{id}', [AirportHubAdminController::class, 'show'])->name('api.admin.airportHubs.show');
+    Route::put('/admin/airport-hubs/{id}', [AirportHubAdminController::class, 'update'])->name('api.admin.airportHubs.update');
+    Route::post('/admin/airport-hubs/{id}/toggle', [AirportHubAdminController::class, 'toggleStatus'])->name('api.admin.airportHubs.toggle');
+    Route::delete('/admin/airport-hubs/{id}', [AirportHubAdminController::class, 'destroy'])->name('api.admin.airportHubs.destroy');
 
     // Service Locations Setup (Admin)
     Route::get('/admin/locations', [LocationAdminController::class, 'index'])->name('api.admin.locations.index');

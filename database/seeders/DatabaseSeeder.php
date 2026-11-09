@@ -349,5 +349,155 @@ class DatabaseSeeder extends Seeder
         // 12. Seed Platform Settings (Policy URLs)
         \App\Models\PlatformSetting::set('privacy_policy_url', '/privacy-policy');
         \App\Models\PlatformSetting::set('terms_conditions_url', '/terms-conditions');
+
+        // 13. Seed Configured Local Rental Packages (Hourly & KM)
+        $localPackages = [
+            [
+                'package_code' => '4_40',
+                'city' => 'All Cities',
+                'name' => '4 Hours / 40 KM',
+                'duration_hours' => 4,
+                'included_km' => 40,
+                'sedan_fare' => 1400.00,
+                'suv_fare' => 1900.00,
+                'extra_km_rate' => 14.00,
+                'extra_hour_rate' => 150.00,
+                'is_active' => true,
+            ],
+            [
+                'package_code' => '8_80',
+                'city' => 'All Cities',
+                'name' => '8 Hours / 80 KM (Half Day)',
+                'duration_hours' => 8,
+                'included_km' => 80,
+                'sedan_fare' => 2400.00,
+                'suv_fare' => 3200.00,
+                'extra_km_rate' => 14.00,
+                'extra_hour_rate' => 150.00,
+                'is_active' => true,
+            ],
+            [
+                'package_code' => '10_100',
+                'city' => 'All Cities',
+                'name' => '10 Hours / 100 KM (Full Day)',
+                'duration_hours' => 10,
+                'included_km' => 100,
+                'sedan_fare' => 2900.00,
+                'suv_fare' => 3800.00,
+                'extra_km_rate' => 14.00,
+                'extra_hour_rate' => 150.00,
+                'is_active' => true,
+            ],
+            [
+                'package_code' => '12_120',
+                'city' => 'All Cities',
+                'name' => '12 Hours / 120 KM (Extended Day)',
+                'duration_hours' => 12,
+                'included_km' => 120,
+                'sedan_fare' => 3400.00,
+                'suv_fare' => 4400.00,
+                'extra_km_rate' => 14.00,
+                'extra_hour_rate' => 150.00,
+                'is_active' => true,
+            ],
+        ];
+        foreach ($localPackages as $lp) {
+            \App\Models\LocalPackage::firstOrCreate(['package_code' => $lp['package_code']], $lp);
+        }
+
+        // 14. Seed Configured Airport Transit Hubs
+        $airportHubs = [
+            [
+                'airport_name' => 'Netaji Subhash Chandra Bose International Airport',
+                'iata_code' => 'CCU',
+                'city' => 'Kolkata',
+                'terminals' => 'Terminal 1 (Domestic & International)',
+                'pickup_surcharge' => 250.00,
+                'drop_surcharge' => 150.00,
+                'sedan_base_fare' => 950.00,
+                'suv_base_fare' => 1450.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Indira Gandhi International Airport',
+                'iata_code' => 'DEL',
+                'city' => 'New Delhi',
+                'terminals' => 'Terminal 1, Terminal 2, Terminal 3',
+                'pickup_surcharge' => 300.00,
+                'drop_surcharge' => 180.00,
+                'sedan_base_fare' => 1100.00,
+                'suv_base_fare' => 1650.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Chhatrapati Shivaji Maharaj International Airport',
+                'iata_code' => 'BOM',
+                'city' => 'Mumbai',
+                'terminals' => 'Terminal 1 (Santacruz) & Terminal 2 (Sahar)',
+                'pickup_surcharge' => 300.00,
+                'drop_surcharge' => 180.00,
+                'sedan_base_fare' => 1200.00,
+                'suv_base_fare' => 1750.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Pune International Airport',
+                'iata_code' => 'PNQ',
+                'city' => 'Pune',
+                'terminals' => 'Terminal 1 (Lohegaon New Integrated Terminal)',
+                'pickup_surcharge' => 200.00,
+                'drop_surcharge' => 120.00,
+                'sedan_base_fare' => 850.00,
+                'suv_base_fare' => 1300.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Kempegowda International Airport',
+                'iata_code' => 'BLR',
+                'city' => 'Bengaluru',
+                'terminals' => 'Terminal 1 & Terminal 2 (Garden Terminal)',
+                'pickup_surcharge' => 300.00,
+                'drop_surcharge' => 180.00,
+                'sedan_base_fare' => 1250.00,
+                'suv_base_fare' => 1800.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Rajiv Gandhi International Airport',
+                'iata_code' => 'HYD',
+                'city' => 'Hyderabad',
+                'terminals' => 'Main Integrated Passenger Terminal (Shamshabad)',
+                'pickup_surcharge' => 250.00,
+                'drop_surcharge' => 150.00,
+                'sedan_base_fare' => 1050.00,
+                'suv_base_fare' => 1550.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Kazi Nazrul Islam Airport',
+                'iata_code' => 'RDP',
+                'city' => 'Durgapur',
+                'terminals' => 'Domestic Passenger Terminal',
+                'pickup_surcharge' => 200.00,
+                'drop_surcharge' => 120.00,
+                'sedan_base_fare' => 800.00,
+                'suv_base_fare' => 1250.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Bagdogra International Airport',
+                'iata_code' => 'IXB',
+                'city' => 'Siliguri',
+                'terminals' => 'Main Terminal Building',
+                'pickup_surcharge' => 250.00,
+                'drop_surcharge' => 150.00,
+                'sedan_base_fare' => 950.00,
+                'suv_base_fare' => 1400.00,
+                'is_active' => true,
+            ],
+        ];
+        foreach ($airportHubs as $ah) {
+            \App\Models\AirportHub::firstOrCreate(['iata_code' => $ah['iata_code']], $ah);
+        }
     }
 }

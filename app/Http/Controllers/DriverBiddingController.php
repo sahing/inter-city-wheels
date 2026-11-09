@@ -166,4 +166,108 @@ class DriverBiddingController extends Controller
             'message' => "Payout request for ₹" . number_format($validated['amount']) . " initiated to your registered bank account (HDFC •••• 4912) via IMPS."
         ]);
     }
+
+    /**
+     * Get current driver profile details.
+     */
+    public function getProfile(Request $request)
+    {
+        $currentUser = auth()->user();
+        $driver = null;
+        if ($currentUser && $currentUser->role === 'driver') {
+            $driver = Driver::where('phone', $currentUser->phone)
+                ->orWhere('name', 'like', '%' . explode(' ', $currentUser->name)[0] . '%')
+                ->first();
+        }
+        if (!$driver) {
+            $driver = Driver::first();
+        }
+
+        return response()->json([
+            'success' => true,
+            'profile' => $driver,
+            'driver' => $driver
+        ]);
+    }
+
+    /**
+     * Update current driver profile credentials.
+     */
+    public function updateProfile(Request $request)
+    {
+        $currentUser = auth()->user();
+        $driver = null;
+        if ($currentUser && $currentUser->role === 'driver') {
+            $driver = Driver::where('phone', $currentUser->phone)
+                ->orWhere('name', 'like', '%' . explode(' ', $currentUser->name)[0] . '%')
+                ->first();
+        }
+        if (!$driver) {
+            $driver = Driver::first();
+        }
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:100',
+            'phone' => 'required|string|max:20',
+            'vehicle_model' => 'required|string|max:100',
+            'vehicle_plate' => 'required|string|max:20',
+            'fleet_category' => 'required|string|in:sedan,prime,suv,luxury,sleeper_van',
+            'avatar' => 'nullable|string|max:10',
+            'city' => 'nullable|string|max:100',
+        ]);
+
+        $driver->name = trim($validated['name']);
+        $driver->phone = trim($validated['phone']);
+        $driver->vehicle_model = trim($validated['vehicle_model']);
+        $driver->vehicle_plate = strtoupper(trim($validated['vehicle_plate']));
+        $driver->fleet_category = strtolower(trim($validated['fleet_category']));
+        if (!empty($validated['avatar'])) {
+            $driver->avatar = $validated['avatar'];
+        }
+        $driver->save();
+
+        if ($currentUser && $currentUser->role === 'driver') {
+            $currentUser->name = $driver->name;
+            $currentUser->phone = $driver->phone;
+            if (!empty($validated['avatar'])) {
+                $currentUser->avatar = $driver->avatar;
+            }
+            $currentUser->save();
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Driver profile updated successfully.',
+            'profile' => $driver,
+            'driver' => $driver
+        ]);
+    }
+
+    /**
+     * Toggle driver Online/Offline status.
+     */
+    public function toggleOnlineStatus(Request $request)
+    {
+        $currentUser = auth()->user();
+        $driver = null;
+        if ($currentUser && $currentUser->role === 'driver') {
+            $driver = Driver::where('phone', $currentUser->phone)
+                ->orWhere('name', 'like', '%' . explode(' ', $currentUser->name)[0] . '%')
+                ->first();
+        }
+        if (!$driver) {
+            $driver = Driver::first();
+        }
+
+        if ($driver) {
+            $driver->is_online = !$driver->is_online;
+            $driver->save();
+        }
+
+        return response()->json([
+            'success' => true,
+            'is_online' => $driver ? (bool)$driver->is_online : true,
+            'message' => 'Driver duty status changed to ' . ($driver && $driver->is_online ? 'Online (Accepting Bids)' : 'Offline (Off Duty)')
+        ]);
+    }
 }

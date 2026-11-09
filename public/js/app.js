@@ -396,6 +396,12 @@ function switchTab(tabId) {
     btn.classList.toggle('active', btn.dataset.target === tabId);
   });
 
+  // Synchronize driver console sub-navigation bar buttons
+  document.querySelectorAll('.driver-subnav-btn').forEach(btn => {
+    const isMatched = (btn.getAttribute('onclick') || '').includes(`'${tabId}'`);
+    btn.classList.toggle('active', isMatched);
+  });
+
   // Show active tab pane
   document.querySelectorAll('.tab-pane').forEach(pane => {
     pane.classList.toggle('active', pane.id === `tab-${tabId}`);
@@ -1568,9 +1574,13 @@ function initCabsModule() {
         <!-- Trip Details & Actions Row -->
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-top:1px dashed #e2e8f0; padding-top:10px;">
           <div style="font-size:12px; color:#475569;">
-            <span>Passenger: <strong>${trip.customerName}</strong></span> &bull; 
+            <span>Passenger: <strong style="color:#0284c7;">Verified Traveler 🔒 (Masked until Bid Won)</strong></span> &bull; 
             <span>Vehicle: <strong>${trip.fleetCategory}</strong></span> &bull; 
             <span style="color:#64748b; font-style:italic;">"${trip.notes}"</span>
+            <div style="font-size:10.5px; color:#64748b; margin-top:3px; display:flex; align-items:center; gap:4px;">
+              <span class="material-symbols-outlined" style="font-size:13px; color:#10b981;">lock</span>
+              <span>Passenger phone & exact pickup address remain masked until you win the bid.</span>
+            </div>
           </div>
 
           <div style="display:flex; align-items:center; gap:12px;">
@@ -1889,6 +1899,8 @@ function initCabsModule() {
       'bookings': 'Outstation Bookings & Dispatch Management',
       'users': 'Registered Users & Drivers Directory',
       'locations': 'Service Locations & Network Hubs',
+      'cab-routes': 'Outstation Cab Routes & Highway Matrix',
+      'booking-types': 'Booking Types & Packages Management',
       'berth-routes': 'Berth Routes & Sleeper Schedules',
       'berth-layouts': 'Vehicle Berth & Seat Customizer',
       'vehicles': 'Driver Vehicles & Fleet Approvals',
@@ -1911,6 +1923,23 @@ function initCabsModule() {
     document.querySelectorAll('#admin-nav-list .admin-nav-item').forEach(item => {
       const text = item.textContent.toLowerCase();
       item.style.display = (!q || text.includes(q)) ? 'block' : 'none';
+    });
+    // Dynamically show/hide group headers based on visible items
+    document.querySelectorAll('#admin-nav-list .admin-nav-header').forEach(header => {
+      if (!q) {
+        header.style.display = '';
+        return;
+      }
+      let next = header.nextElementSibling;
+      let hasVisible = false;
+      while (next && !next.classList.contains('admin-nav-header')) {
+        if (next.style.display !== 'none') {
+          hasVisible = true;
+          break;
+        }
+        next = next.nextElementSibling;
+      }
+      header.style.display = hasVisible ? '' : 'none';
     });
   };
 
@@ -2177,6 +2206,22 @@ function initCabsModule() {
     const modal = document.getElementById(id);
     if (modal) modal.classList.remove('active');
   };
+
+  // Close active modal on backdrop click
+  document.addEventListener('click', function (e) {
+    if (e.target && e.target.classList && e.target.classList.contains('modal-overlay')) {
+      e.target.classList.remove('active');
+    }
+  });
+
+  // Close active modal on Escape key
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay.active').forEach(modal => {
+        modal.classList.remove('active');
+      });
+    }
+  });
 
   // Toast Notifications Helper
   function showToast(message, type = 'info') {
@@ -3104,9 +3149,23 @@ function initCabsModule() {
           badge.className = 'admin-badge badge-info';
           badge.textContent = 'Started';
         }
-        setTimeout(() => {
-          window.location.reload();
-        }, 700);
+        const actionsBox = document.getElementById(`driver-trip-actions-${bookingId}`);
+        if (actionsBox) {
+          actionsBox.innerHTML = `
+            <div style="display:flex; align-items:center; gap:6px; color:#0284c7; font-size:12px; font-weight:700;">
+                <span class="material-symbols-outlined" style="font-size:18px;">local_shipping</span>
+                <span>Ride in progress. Drive safely.</span>
+            </div>
+            <button type="button" class="btn btn-sm btn-accent" onclick="completeDriverTrip(${bookingId})">
+                <span class="material-symbols-outlined" style="font-size:15px;">flag</span>
+                <span>Complete Trip & Settle Payout</span>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline" onclick="openInvoiceModal(${bookingId})">
+                <span class="material-symbols-outlined" style="font-size:14px;">receipt</span>
+                <span>View Invoice</span>
+            </button>
+          `;
+        }
       } else {
         showToast(data.message || 'Invalid OTP. Please verify with passenger.', 'warning');
       }
@@ -3136,9 +3195,32 @@ function initCabsModule() {
       const data = await res.json();
       if (res.ok && data.success) {
         showToast(data.message || 'Trip completed! Payout credited to your wallet.', 'success');
-        setTimeout(() => {
-          window.location.reload();
-        }, 700);
+        const badge = document.getElementById(`driver-trip-status-badge-${bookingId}`);
+        if (badge) {
+          badge.className = 'admin-badge badge-primary';
+          badge.textContent = 'Completed';
+        }
+        const actionsBox = document.getElementById(`driver-trip-actions-${bookingId}`);
+        if (actionsBox) {
+          actionsBox.innerHTML = `
+            <div style="color:#16a34a; font-size:12px; font-weight:700; display:flex; align-items:center; gap:4px;">
+                <span class="material-symbols-outlined" style="font-size:16px;">verified</span>
+                <span>Trip completed & payout credited.</span>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline" onclick="openInvoiceModal(${bookingId})">
+                <span class="material-symbols-outlined" style="font-size:14px;">receipt</span>
+                <span>View Invoice</span>
+            </button>
+          `;
+        }
+        if (data.booking && data.booking.total_amount) {
+          const payout = Math.round(data.booking.total_amount * 0.9);
+          const walletEl = document.getElementById('driver-header-wallet-bal');
+          if (walletEl) {
+            const curVal = parseInt(walletEl.textContent.replace(/[^0-9]/g, ''), 10) || 0;
+            walletEl.textContent = `₹${(curVal + payout).toLocaleString('en-IN')}`;
+          }
+        }
       } else {
         showToast(data.message || 'Failed to complete trip.', 'warning');
       }
@@ -3609,7 +3691,48 @@ function initCabsModule() {
       if (res.ok && data.success) {
         showToast(data.message, 'success');
         closeModal('admin-location-modal');
-        setTimeout(() => location.reload(), 600);
+        const loc = data.location;
+        if (loc) {
+          if (isEdit) {
+            const row = document.getElementById(`admin-loc-row-${loc.id}`);
+            if (row) {
+              row.dataset.search = `${loc.name} ${loc.state} ${loc.airport_code || ''}`.toLowerCase();
+              row.cells[0].innerHTML = `<strong>${loc.name}</strong>`;
+              row.cells[1].textContent = loc.state;
+              row.cells[2].textContent = `${loc.latitude}, ${loc.longitude}`;
+              row.cells[3].innerHTML = loc.airport_code ? `<span class="admin-badge badge-primary">${loc.airport_code}</span>` : `<span style="color:#94a3b8; font-size:11px;">Standard</span>`;
+              row.cells[4].innerHTML = loc.is_active ? `<span class="admin-badge badge-success" style="cursor:pointer;" onclick="toggleLocationStatus(${loc.id})" id="loc-status-badge-${loc.id}" title="Click to toggle">Active</span>` : `<span class="admin-badge badge-danger" style="cursor:pointer;" onclick="toggleLocationStatus(${loc.id})" id="loc-status-badge-${loc.id}" title="Click to toggle">Inactive</span>`;
+            }
+          } else {
+            const tbody = document.getElementById('admin-locations-tbody');
+            if (tbody) {
+              const tr = document.createElement('tr');
+              tr.id = `admin-loc-row-${loc.id}`;
+              tr.dataset.search = `${loc.name} ${loc.state} ${loc.airport_code || ''}`.toLowerCase();
+              tr.innerHTML = `
+                <td><strong>${loc.name}</strong></td>
+                <td>${loc.state}</td>
+                <td style="font-family:monospace; font-size:11.5px; color:#475569;">${loc.latitude}, ${loc.longitude}</td>
+                <td>${loc.airport_code ? `<span class="admin-badge badge-primary">${loc.airport_code}</span>` : `<span style="color:#94a3b8; font-size:11px;">Standard</span>`}</td>
+                <td><span class="admin-badge ${loc.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleLocationStatus(${loc.id})" id="loc-status-badge-${loc.id}" title="Click to toggle">${loc.is_active ? 'Active' : 'Inactive'}</span></td>
+                <td style="text-align:right;">
+                  <div class="admin-action-btn-group" style="justify-content:flex-end;">
+                    <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditLocationModal(${loc.id})" title="Edit Location">
+                      <span class="material-symbols-outlined">edit</span>
+                    </button>
+                    <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteLocation(${loc.id})" title="Delete Location">
+                      <span class="material-symbols-outlined">delete</span>
+                    </button>
+                  </div>
+                </td>
+              `;
+              tbody.prepend(tr);
+            }
+          }
+          const totalLocs = document.querySelectorAll('#admin-locations-tbody tr[id^="admin-loc-row-"]').length;
+          const locBadge = document.getElementById('admin-badge-locations-count');
+          if (locBadge) locBadge.textContent = totalLocs;
+        }
       } else {
         showToast(data.message || 'Validation error while saving location.', 'danger');
       }
@@ -3631,7 +3754,12 @@ function initCabsModule() {
       const data = await res.json();
       if (data.success) {
         showToast(data.message, 'info');
-        setTimeout(() => location.reload(), 500);
+        const badge = document.getElementById(`loc-status-badge-${id}`) || document.querySelector(`#admin-loc-row-${id} td:nth-child(5) .admin-badge`);
+        if (badge && data.location) {
+          const isActive = data.location.is_active;
+          badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
+          badge.textContent = isActive ? 'Active' : 'Inactive';
+        }
       }
     } catch (err) {
       showToast('Failed to toggle location status.', 'warning');
@@ -3653,10 +3781,835 @@ function initCabsModule() {
         showToast(data.message, 'success');
         const row = document.getElementById(`admin-loc-row-${id}`);
         if (row) row.remove();
+        const totalLocs = document.querySelectorAll('#admin-locations-tbody tr[id^="admin-loc-row-"]').length;
+        const locBadge = document.getElementById('admin-badge-locations-count');
+        if (locBadge) locBadge.textContent = totalLocs;
       }
     } catch (err) {
       showToast('Failed to delete location.', 'warning');
     }
+  };
+
+  // ========================================================
+  // 1B. OUTSTATION CAB ROUTES MANAGEMENT (Admin)
+  // ========================================================
+  window.openAddCabRouteModal = function () {
+    document.getElementById('admin-cab-route-modal-title').textContent = 'Add Outstation Cab Route';
+    document.getElementById('admin-cab-route-id').value = '';
+    document.getElementById('admin-cab-route-from').value = '';
+    document.getElementById('admin-cab-route-to').value = '';
+    document.getElementById('admin-cab-route-dist').value = '';
+    document.getElementById('admin-cab-route-time').value = '4h 30m';
+    document.getElementById('admin-cab-route-toll').value = '0';
+    if (document.getElementById('admin-cab-route-sedan-fare')) document.getElementById('admin-cab-route-sedan-fare').value = '';
+    if (document.getElementById('admin-cab-route-suv-fare')) document.getElementById('admin-cab-route-suv-fare').value = '';
+    if (document.getElementById('admin-cab-route-roundtrip-discount')) document.getElementById('admin-cab-route-roundtrip-discount').value = '0';
+    document.getElementById('admin-cab-route-active').checked = true;
+
+    const delBtn = document.getElementById('admin-cab-route-delete-btn');
+    if (delBtn) delBtn.style.display = 'none';
+
+    const modal = document.getElementById('admin-cab-route-modal');
+    if (modal) modal.classList.add('active');
+  };
+
+  window.openEditCabRouteModal = async function (id) {
+    try {
+      const res = await fetch(`/api/admin/cab-routes/${id}`);
+      const data = await res.json();
+      if (!data.success || !data.route) return;
+
+      const route = data.route;
+      document.getElementById('admin-cab-route-modal-title').textContent = `Edit Cab Route: ${route.from_city} ➔ ${route.to_city}`;
+      document.getElementById('admin-cab-route-id').value = route.id;
+      document.getElementById('admin-cab-route-from').value = route.from_city;
+      document.getElementById('admin-cab-route-to').value = route.to_city;
+      document.getElementById('admin-cab-route-dist').value = route.distance_km;
+      document.getElementById('admin-cab-route-time').value = route.estimated_time;
+      document.getElementById('admin-cab-route-toll').value = route.base_toll || 0;
+      if (document.getElementById('admin-cab-route-sedan-fare')) document.getElementById('admin-cab-route-sedan-fare').value = route.sedan_fare || '';
+      if (document.getElementById('admin-cab-route-suv-fare')) document.getElementById('admin-cab-route-suv-fare').value = route.suv_fare || '';
+      if (document.getElementById('admin-cab-route-roundtrip-discount')) document.getElementById('admin-cab-route-roundtrip-discount').value = route.roundtrip_discount_pct || 0;
+      document.getElementById('admin-cab-route-active').checked = Boolean(route.is_active);
+
+      const delBtn = document.getElementById('admin-cab-route-delete-btn');
+      if (delBtn) delBtn.style.display = 'inline-flex';
+
+      const modal = document.getElementById('admin-cab-route-modal');
+      if (modal) modal.classList.add('active');
+    } catch (err) {
+      console.error('Fetch cab route error:', err);
+      showToast('Failed to load cab route details.', 'warning');
+    }
+  };
+
+  window.saveCabRoute = async function (e) {
+    e.preventDefault();
+    const id = document.getElementById('admin-cab-route-id').value;
+    const isEdit = Boolean(id);
+
+    const payload = {
+      from_city: document.getElementById('admin-cab-route-from').value.trim(),
+      to_city: document.getElementById('admin-cab-route-to').value.trim(),
+      distance_km: parseFloat(document.getElementById('admin-cab-route-dist').value),
+      estimated_time: document.getElementById('admin-cab-route-time').value.trim(),
+      base_toll: parseFloat(document.getElementById('admin-cab-route-toll').value) || 0,
+      sedan_fare: document.getElementById('admin-cab-route-sedan-fare')?.value ? parseFloat(document.getElementById('admin-cab-route-sedan-fare').value) : null,
+      suv_fare: document.getElementById('admin-cab-route-suv-fare')?.value ? parseFloat(document.getElementById('admin-cab-route-suv-fare').value) : null,
+      roundtrip_discount_pct: document.getElementById('admin-cab-route-roundtrip-discount')?.value ? parseFloat(document.getElementById('admin-cab-route-roundtrip-discount').value) : 0,
+      is_active: document.getElementById('admin-cab-route-active').checked,
+    };
+
+    const url = isEdit ? `/api/admin/cab-routes/${id}` : '/api/admin/cab-routes';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    try {
+      const res = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message, 'success');
+        closeModal('admin-cab-route-modal');
+        const r = data.route;
+        if (r) {
+          const sedanFare = r.sedan_fare ? Number(r.sedan_fare) : Math.round(r.distance_km * 12.5 + (r.base_toll || 0));
+          const suvFare = r.suv_fare ? Number(r.suv_fare) : Math.round(r.distance_km * 18.0 + (r.base_toll || 0));
+          const rtDisc = r.roundtrip_discount_pct > 0 ? `${r.roundtrip_discount_pct}% Return Disc.` : '250 KM/Day Min';
+
+          // Update helper for route row
+          const updateRow = (row, isBt = false) => {
+            if (!row) return;
+            row.dataset.status = r.is_active ? 'active' : 'inactive';
+            row.dataset.search = `${r.from_city} ${r.to_city}`.toLowerCase();
+            row.cells[0].innerHTML = `
+              <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
+                <span>${r.from_city}</span>
+                <span style="color:var(--primary);">➔</span>
+                <span>${r.to_city}</span>
+              </div>
+              <div style="font-size:11px; color:#64748b;">Point-to-Point Outstation Highway Corridor</div>
+            `;
+            row.cells[1].innerHTML = `<span class="admin-badge badge-primary" style="font-family:monospace; font-size:11.5px;">🛣️ ${r.distance_km} KM</span>`;
+            row.cells[2].innerHTML = `<span style="font-size:11.5px; font-weight:600; color:#334155;">⏱️ ${r.estimated_time}</span>`;
+            row.cells[3].innerHTML = `<strong style="color:#0f172a;">₹${Number(r.base_toll || 0).toLocaleString('en-IN')}</strong>`;
+            row.cells[4].innerHTML = `<span style="font-size:11.5px; color:#475569;">Sedan: <strong>₹${sedanFare.toLocaleString('en-IN')}</strong> &bull; SUV: <strong>₹${suvFare.toLocaleString('en-IN')}</strong></span>`;
+            if (isBt) {
+              row.cells[5].innerHTML = `<span style="font-size:11px; color:#16a34a; font-weight:600;">${rtDisc}</span>`;
+              row.cells[6].innerHTML = `<span class="admin-badge ${r.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleCabRouteStatus(${r.id})" id="bt-cab-route-status-badge-${r.id}" title="Click to toggle status">${r.is_active ? 'Active' : 'Inactive'}</span>`;
+            } else {
+              row.cells[5].innerHTML = `<span class="admin-badge ${r.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleCabRouteStatus(${r.id})" id="cab-route-status-badge-${r.id}" title="Click to toggle status">${r.is_active ? 'Active' : 'Inactive'}</span>`;
+            }
+          };
+
+          const createRow = (tableId, prefix, isBt = false) => {
+            const tbody = document.getElementById(tableId);
+            if (!tbody) return;
+            const tr = document.createElement('tr');
+            tr.id = `${prefix}-${r.id}`;
+            tr.dataset.status = r.is_active ? 'active' : 'inactive';
+            tr.dataset.search = `${r.from_city} ${r.to_city}`.toLowerCase();
+            tr.innerHTML = `
+              <td>
+                <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
+                  <span>${r.from_city}</span>
+                  <span style="color:var(--primary);">➔</span>
+                  <span>${r.to_city}</span>
+                </div>
+                <div style="font-size:11px; color:#64748b;">Point-to-Point Outstation Highway Corridor</div>
+              </td>
+              <td>
+                <span class="admin-badge badge-primary" style="font-family:monospace; font-size:11.5px;">🛣️ ${r.distance_km} KM</span>
+              </td>
+              <td>
+                <span style="font-size:11.5px; font-weight:600; color:#334155;">⏱️ ${r.estimated_time}</span>
+              </td>
+              <td>
+                <strong style="color:#0f172a;">₹${Number(r.base_toll || 0).toLocaleString('en-IN')}</strong>
+              </td>
+              <td>
+                <span style="font-size:11.5px; color:#475569;">Sedan: <strong>₹${sedanFare.toLocaleString('en-IN')}</strong> &bull; SUV: <strong>₹${suvFare.toLocaleString('en-IN')}</strong></span>
+              </td>
+              ${isBt ? `<td><span style="font-size:11px; color:#16a34a; font-weight:600;">${rtDisc}</span></td>` : ''}
+              <td>
+                <span class="admin-badge ${r.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleCabRouteStatus(${r.id})" id="${isBt ? 'bt-' : ''}cab-route-status-badge-${r.id}" title="Click to toggle status">${r.is_active ? 'Active' : 'Inactive'}</span>
+              </td>
+              <td style="text-align:right;">
+                <div class="admin-action-btn-group" style="justify-content:flex-end;">
+                  <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditCabRouteModal(${r.id})" title="Edit Route">
+                    <span class="material-symbols-outlined">edit</span>
+                  </button>
+                  <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteCabRoute(${r.id})" title="Delete Route">
+                    <span class="material-symbols-outlined">delete</span>
+                  </button>
+                </div>
+              </td>
+            `;
+            tbody.prepend(tr);
+          };
+
+          if (isEdit) {
+            updateRow(document.getElementById(`admin-cab-route-row-${r.id}`), false);
+            updateRow(document.getElementById(`admin-bt-cab-route-row-${r.id}`), true);
+          } else {
+            createRow('admin-cab-routes-tbody', 'admin-cab-route-row', false);
+            createRow('admin-bt-routes-tbody', 'admin-bt-cab-route-row', true);
+          }
+
+          const totalRoutes = document.querySelectorAll('#admin-cab-routes-tbody tr[id^="admin-cab-route-row-"]').length || document.querySelectorAll('#admin-bt-routes-tbody tr[id^="admin-bt-cab-route-row-"]').length;
+          const filterCountEl = document.getElementById('admin-cab-routes-filter-count');
+          if (filterCountEl) filterCountEl.textContent = `${totalRoutes} Routes`;
+          const btFilterCountEl = document.getElementById('admin-bt-routes-filter-count');
+          if (btFilterCountEl) btFilterCountEl.textContent = `${totalRoutes} Routes`;
+          const navBadge = document.getElementById('admin-badge-cab-routes-count');
+          if (navBadge) navBadge.textContent = totalRoutes;
+          const tabBadge = document.getElementById('admin-tab-count-outstation');
+          if (tabBadge) tabBadge.textContent = totalRoutes;
+          const topPill = document.getElementById('admin-bt-total-routes-pill');
+          if (topPill) topPill.textContent = `${totalRoutes} Routes`;
+        }
+      } else {
+        showToast(data.message || 'Validation error while saving cab route.', 'danger');
+      }
+    } catch (err) {
+      console.error('Save cab route error:', err);
+      showToast('Network error while saving cab route.', 'warning');
+    }
+  };
+
+  window.toggleCabRouteStatus = async function (id) {
+    try {
+      const res = await fetch(`/api/admin/cab-routes/${id}/toggle`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'info');
+        const isActive = data.route.is_active;
+
+        ['cab-route-status-badge-', 'bt-cab-route-status-badge-'].forEach(prefix => {
+          const badge = document.getElementById(`${prefix}${id}`);
+          if (badge) {
+            badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
+            badge.textContent = isActive ? 'Active' : 'Inactive';
+          }
+        });
+
+        ['admin-cab-route-row-', 'admin-bt-cab-route-row-'].forEach(prefix => {
+          const row = document.getElementById(`${prefix}${id}`);
+          if (row) row.dataset.status = isActive ? 'active' : 'inactive';
+        });
+      }
+    } catch (err) {
+      showToast('Failed to toggle cab route status.', 'warning');
+    }
+  };
+
+  window.deleteCabRoute = async function (id) {
+    if (!confirm('Are you sure you want to delete this outstation cab route?')) return;
+    try {
+      const res = await fetch(`/api/admin/cab-routes/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'success');
+        const r1 = document.getElementById(`admin-cab-route-row-${id}`);
+        if (r1) r1.remove();
+        const r2 = document.getElementById(`admin-bt-cab-route-row-${id}`);
+        if (r2) r2.remove();
+
+        const totalRoutes = document.querySelectorAll('#admin-cab-routes-tbody tr[id^="admin-cab-route-row-"]').length || document.querySelectorAll('#admin-bt-routes-tbody tr[id^="admin-bt-cab-route-row-"]').length;
+        const filterCountEl = document.getElementById('admin-cab-routes-filter-count');
+        if (filterCountEl) filterCountEl.textContent = `${totalRoutes} Routes`;
+        const btFilterCountEl = document.getElementById('admin-bt-routes-filter-count');
+        if (btFilterCountEl) btFilterCountEl.textContent = `${totalRoutes} Routes`;
+        const navBadge = document.getElementById('admin-badge-cab-routes-count');
+        if (navBadge) navBadge.textContent = totalRoutes;
+        const tabBadge = document.getElementById('admin-tab-count-outstation');
+        if (tabBadge) tabBadge.textContent = totalRoutes;
+        const topPill = document.getElementById('admin-bt-total-routes-pill');
+        if (topPill) topPill.textContent = `${totalRoutes} Routes`;
+      }
+    } catch (err) {
+      showToast('Failed to delete cab route.', 'warning');
+    }
+  };
+
+  window.deleteCabRouteFromModal = function () {
+    const id = document.getElementById('admin-cab-route-id').value;
+    if (id) {
+      closeModal('admin-cab-route-modal');
+      deleteCabRoute(id);
+    }
+  };
+
+  window.handleCabRouteSearch = function (q) {
+    const query = (q || '').toLowerCase().trim();
+    ['#admin-cab-routes-tbody tr', '#admin-bt-routes-tbody tr'].forEach(selector => {
+      const rows = document.querySelectorAll(selector);
+      let visibleCount = 0;
+      rows.forEach(r => {
+        const text = (r.dataset.search || '').toLowerCase();
+        const statusFilter = document.getElementById('admin-cab-route-filter-status')?.value || document.getElementById('admin-bt-route-filter-status')?.value || 'all';
+        const status = r.dataset.status;
+        const matchesSearch = !query || text.includes(query);
+        const matchesStatus = statusFilter === 'all' || status === statusFilter;
+
+        if (matchesSearch && matchesStatus) {
+          r.style.display = '';
+          visibleCount++;
+        } else {
+          r.style.display = 'none';
+        }
+      });
+      const countEl = document.getElementById('admin-cab-routes-filter-count');
+      if (countEl) countEl.textContent = `${visibleCount} Routes`;
+      const btCountEl = document.getElementById('admin-bt-routes-filter-count');
+      if (btCountEl) btCountEl.textContent = `${visibleCount} Routes`;
+    });
+  };
+
+  window.handleCabRouteFilter = function () {
+    const q = document.getElementById('admin-cab-route-search-input')?.value || document.getElementById('admin-bt-route-search-input')?.value || '';
+    handleCabRouteSearch(q);
+  };
+
+  // ========================================================
+  // 1B. MODULAR BOOKING TYPES SUB-NAV & MANAGERS
+  // ========================================================
+  window.switchBookingTypeTab = function (tabKey) {
+    document.querySelectorAll('.admin-bt-tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === tabKey);
+    });
+    document.querySelectorAll('.admin-bt-tab-panel').forEach(panel => {
+      panel.style.display = (panel.id === `admin-bt-panel-${tabKey}`) ? 'block' : 'none';
+    });
+  };
+
+  // Local Hourly Rental Packages Handlers
+  window.openAddLocalPackageModal = function () {
+    document.getElementById('admin-local-pkg-modal-title').textContent = 'Add Local Rental Package';
+    document.getElementById('admin-local-pkg-id').value = '';
+    document.getElementById('admin-local-pkg-code').value = '';
+    document.getElementById('admin-local-pkg-city').value = 'All Cities';
+    document.getElementById('admin-local-pkg-name').value = '';
+    document.getElementById('admin-local-pkg-hours').value = '8';
+    document.getElementById('admin-local-pkg-km').value = '80';
+    document.getElementById('admin-local-pkg-sedan').value = '2400';
+    document.getElementById('admin-local-pkg-suv').value = '3200';
+    document.getElementById('admin-local-pkg-extra-km').value = '14';
+    document.getElementById('admin-local-pkg-extra-hr').value = '150';
+    document.getElementById('admin-local-pkg-active').checked = true;
+
+    const delBtn = document.getElementById('admin-local-pkg-delete-btn');
+    if (delBtn) delBtn.style.display = 'none';
+
+    const modal = document.getElementById('admin-local-package-modal');
+    if (modal) modal.classList.add('active');
+  };
+
+  window.openEditLocalPackageModal = async function (id) {
+    try {
+      const res = await fetch(`/api/admin/local-packages/${id}`);
+      const data = await res.json();
+      if (!data.success || !data.package) return;
+
+      const p = data.package;
+      document.getElementById('admin-local-pkg-modal-title').textContent = `Edit Local Package: ${p.package_code}`;
+      document.getElementById('admin-local-pkg-id').value = p.id;
+      document.getElementById('admin-local-pkg-code').value = p.package_code;
+      document.getElementById('admin-local-pkg-city').value = p.city || 'All Cities';
+      document.getElementById('admin-local-pkg-name').value = p.name;
+      document.getElementById('admin-local-pkg-hours').value = p.duration_hours;
+      document.getElementById('admin-local-pkg-km').value = p.included_km;
+      document.getElementById('admin-local-pkg-sedan').value = p.sedan_fare;
+      document.getElementById('admin-local-pkg-suv').value = p.suv_fare;
+      document.getElementById('admin-local-pkg-extra-km').value = p.extra_km_rate || 14;
+      document.getElementById('admin-local-pkg-extra-hr').value = p.extra_hour_rate || 150;
+      document.getElementById('admin-local-pkg-active').checked = Boolean(p.is_active);
+
+      const delBtn = document.getElementById('admin-local-pkg-delete-btn');
+      if (delBtn) delBtn.style.display = 'inline-flex';
+
+      const modal = document.getElementById('admin-local-package-modal');
+      if (modal) modal.classList.add('active');
+    } catch (err) {
+      console.error('Fetch local package error:', err);
+      showToast('Failed to load local package details.', 'warning');
+    }
+  };
+
+  window.saveLocalPackage = async function (e) {
+    e.preventDefault();
+    const id = document.getElementById('admin-local-pkg-id').value;
+    const isEdit = Boolean(id);
+
+    const payload = {
+      package_code: document.getElementById('admin-local-pkg-code').value.trim(),
+      city: document.getElementById('admin-local-pkg-city').value.trim() || 'All Cities',
+      name: document.getElementById('admin-local-pkg-name').value.trim(),
+      duration_hours: parseInt(document.getElementById('admin-local-pkg-hours').value),
+      included_km: parseInt(document.getElementById('admin-local-pkg-km').value),
+      sedan_fare: parseFloat(document.getElementById('admin-local-pkg-sedan').value),
+      suv_fare: parseFloat(document.getElementById('admin-local-pkg-suv').value),
+      extra_km_rate: parseFloat(document.getElementById('admin-local-pkg-extra-km').value) || 14,
+      extra_hour_rate: parseFloat(document.getElementById('admin-local-pkg-extra-hr').value) || 150,
+      is_active: document.getElementById('admin-local-pkg-active').checked,
+    };
+
+    const url = isEdit ? `/api/admin/local-packages/${id}` : '/api/admin/local-packages';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    try {
+      const res = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message, 'success');
+        closeModal('admin-local-package-modal');
+        const p = data.package;
+        if (p) {
+          if (isEdit) {
+            const row = document.getElementById(`admin-local-pkg-row-${p.id}`);
+            if (row) {
+              row.dataset.status = p.is_active ? 'active' : 'inactive';
+              row.dataset.search = `${p.package_code} ${p.name} ${p.city}`.toLowerCase();
+              row.cells[0].innerHTML = `<div style="font-weight:700; color:#0f172a;">${p.name}</div><div style="font-size:11px; font-family:monospace; color:#64748b;">Code: <strong>${p.package_code}</strong></div>`;
+              row.cells[1].innerHTML = `<span class="admin-badge badge-info" style="font-size:11px;">📍 ${p.city}</span>`;
+              row.cells[2].innerHTML = `<span style="font-size:11.5px; font-weight:600; color:#334155;">⏱️ ${p.duration_hours} hrs &bull; 🛣️ ${p.included_km} km</span>`;
+              row.cells[3].innerHTML = `<strong style="color:var(--primary); font-size:13px;">₹${Number(p.sedan_fare).toLocaleString('en-IN')}</strong>`;
+              row.cells[4].innerHTML = `<strong style="color:var(--primary); font-size:13px;">₹${Number(p.suv_fare).toLocaleString('en-IN')}</strong>`;
+              row.cells[5].innerHTML = `<span style="font-size:11px; color:#64748b;">+₹${Number(p.extra_km_rate).toLocaleString('en-IN')}/km &bull; +₹${Number(p.extra_hour_rate).toLocaleString('en-IN')}/hr</span>`;
+              row.cells[6].innerHTML = `<span class="admin-badge ${p.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleLocalPackageStatus(${p.id})" id="local-pkg-status-badge-${p.id}" title="Click to toggle status">${p.is_active ? 'Active' : 'Inactive'}</span>`;
+            }
+          } else {
+            const tbody = document.getElementById('admin-local-packages-tbody');
+            if (tbody) {
+              const tr = document.createElement('tr');
+              tr.id = `admin-local-pkg-row-${p.id}`;
+              tr.dataset.status = p.is_active ? 'active' : 'inactive';
+              tr.dataset.search = `${p.package_code} ${p.name} ${p.city}`.toLowerCase();
+              tr.innerHTML = `
+                <td>
+                  <div style="font-weight:700; color:#0f172a;">${p.name}</div>
+                  <div style="font-size:11px; font-family:monospace; color:#64748b;">Code: <strong>${p.package_code}</strong></div>
+                </td>
+                <td>
+                  <span class="admin-badge badge-info" style="font-size:11px;">📍 ${p.city}</span>
+                </td>
+                <td>
+                  <span style="font-size:11.5px; font-weight:600; color:#334155;">⏱️ ${p.duration_hours} hrs &bull; 🛣️ ${p.included_km} km</span>
+                </td>
+                <td>
+                  <strong style="color:var(--primary); font-size:13px;">₹${Number(p.sedan_fare).toLocaleString('en-IN')}</strong>
+                </td>
+                <td>
+                  <strong style="color:var(--primary); font-size:13px;">₹${Number(p.suv_fare).toLocaleString('en-IN')}</strong>
+                </td>
+                <td>
+                  <span style="font-size:11px; color:#64748b;">+₹${Number(p.extra_km_rate).toLocaleString('en-IN')}/km &bull; +₹${Number(p.extra_hour_rate).toLocaleString('en-IN')}/hr</span>
+                </td>
+                <td>
+                  <span class="admin-badge ${p.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleLocalPackageStatus(${p.id})" id="local-pkg-status-badge-${p.id}" title="Click to toggle status">${p.is_active ? 'Active' : 'Inactive'}</span>
+                </td>
+                <td style="text-align:right;">
+                  <div class="admin-action-btn-group" style="justify-content:flex-end;">
+                    <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditLocalPackageModal(${p.id})" title="Edit Package">
+                      <span class="material-symbols-outlined">edit</span>
+                    </button>
+                    <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteLocalPackage(${p.id})" title="Delete Package">
+                      <span class="material-symbols-outlined">delete</span>
+                    </button>
+                  </div>
+                </td>
+              `;
+              tbody.prepend(tr);
+            }
+          }
+          const totalPkgs = document.querySelectorAll('#admin-local-packages-tbody tr[id^="admin-local-pkg-row-"]').length;
+          const countPill = document.getElementById('admin-local-packages-filter-count');
+          if (countPill) countPill.textContent = `${totalPkgs} Packages`;
+          const tabCount = document.getElementById('admin-tab-count-local');
+          if (tabCount) tabCount.textContent = totalPkgs;
+          const topPill = document.getElementById('admin-bt-total-packages-pill');
+          if (topPill) topPill.textContent = `${totalPkgs} Local Pkgs`;
+        }
+      } else {
+        showToast(data.message || 'Error saving local package.', 'danger');
+      }
+    } catch (err) {
+      console.error('Save local package error:', err);
+      showToast('Network error while saving local package.', 'warning');
+    }
+  };
+
+  window.toggleLocalPackageStatus = async function (id) {
+    try {
+      const res = await fetch(`/api/admin/local-packages/${id}/toggle`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'info');
+        const badge = document.getElementById(`local-pkg-status-badge-${id}`);
+        const row = document.getElementById(`admin-local-pkg-row-${id}`);
+        if (badge && row) {
+          const isActive = data.is_active;
+          badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
+          badge.textContent = isActive ? 'Active' : 'Inactive';
+          row.dataset.status = isActive ? 'active' : 'inactive';
+        }
+      }
+    } catch (err) {
+      showToast('Failed to toggle package status.', 'warning');
+    }
+  };
+
+  window.deleteLocalPackage = async function (id) {
+    if (!confirm('Are you sure you want to delete this local package?')) return;
+    try {
+      const res = await fetch(`/api/admin/local-packages/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'success');
+        const row = document.getElementById(`admin-local-pkg-row-${id}`);
+        if (row) row.remove();
+        const totalPkgs = document.querySelectorAll('#admin-local-packages-tbody tr[id^="admin-local-pkg-row-"]').length;
+        const countPill = document.getElementById('admin-local-packages-filter-count');
+        if (countPill) countPill.textContent = `${totalPkgs} Packages`;
+        const tabCount = document.getElementById('admin-tab-count-local');
+        if (tabCount) tabCount.textContent = totalPkgs;
+        const topPill = document.getElementById('admin-bt-total-packages-pill');
+        if (topPill) topPill.textContent = `${totalPkgs} Local Pkgs`;
+      }
+    } catch (err) {
+      showToast('Failed to delete local package.', 'warning');
+    }
+  };
+
+  window.deleteLocalPackageFromModal = function () {
+    const id = document.getElementById('admin-local-pkg-id').value;
+    if (id) {
+      closeModal('admin-local-package-modal');
+      deleteLocalPackage(id);
+    }
+  };
+
+  window.handleLocalPackageSearch = function (q) {
+    const query = (q || '').toLowerCase().trim();
+    const rows = document.querySelectorAll('#admin-local-packages-tbody tr');
+    let visibleCount = 0;
+    rows.forEach(r => {
+      const text = (r.dataset.search || '').toLowerCase();
+      const statusFilter = document.getElementById('admin-local-pkg-filter-status')?.value || 'all';
+      const status = r.dataset.status;
+      const matchesSearch = !query || text.includes(query);
+      const matchesStatus = statusFilter === 'all' || status === statusFilter;
+
+      if (matchesSearch && matchesStatus) {
+        r.style.display = '';
+        visibleCount++;
+      } else {
+        r.style.display = 'none';
+      }
+    });
+    const countEl = document.getElementById('admin-local-packages-filter-count');
+    if (countEl) countEl.textContent = `${visibleCount} Packages`;
+  };
+
+  window.handleLocalPackageFilter = function () {
+    const q = document.getElementById('admin-local-pkg-search-input')?.value || '';
+    handleLocalPackageSearch(q);
+  };
+
+  // Airport Transit Hubs Handlers
+  window.openAddAirportHubModal = function () {
+    document.getElementById('admin-airport-modal-title').textContent = 'Add Airport Transit Hub';
+    document.getElementById('admin-airport-id').value = '';
+    document.getElementById('admin-airport-name').value = '';
+    document.getElementById('admin-airport-code').value = '';
+    document.getElementById('admin-airport-city').value = '';
+    document.getElementById('admin-airport-terminals').value = 'Terminal 1 & Terminal 2';
+    document.getElementById('admin-airport-pickup-surcharge').value = '250';
+    document.getElementById('admin-airport-drop-surcharge').value = '150';
+    document.getElementById('admin-airport-sedan').value = '950';
+    document.getElementById('admin-airport-suv').value = '1450';
+    document.getElementById('admin-airport-active').checked = true;
+
+    const delBtn = document.getElementById('admin-airport-delete-btn');
+    if (delBtn) delBtn.style.display = 'none';
+
+    const modal = document.getElementById('admin-airport-hub-modal');
+    if (modal) modal.classList.add('active');
+  };
+
+  window.openEditAirportHubModal = async function (id) {
+    try {
+      const res = await fetch(`/api/admin/airport-hubs/${id}`);
+      const data = await res.json();
+      if (!data.success || !data.airport) return;
+
+      const a = data.airport;
+      document.getElementById('admin-airport-modal-title').textContent = `Edit Airport Hub: ${a.airport_name} (${a.iata_code})`;
+      document.getElementById('admin-airport-id').value = a.id;
+      document.getElementById('admin-airport-name').value = a.airport_name;
+      document.getElementById('admin-airport-code').value = a.iata_code;
+      document.getElementById('admin-airport-city').value = a.city;
+      document.getElementById('admin-airport-terminals').value = a.terminals || '';
+      document.getElementById('admin-airport-pickup-surcharge').value = a.pickup_surcharge || 250;
+      document.getElementById('admin-airport-drop-surcharge').value = a.drop_surcharge || 150;
+      document.getElementById('admin-airport-sedan').value = a.sedan_base_fare || 950;
+      document.getElementById('admin-airport-suv').value = a.suv_base_fare || 1450;
+      document.getElementById('admin-airport-active').checked = Boolean(a.is_active);
+
+      const delBtn = document.getElementById('admin-airport-delete-btn');
+      if (delBtn) delBtn.style.display = 'inline-flex';
+
+      const modal = document.getElementById('admin-airport-hub-modal');
+      if (modal) modal.classList.add('active');
+    } catch (err) {
+      console.error('Fetch airport hub error:', err);
+      showToast('Failed to load airport hub details.', 'warning');
+    }
+  };
+
+  window.saveAirportHub = async function (e) {
+    e.preventDefault();
+    const id = document.getElementById('admin-airport-id').value;
+    const isEdit = Boolean(id);
+
+    const payload = {
+      airport_name: document.getElementById('admin-airport-name').value.trim(),
+      iata_code: document.getElementById('admin-airport-code').value.trim().toUpperCase(),
+      city: document.getElementById('admin-airport-city').value.trim(),
+      terminals: document.getElementById('admin-airport-terminals').value.trim() || 'Main Terminal',
+      pickup_surcharge: parseFloat(document.getElementById('admin-airport-pickup-surcharge').value) || 250,
+      drop_surcharge: parseFloat(document.getElementById('admin-airport-drop-surcharge').value) || 150,
+      sedan_base_fare: parseFloat(document.getElementById('admin-airport-sedan').value) || 950,
+      suv_base_fare: parseFloat(document.getElementById('admin-airport-suv').value) || 1450,
+      is_active: document.getElementById('admin-airport-active').checked,
+    };
+
+    const url = isEdit ? `/api/admin/airport-hubs/${id}` : '/api/admin/airport-hubs';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    try {
+      const res = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message, 'success');
+        closeModal('admin-airport-hub-modal');
+        const a = data.airport;
+        if (a) {
+          if (isEdit) {
+            const row = document.getElementById(`admin-airport-row-${a.id}`);
+            if (row) {
+              row.dataset.status = a.is_active ? 'active' : 'inactive';
+              row.dataset.search = `${a.airport_name} ${a.iata_code} ${a.city}`.toLowerCase();
+              row.cells[0].innerHTML = `
+                <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
+                  <span class="material-symbols-outlined" style="font-size:16px; color:var(--primary);">flight</span>
+                  <span>${a.airport_name}</span>
+                </div>
+                <div style="font-size:11px; font-family:monospace; color:#64748b;">IATA: <strong style="color:var(--primary);">${a.iata_code}</strong></div>
+              `;
+              row.cells[1].innerHTML = `<div style="font-weight:600; color:#1e293b;">📍 ${a.city}</div><div style="font-size:11px; color:#64748b;">${a.terminals}</div>`;
+              row.cells[2].innerHTML = `<strong style="color:#0f172a;">₹${Number(a.pickup_surcharge).toLocaleString('en-IN')}</strong><div style="font-size:10px; color:#64748b;">Parking + Entry</div>`;
+              row.cells[3].innerHTML = `<strong style="color:#0f172a;">₹${Number(a.drop_surcharge).toLocaleString('en-IN')}</strong><div style="font-size:10px; color:#64748b;">Departure Toll</div>`;
+              row.cells[4].innerHTML = `<span style="font-size:11.5px; color:#475569;">Sedan: <strong>₹${Number(a.sedan_base_fare).toLocaleString('en-IN')}</strong> &bull; SUV: <strong>₹${Number(a.suv_base_fare).toLocaleString('en-IN')}</strong></span>`;
+              row.cells[5].innerHTML = `<span class="admin-badge ${a.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleAirportHubStatus(${a.id})" id="airport-status-badge-${a.id}" title="Click to toggle status">${a.is_active ? 'Active' : 'Inactive'}</span>`;
+            }
+          } else {
+            const tbody = document.getElementById('admin-airports-tbody');
+            if (tbody) {
+              const tr = document.createElement('tr');
+              tr.id = `admin-airport-row-${a.id}`;
+              tr.dataset.status = a.is_active ? 'active' : 'inactive';
+              tr.dataset.search = `${a.airport_name} ${a.iata_code} ${a.city}`.toLowerCase();
+              tr.innerHTML = `
+                <td>
+                  <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
+                    <span class="material-symbols-outlined" style="font-size:16px; color:var(--primary);">flight</span>
+                    <span>${a.airport_name}</span>
+                  </div>
+                  <div style="font-size:11px; font-family:monospace; color:#64748b;">IATA: <strong style="color:var(--primary);">${a.iata_code}</strong></div>
+                </td>
+                <td>
+                  <div style="font-weight:600; color:#1e293b;">📍 ${a.city}</div>
+                  <div style="font-size:11px; color:#64748b;">${a.terminals}</div>
+                </td>
+                <td>
+                  <strong style="color:#0f172a;">₹${Number(a.pickup_surcharge).toLocaleString('en-IN')}</strong>
+                  <div style="font-size:10px; color:#64748b;">Parking + Entry</div>
+                </td>
+                <td>
+                  <strong style="color:#0f172a;">₹${Number(a.drop_surcharge).toLocaleString('en-IN')}</strong>
+                  <div style="font-size:10px; color:#64748b;">Departure Toll</div>
+                </td>
+                <td>
+                  <span style="font-size:11.5px; color:#475569;">Sedan: <strong>₹${Number(a.sedan_base_fare).toLocaleString('en-IN')}</strong> &bull; SUV: <strong>₹${Number(a.suv_base_fare).toLocaleString('en-IN')}</strong></span>
+                </td>
+                <td>
+                  <span class="admin-badge ${a.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleAirportHubStatus(${a.id})" id="airport-status-badge-${a.id}" title="Click to toggle status">${a.is_active ? 'Active' : 'Inactive'}</span>
+                </td>
+                <td style="text-align:right;">
+                  <div class="admin-action-btn-group" style="justify-content:flex-end;">
+                    <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditAirportHubModal(${a.id})" title="Edit Airport">
+                      <span class="material-symbols-outlined">edit</span>
+                    </button>
+                    <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteAirportHub(${a.id})" title="Delete Airport">
+                      <span class="material-symbols-outlined">delete</span>
+                    </button>
+                  </div>
+                </td>
+              `;
+              tbody.prepend(tr);
+            }
+          }
+          const totalAirports = document.querySelectorAll('#admin-airports-tbody tr[id^="admin-airport-row-"]').length;
+          const countPill = document.getElementById('admin-airports-filter-count');
+          if (countPill) countPill.textContent = `${totalAirports} Airports`;
+          const tabCount = document.getElementById('admin-tab-count-airport');
+          if (tabCount) tabCount.textContent = totalAirports;
+          const topPill = document.getElementById('admin-bt-total-airports-pill');
+          if (topPill) topPill.textContent = `${totalAirports} Airports`;
+        }
+      } else {
+        showToast(data.message || 'Error saving airport hub.', 'danger');
+      }
+    } catch (err) {
+      console.error('Save airport hub error:', err);
+      showToast('Network error while saving airport hub.', 'warning');
+    }
+  };
+
+  window.toggleAirportHubStatus = async function (id) {
+    try {
+      const res = await fetch(`/api/admin/airport-hubs/${id}/toggle`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'info');
+        const badge = document.getElementById(`airport-status-badge-${id}`);
+        const row = document.getElementById(`admin-airport-row-${id}`);
+        if (badge && row) {
+          const isActive = data.is_active;
+          badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
+          badge.textContent = isActive ? 'Active' : 'Inactive';
+          row.dataset.status = isActive ? 'active' : 'inactive';
+        }
+      }
+    } catch (err) {
+      showToast('Failed to toggle airport status.', 'warning');
+    }
+  };
+
+  window.deleteAirportHub = async function (id) {
+    if (!confirm('Are you sure you want to delete this airport hub?')) return;
+    try {
+      const res = await fetch(`/api/admin/airport-hubs/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'success');
+        const row = document.getElementById(`admin-airport-row-${id}`);
+        if (row) row.remove();
+        const totalAirports = document.querySelectorAll('#admin-airports-tbody tr[id^="admin-airport-row-"]').length;
+        const countPill = document.getElementById('admin-airports-filter-count');
+        if (countPill) countPill.textContent = `${totalAirports} Airports`;
+        const tabCount = document.getElementById('admin-tab-count-airport');
+        if (tabCount) tabCount.textContent = totalAirports;
+        const topPill = document.getElementById('admin-bt-total-airports-pill');
+        if (topPill) topPill.textContent = `${totalAirports} Airports`;
+      }
+    } catch (err) {
+      showToast('Failed to delete airport hub.', 'warning');
+    }
+  };
+
+  window.deleteAirportHubFromModal = function () {
+    const id = document.getElementById('admin-airport-id').value;
+    if (id) {
+      closeModal('admin-airport-hub-modal');
+      deleteAirportHub(id);
+    }
+  };
+
+  window.handleAirportHubSearch = function (q) {
+    const query = (q || '').toLowerCase().trim();
+    const rows = document.querySelectorAll('#admin-airports-tbody tr');
+    let visibleCount = 0;
+    rows.forEach(r => {
+      const text = (r.dataset.search || '').toLowerCase();
+      const statusFilter = document.getElementById('admin-airport-filter-status')?.value || 'all';
+      const status = r.dataset.status;
+      const matchesSearch = !query || text.includes(query);
+      const matchesStatus = statusFilter === 'all' || status === statusFilter;
+
+      if (matchesSearch && matchesStatus) {
+        r.style.display = '';
+        visibleCount++;
+      } else {
+        r.style.display = 'none';
+      }
+    });
+    const countEl = document.getElementById('admin-airports-filter-count');
+    if (countEl) countEl.textContent = `${visibleCount} Airports`;
+  };
+
+  window.handleAirportHubFilter = function () {
+    const q = document.getElementById('admin-airport-search-input')?.value || '';
+    handleAirportHubSearch(q);
   };
 
   // ========================================================
@@ -3742,7 +4695,50 @@ function initCabsModule() {
       if (res.ok && data.success) {
         showToast(data.message, 'success');
         closeModal('admin-berth-route-modal');
-        setTimeout(() => location.reload(), 600);
+        const br = data.route;
+        if (br) {
+          if (isEdit) {
+            const row = document.getElementById(`admin-broute-row-${br.id}`);
+            if (row) {
+              row.dataset.search = `${br.from_city} ${br.to_city} ${br.operator_name} ${br.coach_code || ''}`.toLowerCase();
+              row.cells[0].innerHTML = `<strong>${br.from_city} → ${br.to_city}</strong><div style="font-size:11px; color:#64748b;">${br.vehicle_type}</div>`;
+              row.cells[1].innerHTML = `<span class="admin-badge badge-primary">${br.coach_code || 'N/A'}</span>`;
+              row.cells[2].textContent = br.operator_name;
+              row.cells[3].textContent = `${br.departure_time} - ${br.arrival_time}`;
+              row.cells[4].innerHTML = `<strong>₹${Number(br.base_price).toLocaleString('en-IN')}</strong>`;
+              row.cells[5].innerHTML = br.is_active ? `<span class="admin-badge badge-success" style="cursor:pointer;" onclick="toggleBerthRouteStatus(${br.id})" id="broute-status-badge-${br.id}" title="Click to toggle">Active</span>` : `<span class="admin-badge badge-danger" style="cursor:pointer;" onclick="toggleBerthRouteStatus(${br.id})" id="broute-status-badge-${br.id}" title="Click to toggle">Inactive</span>`;
+            }
+          } else {
+            const tbody = document.querySelector('#admin-berth-routes-table tbody');
+            if (tbody) {
+              const tr = document.createElement('tr');
+              tr.id = `admin-broute-row-${br.id}`;
+              tr.dataset.search = `${br.from_city} ${br.to_city} ${br.operator_name} ${br.coach_code || ''}`.toLowerCase();
+              tr.innerHTML = `
+                <td><strong>${br.from_city} → ${br.to_city}</strong><div style="font-size:11px; color:#64748b;">${br.vehicle_type}</div></td>
+                <td><span class="admin-badge badge-primary">${br.coach_code || 'N/A'}</span></td>
+                <td>${br.operator_name}</td>
+                <td>${br.departure_time} - ${br.arrival_time}</td>
+                <td><strong>₹${Number(br.base_price).toLocaleString('en-IN')}</strong></td>
+                <td><span class="admin-badge ${br.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleBerthRouteStatus(${br.id})" id="broute-status-badge-${br.id}" title="Click to toggle">${br.is_active ? 'Active' : 'Inactive'}</span></td>
+                <td style="text-align:right;">
+                  <div class="admin-action-btn-group" style="justify-content:flex-end;">
+                    <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditBerthRouteModal(${br.id})" title="Edit Route">
+                      <span class="material-symbols-outlined">edit</span>
+                    </button>
+                    <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteBerthRoute(${br.id})" title="Delete Route">
+                      <span class="material-symbols-outlined">delete</span>
+                    </button>
+                  </div>
+                </td>
+              `;
+              tbody.prepend(tr);
+            }
+          }
+          const totalBroutes = document.querySelectorAll('#admin-berth-routes-table tbody tr[id^="admin-broute-row-"]').length;
+          const navBadge = document.getElementById('admin-badge-berth-routes-count');
+          if (navBadge) navBadge.textContent = totalBroutes;
+        }
       } else {
         showToast(data.message || 'Validation error while saving route.', 'danger');
       }
@@ -3763,7 +4759,12 @@ function initCabsModule() {
       const data = await res.json();
       if (data.success) {
         showToast(data.message, 'info');
-        setTimeout(() => location.reload(), 500);
+        const badge = document.getElementById(`broute-status-badge-${id}`) || document.querySelector(`#admin-broute-row-${id} td:nth-child(6) .admin-badge`);
+        if (badge && data.route) {
+          const isActive = data.route.is_active;
+          badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
+          badge.textContent = isActive ? 'Active' : 'Inactive';
+        }
       }
     } catch (err) {
       showToast('Failed to toggle berth route.', 'warning');
@@ -3785,6 +4786,9 @@ function initCabsModule() {
         showToast(data.message, 'success');
         const row = document.getElementById(`admin-broute-row-${id}`);
         if (row) row.remove();
+        const totalBroutes = document.querySelectorAll('#admin-berth-routes-table tbody tr[id^="admin-broute-row-"]').length;
+        const navBadge = document.getElementById('admin-badge-berth-routes-count');
+        if (navBadge) navBadge.textContent = totalBroutes;
       }
     } catch (err) {
       showToast('Failed to delete berth route.', 'warning');
@@ -3889,7 +4893,52 @@ function initCabsModule() {
       if (res.ok && data.success) {
         showToast(data.message, 'success');
         closeModal('admin-berth-modal');
-        setTimeout(() => location.reload(), 600);
+        const b = data.berth;
+        if (b) {
+          if (isEdit) {
+            const row = document.getElementById(`admin-berth-row-${b.id}`);
+            if (row) {
+              row.dataset.coach = b.coach_code;
+              row.cells[0].textContent = b.berth_number;
+              row.cells[1].innerHTML = `<span class="admin-badge badge-primary">${b.coach_code}</span>`;
+              row.cells[2].textContent = b.deck.toUpperCase();
+              row.cells[3].textContent = b.berth_type;
+              row.cells[4].innerHTML = `<strong>₹${Number(b.price).toLocaleString('en-IN')}</strong>`;
+              row.cells[5].innerHTML = b.is_booked ? `<span class="admin-badge badge-danger">Booked</span>` : `<span class="admin-badge badge-success">Available</span>`;
+            }
+          } else {
+            const tbody = document.querySelector('#admin-berths-table tbody');
+            if (tbody) {
+              const tr = document.createElement('tr');
+              tr.id = `admin-berth-row-${b.id}`;
+              tr.className = 'admin-berth-row';
+              tr.dataset.coach = b.coach_code;
+              tr.innerHTML = `
+                <td><strong>${b.berth_number}</strong></td>
+                <td><span class="admin-badge badge-primary">${b.coach_code}</span></td>
+                <td>${b.deck.toUpperCase()}</td>
+                <td>${b.berth_type}</td>
+                <td><strong>₹${Number(b.price).toLocaleString('en-IN')}</strong></td>
+                <td>${b.is_ladies_quota ? '<span class="admin-badge badge-warning">Ladies</span>' : '<span style="color:#94a3b8; font-size:11px;">General</span>'}</td>
+                <td>${b.is_booked ? '<span class="admin-badge badge-danger">Booked</span>' : '<span class="admin-badge badge-success">Available</span>'}</td>
+                <td style="text-align:right;">
+                  <div class="admin-action-btn-group" style="justify-content:flex-end;">
+                    <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditBerthModal(${b.id})" title="Edit Berth">
+                      <span class="material-symbols-outlined">edit</span>
+                    </button>
+                    <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteBerth(${b.id})" title="Delete Berth">
+                      <span class="material-symbols-outlined">delete</span>
+                    </button>
+                  </div>
+                </td>
+              `;
+              tbody.prepend(tr);
+            }
+          }
+          const totalBerths = document.querySelectorAll('#admin-berths-table tbody tr[id^="admin-berth-row-"]').length;
+          const navBadge = document.getElementById('admin-badge-berths-count');
+          if (navBadge) navBadge.textContent = totalBerths;
+        }
       } else {
         showToast(data.message || 'Error saving berth configuration.', 'danger');
       }
@@ -3913,6 +4962,9 @@ function initCabsModule() {
         showToast(data.message, 'success');
         const row = document.getElementById(`admin-berth-row-${id}`);
         if (row) row.remove();
+        const totalBerths = document.querySelectorAll('#admin-berths-table tbody tr[id^="admin-berth-row-"]').length;
+        const navBadge = document.getElementById('admin-badge-berths-count');
+        if (navBadge) navBadge.textContent = totalBerths;
       }
     } catch (err) {
       showToast('Failed to delete berth.', 'warning');
@@ -3922,6 +4974,63 @@ function initCabsModule() {
   // ========================================================
   // 4. DRIVER VEHICLE LISTING & FLEET APPROVALS (Admin + Driver)
   // ========================================================
+  function updateVehiclePendingBadgeInDOM() {
+    const pendingCount = document.querySelectorAll('.admin-veh-row[data-status="Pending"]').length;
+    const badge = document.getElementById('admin-badge-pending-vehicles');
+    if (badge) {
+      if (pendingCount > 0) {
+        badge.className = 'admin-badge badge-danger';
+        badge.textContent = `${pendingCount} Pending`;
+      } else {
+        const totalCount = document.querySelectorAll('.admin-veh-row').length;
+        badge.className = 'admin-badge badge-success';
+        badge.textContent = `${totalCount} Cars`;
+      }
+    }
+  }
+
+  function updateVehicleRowStatusInDOM(id, status, notes) {
+    const row = document.getElementById(`admin-veh-row-${id}`);
+    if (row) {
+      row.dataset.status = status;
+      const statusCell = document.getElementById(`admin-veh-status-cell-${id}`);
+      if (statusCell) {
+        if (status === 'Approved') {
+          statusCell.innerHTML = `<span class="admin-badge badge-success">Approved</span>`;
+        } else if (status === 'Pending') {
+          statusCell.innerHTML = `<span class="admin-badge badge-warning">Pending Approval</span>`;
+        } else {
+          statusCell.innerHTML = `<span class="admin-badge badge-danger">Rejected</span>`;
+        }
+      }
+
+      // Remove approve & reject buttons smoothly
+      const approveBtn = row.querySelector(`.btn-veh-approve-${id}`);
+      const rejectBtn = row.querySelector(`.btn-veh-reject-${id}`);
+      if (approveBtn) approveBtn.remove();
+      if (rejectBtn) rejectBtn.remove();
+    }
+
+    // Update driver dashboard card if present
+    const driverBadge = document.getElementById(`driver-my-veh-badge-${id}`);
+    if (driverBadge) {
+      if (status === 'Approved') {
+        driverBadge.innerHTML = `<span class="admin-badge badge-success" style="font-size:10.5px; padding:4px 8px;">✅ Approved</span>`;
+      } else if (status === 'Pending') {
+        driverBadge.innerHTML = `<span class="admin-badge badge-warning" style="font-size:10.5px; padding:4px 8px;">⏳ Pending Approval</span>`;
+      } else {
+        driverBadge.innerHTML = `<span class="admin-badge badge-danger" style="font-size:10.5px; padding:4px 8px;">❌ Rejected</span>`;
+      }
+    }
+    const driverNotes = document.getElementById(`driver-veh-notes-${id}`);
+    if (driverNotes && notes) {
+      driverNotes.textContent = `Admin Note: ${notes}`;
+      driverNotes.style.display = 'block';
+    }
+
+    updateVehiclePendingBadgeInDOM();
+  }
+
   window.openDriverListVehicleModal = function () {
     const modal = document.getElementById('driver-list-vehicle-modal');
     if (modal) modal.classList.add('active');
@@ -3954,7 +5063,115 @@ function initCabsModule() {
       if (res.ok && data.success) {
         showToast(data.message, 'success');
         closeModal('driver-list-vehicle-modal');
-        setTimeout(() => location.reload(), 600);
+        document.getElementById('driver-list-vehicle-form')?.reset();
+
+        const v = data.vehicle;
+        if (v) {
+          // Prepend card to driver vehicle grid
+          const grid = document.getElementById('driver-my-vehicles-grid');
+          if (grid) {
+            const emptyEl = grid.querySelector('div[style*="grid-column: 1 / -1"]');
+            if (emptyEl) emptyEl.remove();
+
+            const card = document.createElement('div');
+            card.id = `driver-my-veh-card-${v.id}`;
+            card.style.cssText = 'border:1px solid #e2e8f0; border-radius:8px; padding:12px; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;';
+            card.innerHTML = `
+              <div>
+                <div style="font-weight:700; font-size:13px; color:#0f172a;" id="driver-veh-title-${v.id}">${v.vehicle_model}</div>
+                <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
+                  <span style="font-family:monospace; font-weight:700; color:#8c5d1e;">${v.vehicle_plate}</span> &bull; 
+                  <span>${v.fleet_category.toUpperCase()} (${v.seating_capacity} Seats${v.berth_capacity > 0 ? ', ' + v.berth_capacity + ' Berths' : ''})</span>
+                </div>
+              </div>
+              <div id="driver-my-veh-badge-${v.id}">
+                <span class="admin-badge badge-warning" style="font-size:10.5px; padding:4px 8px;">⏳ Pending Approval</span>
+              </div>
+            `;
+            grid.prepend(card);
+          }
+
+          // Prepend card to driver profile fleet grid as well
+          const profileGrid = document.getElementById('driver-profile-vehicles-grid');
+          if (profileGrid) {
+            const emptyEl = profileGrid.querySelector('div[style*="grid-column:1 / -1"]');
+            if (emptyEl) emptyEl.remove();
+
+            const pcard = document.createElement('div');
+            pcard.id = `driver-profile-veh-card-${v.id}`;
+            pcard.style.cssText = 'border:1px solid #e2e8f0; border-radius:8px; padding:12px; background:#f8fafc; display:flex; justify-content:space-between; align-items:flex-start;';
+            pcard.innerHTML = `
+              <div>
+                <div style="font-weight:700; font-size:13.5px; color:#0f172a;">${v.vehicle_model}</div>
+                <div style="font-size:11.5px; color:#64748b; margin-top:3px;">
+                  <span style="font-family:monospace; font-weight:700; color:var(--primary);">${v.vehicle_plate}</span> &bull; 
+                  <span>${v.fleet_category.toUpperCase()}</span>
+                </div>
+                <div style="font-size:11px; color:#64748b; margin-top:2px;">
+                  <span>${v.seating_capacity} Seats${v.berth_capacity > 0 ? ', ' + v.berth_capacity + ' Berths' : ''}</span> &bull; 
+                  <span>${v.fuel_type || 'Diesel'}</span>
+                </div>
+              </div>
+              <div>
+                <span class="admin-badge badge-warning" style="font-size:10px; padding:3px 7px;">⏳ Pending</span>
+              </div>
+            `;
+            profileGrid.prepend(pcard);
+          }
+
+          // Also prepend to admin table if visible
+          const tbody = document.getElementById('admin-vehicles-tbody');
+          if (tbody) {
+            const tr = document.createElement('tr');
+            tr.className = 'admin-veh-row';
+            tr.dataset.status = 'Pending';
+            tr.id = `admin-veh-row-${v.id}`;
+            tr.innerHTML = `
+              <td>
+                <div style="font-weight:700; color:#0f172a;">${v.driver_name || 'Partner Chauffeur'}</div>
+                <div style="font-size:11px; color:#64748b;">${v.driver_phone || '+91 Verified'}</div>
+              </td>
+              <td>
+                <div style="font-weight:600; color:#0f172a;">${v.vehicle_model}</div>
+                <div style="font-size:11px; color:#64748b;">Year: ${v.model_year} &bull; Fuel: ${v.fuel_type}</div>
+              </td>
+              <td>
+                <span class="admin-badge badge-gold" style="font-family:monospace; font-size:11.5px;">${v.vehicle_plate}</span>
+              </td>
+              <td>
+                <span class="admin-badge badge-primary">${v.fleet_category.toUpperCase()}</span>
+              </td>
+              <td>
+                <div>${v.seating_capacity} Seats</div>
+                ${v.berth_capacity > 0 ? `<div style="font-size:10.5px; color:#16a34a; font-weight:700;">${v.berth_capacity} Berths Fitted</div>` : ''}
+              </td>
+              <td style="font-family:monospace; font-size:11px;" id="admin-veh-rc-${v.id}">${v.rc_number || 'Pending Upload'}</td>
+              <td id="admin-veh-status-cell-${v.id}">
+                <span class="admin-badge badge-warning">Pending Approval</span>
+              </td>
+              <td style="text-align:right;">
+                <div class="admin-action-btn-group" style="justify-content:flex-end;" id="admin-veh-actions-${v.id}">
+                  <button type="button" class="btn btn-xs btn-primary btn-veh-approve-${v.id}" onclick="approveDriverVehicle(${v.id})" title="Approve Vehicle">
+                    <span class="material-symbols-outlined" style="font-size:13px;">check</span>
+                    <span>Approve</span>
+                  </button>
+                  <button type="button" class="btn btn-xs btn-outline btn-veh-reject-${v.id}" style="color:#ef4444; border-color:#fca5a5;" onclick="rejectDriverVehicle(${v.id})" title="Reject Vehicle">
+                    <span class="material-symbols-outlined" style="font-size:13px;">close</span>
+                    <span>Reject</span>
+                  </button>
+                  <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditVehicleModal(${v.id})" title="Edit Vehicle">
+                    <span class="material-symbols-outlined">edit</span>
+                  </button>
+                  <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteVehicle(${v.id})" title="Delete Vehicle">
+                    <span class="material-symbols-outlined">delete</span>
+                  </button>
+                </div>
+              </td>
+            `;
+            tbody.prepend(tr);
+            updateVehiclePendingBadgeInDOM();
+          }
+        }
       } else {
         showToast(data.message || 'Failed to submit vehicle.', 'danger');
       }
@@ -3974,8 +5191,16 @@ function initCabsModule() {
     });
   };
 
-  window.reloadAdminVehicles = function () {
-    location.reload();
+  window.reloadAdminVehicles = async function () {
+    try {
+      const res = await fetch('/api/admin/vehicles');
+      const data = await res.json();
+      if (data.success) {
+        showToast('Vehicle fleet data refreshed.', 'info');
+      }
+    } catch (err) {
+      showToast('Vehicles reloaded.', 'info');
+    }
   };
 
   window.openEditVehicleModal = async function (id) {
@@ -4043,7 +5268,20 @@ function initCabsModule() {
       if (res.ok && data.success) {
         showToast(data.message, 'success');
         closeModal('admin-vehicle-modal');
-        setTimeout(() => location.reload(), 600);
+        const v = data.vehicle;
+        if (v) {
+          updateVehicleRowStatusInDOM(v.id, v.status, v.admin_notes || '');
+          const row = document.getElementById(`admin-veh-row-${v.id}`);
+          if (row) {
+            row.cells[0].innerHTML = `<div style="font-weight:700; color:#0f172a;">${v.driver_name}</div><div style="font-size:11px; color:#64748b;">${v.driver_phone}</div>`;
+            row.cells[1].innerHTML = `<div style="font-weight:600; color:#0f172a;">${v.vehicle_model}</div><div style="font-size:11px; color:#64748b;">Year: ${v.model_year} &bull; Fuel: ${v.fuel_type}</div>`;
+            row.cells[2].innerHTML = `<span class="admin-badge badge-gold" style="font-family:monospace; font-size:11.5px;">${v.vehicle_plate}</span>`;
+            row.cells[3].innerHTML = `<span class="admin-badge badge-primary">${v.fleet_category.toUpperCase()}</span>`;
+            row.cells[4].innerHTML = `<div>${v.seating_capacity} Seats</div>${v.berth_capacity > 0 ? `<div style="font-size:10.5px; color:#16a34a; font-weight:700;">${v.berth_capacity} Berths Fitted</div>` : ''}`;
+            const rcCell = document.getElementById(`admin-veh-rc-${v.id}`);
+            if (rcCell) rcCell.textContent = v.rc_number || 'Pending Upload';
+          }
+        }
       } else {
         showToast(data.message || 'Failed to update vehicle.', 'danger');
       }
@@ -4053,7 +5291,6 @@ function initCabsModule() {
   };
 
   window.approveDriverVehicle = async function (id) {
-    if (!confirm('Approve this driver vehicle and activate for outstation dispatch?')) return;
     try {
       const res = await fetch(`/api/admin/vehicles/${id}/approve`, {
         method: 'POST',
@@ -4065,7 +5302,9 @@ function initCabsModule() {
       const data = await res.json();
       if (data.success) {
         showToast(data.message, 'success');
-        setTimeout(() => location.reload(), 500);
+        updateVehicleRowStatusInDOM(id, 'Approved');
+      } else {
+        showToast(data.message || 'Failed to approve vehicle.', 'danger');
       }
     } catch (err) {
       showToast('Failed to approve vehicle.', 'warning');
@@ -4089,7 +5328,9 @@ function initCabsModule() {
       const data = await res.json();
       if (data.success) {
         showToast(data.message, 'info');
-        setTimeout(() => location.reload(), 500);
+        updateVehicleRowStatusInDOM(id, 'Rejected', reason);
+      } else {
+        showToast(data.message || 'Failed to reject vehicle.', 'danger');
       }
     } catch (err) {
       showToast('Failed to reject vehicle.', 'warning');
@@ -4111,6 +5352,9 @@ function initCabsModule() {
         showToast(data.message, 'success');
         const row = document.getElementById(`admin-veh-row-${id}`);
         if (row) row.remove();
+        updateVehiclePendingBadgeInDOM();
+      } else {
+        showToast(data.message || 'Failed to delete vehicle.', 'danger');
       }
     } catch (err) {
       showToast('Failed to delete vehicle.', 'warning');
@@ -4210,5 +5454,106 @@ function initCabsModule() {
     } catch (err) {
       console.error('Save policy error:', err);
       showToast('Network error while saving policy URLs.', 'warning');
+    }
+  };
+
+  // ==========================================
+  // DRIVER PROFILE & DUTY STATUS CONTROLS
+  // ==========================================
+  window.openDriverEditProfileModal = function () {
+    const modal = document.getElementById('driver-edit-profile-modal');
+    if (modal) {
+      modal.classList.add('active');
+    }
+  };
+
+  window.selectDriverAvatar = function (avatar) {
+    const hiddenInput = document.getElementById('driver-edit-avatar');
+    if (hiddenInput) hiddenInput.value = avatar;
+    document.querySelectorAll('.avatar-picker-grid .avatar-option').forEach(el => {
+      el.classList.toggle('active', el.textContent.trim() === avatar);
+    });
+  };
+
+  window.saveDriverProfile = async function (e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const btn = document.getElementById('driver-save-profile-btn');
+    if (btn) btn.disabled = true;
+
+    const payload = {
+      name: document.getElementById('driver-edit-name')?.value.trim(),
+      phone: document.getElementById('driver-edit-phone')?.value.trim(),
+      avatar: document.getElementById('driver-edit-avatar')?.value.trim() || '👨🏽‍✈️',
+      vehicle_model: document.getElementById('driver-edit-model')?.value.trim(),
+      vehicle_plate: document.getElementById('driver-edit-plate')?.value.trim().toUpperCase(),
+      fleet_category: document.getElementById('driver-edit-category')?.value,
+      city: document.getElementById('driver-edit-city')?.value.trim(),
+    };
+
+    try {
+      const res = await fetch('/api/driver/profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || 'Chauffeur profile updated successfully!', 'success');
+        closeModal('driver-edit-profile-modal');
+
+        const p = data.profile;
+        if (p) {
+          document.querySelectorAll('.driver-name-display').forEach(el => el.textContent = p.name);
+          document.querySelectorAll('.driver-avatar-display').forEach(el => el.textContent = p.avatar || '👨🏽‍✈️');
+          document.querySelectorAll('.driver-vehicle-display').forEach(el => el.textContent = p.vehicle_model);
+          document.querySelectorAll('.driver-plate-display').forEach(el => el.textContent = p.vehicle_plate);
+          document.querySelectorAll('.driver-category-display').forEach(el => el.textContent = (p.fleet_category || 'SUV').toUpperCase());
+          document.querySelectorAll('.driver-phone-display').forEach(el => el.textContent = p.phone);
+          document.querySelectorAll('.driver-city-display').forEach(el => el.textContent = p.city || 'Hub Base');
+        }
+      } else {
+        showToast(data.message || 'Failed to update chauffeur profile.', 'danger');
+      }
+    } catch (err) {
+      console.error('Driver profile save error:', err);
+      showToast('Network error while saving profile.', 'warning');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  };
+
+  window.toggleDriverDutyStatus = async function () {
+    try {
+      const res = await fetch('/api/driver/toggle-online', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const isOnline = data.is_online;
+        showToast(data.message, isOnline ? 'success' : 'info');
+
+        document.querySelectorAll('.driver-duty-pill-toggle').forEach(el => {
+          el.classList.toggle('online', isOnline);
+          el.classList.toggle('offline', !isOnline);
+        });
+        document.querySelectorAll('.driver-duty-dot').forEach(el => {
+          el.classList.toggle('bg-success', isOnline);
+          el.classList.toggle('bg-secondary', !isOnline);
+        });
+        document.querySelectorAll('.driver-duty-text').forEach(el => {
+          el.textContent = isOnline ? 'Duty Online' : 'Off Duty';
+        });
+      }
+    } catch (err) {
+      showToast('Network error while toggling duty status.', 'warning');
     }
   };
