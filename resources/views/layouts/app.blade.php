@@ -170,6 +170,9 @@
                                 @endif
                             </button>
                             <div class="dropdown-divider"></div>
+                            <form id="logout-form" action="{{ route('logout') }}" method="POST" style="display:none;">
+                                @csrf
+                            </form>
                             <button type="button" class="dropdown-item-btn dropdown-logout-btn" onclick="performLogout()">
                                 <span class="material-symbols-outlined" style="font-size:17px; color:#ef4444;">logout</span>
                                 <span>Sign Out</span>
@@ -238,14 +241,15 @@
                 </div>
 
                 <!-- Role Login Form -->
-                <form id="role-login-form" onsubmit="handleFormLogin(event)">
-                    <input type="hidden" id="login-role-input" value="customer">
+                <form id="role-login-form" action="{{ route('login') }}" method="POST" onsubmit="handleFormLogin(event)">
+                    @csrf
+                    <input type="hidden" name="role" id="login-role-input" value="customer">
 
                     <div class="form-group">
                         <label class="form-label" for="login-email">Account Email</label>
                         <div class="input-with-icon">
                             <span class="material-symbols-outlined">mail</span>
-                            <input type="email" id="login-email" class="form-control" placeholder="user@intercitywheels.com" required value="customer@intercitywheels.com">
+                            <input type="email" name="email" id="login-email" class="form-control" placeholder="user@intercitywheels.com" required value="customer@intercitywheels.com">
                         </div>
                     </div>
 
@@ -253,13 +257,13 @@
                         <label class="form-label" for="login-password">Password</label>
                         <div class="input-with-icon">
                             <span class="material-symbols-outlined">lock</span>
-                            <input type="password" id="login-password" class="form-control" placeholder="••••••••" required value="password123">
+                            <input type="password" name="password" id="login-password" class="form-control" placeholder="••••••••" required value="password123">
                         </div>
                     </div>
 
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; font-size:12px;">
                         <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#475569;">
-                            <input type="checkbox" id="login-remember" checked>
+                            <input type="checkbox" name="remember" id="login-remember" value="1" checked>
                             <span>Remember session</span>
                         </label>
                         <span style="color:#0284c7; font-weight:600; cursor:pointer;" onclick="showToast('Password recovery token sent to your email.', 'info')">Forgot?</span>

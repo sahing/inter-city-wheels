@@ -2205,6 +2205,7 @@ function initCabsModule() {
       setTimeout(() => toast.remove(), 300);
     }, 3500);
   }
+  window.showToast = showToast;
 
   // ==========================================
   // Role-Based Authentication System
@@ -2216,22 +2217,22 @@ function initCabsModule() {
       icon: 'directions_car',
       desc: 'Customer Portal: Book sanitised outstation cabs and luxury sleeper bus berths.',
       btnLabel: 'Sign In as Customer',
-      defaultTab: 'schedules'
+      defaultTab: 'cabs'
     },
     driver: {
-      title: 'Driver Partner',
+      title: 'Chauffeur Partner',
       email: 'driver@intercitywheels.com',
       icon: 'local_taxi',
-      desc: 'Partner Chauffeur Portal: Place live trip bids, accept passengers, verify OTP & track wallet earnings.',
+      desc: 'Driver Partner Console: Review and bid on live intercity trip requests & track wallet payouts.',
       btnLabel: 'Sign In as Driver Partner',
       defaultTab: 'bidding'
     },
     admin: {
-      title: 'Operations Admin',
+      title: 'Platform Admin',
       email: 'admin@intercitywheels.com',
-      icon: 'admin_panel_settings',
-      desc: 'Platform Operations Portal: Configure dynamic forms, set route pricing rules & manage workflow approval stages.',
-      btnLabel: 'Sign In as Platform Admin',
+      icon: 'shield_person',
+      desc: 'Platform Administrator: Control pricing, fleet allot, live dispatch, and manage drivers.',
+      btnLabel: 'Sign In as Administrator',
       defaultTab: 'admin'
     }
   };
@@ -2300,17 +2301,28 @@ function initCabsModule() {
   };
 
   window.handleFormLogin = async function (event) {
-    event.preventDefault();
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
-    const role = document.getElementById('login-role-input').value;
-    const remember = document.getElementById('login-remember')?.checked;
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if (event) event.preventDefault();
+    const emailEl = document.getElementById('login-email');
+    const passwordEl = document.getElementById('login-password');
+    const roleEl = document.getElementById('login-role-input');
+    const rememberEl = document.getElementById('login-remember');
     const submitBtn = document.getElementById('login-submit-btn');
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
+    const email = emailEl ? emailEl.value.trim() : '';
+    const password = passwordEl ? passwordEl.value : '';
+    const role = roleEl ? roleEl.value : 'customer';
+    const remember = rememberEl ? rememberEl.checked : false;
+
+    if (!email || !password) {
+      showToast('Please enter both email and password.', 'warning');
+      return;
+    }
+
+    const origBtnHtml = submitBtn ? submitBtn.innerHTML : '';
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.style.opacity = '0.7';
+      submitBtn.innerHTML = `<span class="material-symbols-outlined" style="animation:spin 1s linear infinite; font-size:18px;">sync</span> <span>Signing In & Loading...</span>`;
     }
 
     try {
@@ -2329,19 +2341,28 @@ function initCabsModule() {
       if (res.ok && data.success) {
         showToast(data.message, 'success');
         closeModal('login-modal');
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
+        const targetUrl = data.redirect_url || '/';
+        const sep = targetUrl.includes('?') ? '&' : '?';
+        window.location.replace(targetUrl + sep + 'auth=' + Date.now());
       } else {
         showToast(data.message || 'Authentication failed. Please verify credentials.', 'warning');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = origBtnHtml;
+        }
       }
     } catch (err) {
       console.error('Login error:', err);
-      showToast('Network error during authentication. Please retry.', 'warning');
-    } finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.style.opacity = '1';
+      // Fallback: submit standard HTML form to ensure login completes regardless
+      const form = document.getElementById('role-login-form');
+      if (form) {
+        form.submit();
+      } else {
+        showToast('Network error during authentication. Please retry.', 'warning');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = origBtnHtml;
+        }
       }
     }
   };
@@ -2365,40 +2386,39 @@ function initCabsModule() {
       if (res.ok && data.success) {
         showToast(data.message, 'success');
         closeModal('login-modal');
-        setTimeout(() => {
-          window.location.reload();
-        }, 400);
+        const targetUrl = data.redirect_url || '/';
+        const sep = targetUrl.includes('?') ? '&' : '?';
+        window.location.replace(targetUrl + sep + 'auth=' + Date.now());
       } else {
         showToast(data.message || 'Demo login failed.', 'warning');
       }
     } catch (err) {
       console.error('Demo login error:', err);
-      showToast('Failed to connect to authentication server.', 'warning');
+      window.location.replace('/?auth=' + Date.now());
     }
   };
 
-  window.performLogout = async function () {
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-    try {
-      const res = await fetch('/logout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': csrfToken
-        }
-      });
-
-      if (res.ok) {
-        showToast('Signed out successfully.', 'info');
-        setTimeout(() => {
-          window.location.reload();
-        }, 400);
-      }
-    } catch (err) {
-      console.error('Logout error:', err);
-      window.location.reload();
+  window.performLogout = function () {
+    // 1. Preferred Native Form Submission (100% reliable across all browsers & cache engines)
+    const logoutForm = document.getElementById('logout-form');
+    if (logoutForm) {
+      showToast('Signing out...', 'info');
+      logoutForm.submit();
+      return;
     }
+
+    // 2. Fetch API Fallback
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    fetch('/logout', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': csrfToken
+      }
+    }).finally(() => {
+      window.location.replace('/?logout=' + Date.now());
+    });
   };
 
   window.handleAdminOpsClick = function () {

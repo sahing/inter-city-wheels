@@ -22,7 +22,7 @@ Route::get('/', [HomeController::class, 'index'])->name('home');
 // Authentication Routes (Role-based)
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::post('/login/quick-demo', [AuthController::class, 'quickDemoLogin'])->name('login.demo');
-Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+Route::match(['get', 'post'], '/logout', [AuthController::class, 'logout'])->name('logout');
 Route::get('/api/auth/user', [AuthController::class, 'current'])->name('api.auth.user');
 
 // Health Check Endpoint

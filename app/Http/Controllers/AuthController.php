@@ -29,6 +29,9 @@ class AuthController extends Controller
         $user = User::where('email', $credentials['email'])->first();
 
         if (!$user || !Hash::check($credentials['password'], $user->password)) {
+            if (!$request->wantsJson() && !$request->ajax()) {
+                return back()->withErrors(['email' => 'Invalid email or password. Please verify your credentials.'])->withInput();
+            }
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid email or password. Please verify your credentials.'
@@ -37,9 +40,13 @@ class AuthController extends Controller
 
         // If a specific role tab was selected in the login modal, check role match
         if (!empty($validated['role']) && $user->role !== $validated['role']) {
+            $msg = "This account is registered as a " . ucfirst($user->role) . ". Please select the " . ucfirst($user->role) . " tab to log in.";
+            if (!$request->wantsJson() && !$request->ajax()) {
+                return back()->withErrors(['email' => $msg])->withInput();
+            }
             return response()->json([
                 'success' => false,
-                'message' => "This account is registered as a " . ucfirst($user->role) . ". Please select the " . ucfirst($user->role) . " tab to log in."
+                'message' => $msg
             ], 422);
         }
 
@@ -51,12 +58,17 @@ class AuthController extends Controller
         $targetTab = match ($user->role) {
             'admin' => 'admin',
             'driver' => 'bidding',
-            default => 'schedules'
+            default => 'cabs'
         };
+
+        if (!$request->wantsJson() && !$request->ajax()) {
+            return redirect()->route('home')->with('success', "Welcome back, {$user->name}!");
+        }
 
         return response()->json([
             'success' => true,
             'message' => "Welcome back, {$user->name}!",
+            'redirect_url' => route('home'),
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -102,12 +114,17 @@ class AuthController extends Controller
         $targetTab = match ($user->role) {
             'admin' => 'admin',
             'driver' => 'bidding',
-            default => 'schedules'
+            default => 'cabs'
         };
+
+        if (!$request->wantsJson() && !$request->ajax()) {
+            return redirect()->route('home')->with('success', "Logged in as " . ucfirst($user->role));
+        }
 
         return response()->json([
             'success' => true,
             'message' => "Logged in as " . ucfirst($user->role) . " ({$user->name})",
+            'redirect_url' => route('home'),
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -132,11 +149,12 @@ class AuthController extends Controller
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json([
                 'success' => true,
-                'message' => 'Successfully logged out.'
+                'message' => 'Successfully logged out.',
+                'redirect_url' => route('home')
             ]);
         }
 
-        return redirect()->route('home');
+        return redirect()->route('home')->with('info', 'Successfully signed out.');
     }
 
     /**
