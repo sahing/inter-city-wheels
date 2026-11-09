@@ -167,6 +167,32 @@ class BookingTest extends TestCase
         ]);
     }
 
+    public function test_driver_conclusive_ride_bid_submission(): void
+    {
+        $driver = Driver::first();
+        $response = $this->postJson('/api/bids/submit', [
+            'trip_id' => 'trip-wb-101',
+            'from_location' => 'Baharampur (Mohona Central Bus Stand)',
+            'to_location' => 'Kolkata (Netaji Subhash Chandra Bose Intl Airport, CCU)',
+            'distance_km' => 205,
+            'bid_amount' => 3800,
+            'driver_id' => $driver->id,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'bid' => [
+                'trip_id' => 'trip-wb-101',
+                'from_location' => 'Baharampur (Mohona Central Bus Stand)',
+                'to_location' => 'Kolkata (Netaji Subhash Chandra Bose Intl Airport, CCU)',
+                'distance_km' => 205,
+                'bid_amount' => 3800,
+                'conclusive_statement' => "I will take and do this ride from Baharampur (Mohona Central Bus Stand) to Kolkata (Netaji Subhash Chandra Bose Intl Airport, CCU) (205 km) at this price: ₹3,800. I accept this."
+            ]
+        ]);
+    }
+
     public function test_admin_dynamic_form_field_creation(): void
     {
         $response = $this->postJson('/api/admin/dynamic-fields', [
@@ -180,6 +206,107 @@ class BookingTest extends TestCase
         $this->assertDatabaseHas('dynamic_form_fields', [
             'label' => 'Child Booster Seat Needed',
             'field_type' => 'checkbox'
+        ]);
+    }
+
+    public function test_car_rental_homepage_hero_and_booking_widget_renders(): void
+    {
+        $response = $this->get('/');
+        $response->assertStatus(200);
+
+        // Assert Hero section & main heading
+        $response->assertSee('SERVICES ACROSS 2000+ CITIES');
+        $response->assertSee("India's Trusted Car Rental & Outstation Travel Partner.", false);
+
+        // Assert 4 Booking Type Tabs
+        $response->assertSee('ONE WAY');
+        $response->assertSee('ROUND TRIP');
+        $response->assertSee('LOCAL');
+        $response->assertSee('AIRPORT');
+
+        // Assert Orange CTA Explore Cabs button
+        $response->assertSee('EXPLORE CABS');
+
+        // Assert Laurel wreath & Floating Trust Pill with Ratings
+        $response->assertSee("India's Top Rated Car Rental Service", false);
+        $response->assertSee('App Store');
+        $response->assertSee('(4.2K+ Reviews)');
+        $response->assertSee('Google');
+        $response->assertSee('(6.1K+ Reviews)');
+        $response->assertSee('Play Store');
+        $response->assertSee('(15.5K+ Reviews)');
+
+        // Assert 3 Promotional Cards
+        $response->assertSee('Book Now at zero cost');
+        $response->assertSee('EXCLUSIVE OUTSTATION OFFERS');
+        $response->assertSee('Free Cancellations');
+    }
+
+    public function test_store_local_hourly_rental_package_booking(): void
+    {
+        $payload = [
+            'service_type' => 'cab',
+            'trip_type' => 'local',
+            'from_city' => 'Kolkata',
+            'to_city' => 'Kolkata',
+            'pickup_location' => 'Park Street, Kolkata',
+            'drop_location' => 'Local City Tour',
+            'customer_name' => 'Sourav Ganguly',
+            'customer_phone' => '+91 98300 12345',
+            'customer_email' => 'sourav@cricket.in',
+            'fleet_category' => 'innova',
+            'local_package' => '8_80',
+            'coupon_code' => 'FIRSTWHEELS'
+        ];
+
+        $response = $this->postJson('/api/bookings', $payload);
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'booking' => [
+                'service_type' => 'cab',
+                'trip_type' => 'local',
+                'customer_name' => 'Sourav Ganguly'
+            ]
+        ]);
+
+        $this->assertDatabaseHas('bookings', [
+            'customer_name' => 'Sourav Ganguly',
+            'trip_type' => 'local'
+        ]);
+    }
+
+    public function test_store_airport_transfer_booking(): void
+    {
+        $payload = [
+            'service_type' => 'cab',
+            'trip_type' => 'airport',
+            'from_city' => 'Kolkata',
+            'to_city' => 'Kolkata Airport',
+            'pickup_location' => 'Salt Lake Sector V, Kolkata',
+            'drop_location' => 'Netaji Subhash Chandra Bose Intl (CCU)',
+            'customer_name' => 'Jhulan Goswami',
+            'customer_phone' => '+91 98311 54321',
+            'customer_email' => 'jhulan@sports.in',
+            'fleet_category' => 'sedan',
+            'airport_type' => 'drop',
+            'flight_number' => '6E-204'
+        ];
+
+        $response = $this->postJson('/api/bookings', $payload);
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'booking' => [
+                'service_type' => 'cab',
+                'trip_type' => 'airport',
+                'customer_name' => 'Jhulan Goswami'
+            ]
+        ]);
+
+        $this->assertDatabaseHas('bookings', [
+            'customer_name' => 'Jhulan Goswami',
+            'trip_type' => 'airport'
         ]);
     }
 }

@@ -11,11 +11,22 @@ const CITY_DATABASE = {
   "hyderabad": { name: "Hyderabad", state: "Telangana", lat: 17.3850, lng: 78.4867 },
   "delhi": { name: "New Delhi", state: "Delhi NCR", lat: 28.6139, lng: 77.2090 },
   "jaipur": { name: "Jaipur", state: "Rajasthan", lat: 26.9124, lng: 75.7873 },
-  "chennai": { name: "Chennai", state: "Tamil Nadu", lat: 13.0827, lng: 80.2707 }
+  "chennai": { name: "Chennai", state: "Tamil Nadu", lat: 13.0827, lng: 80.2707 },
+  "baharampur": { name: "Baharampur", state: "West Bengal (Murshidabad)", lat: 24.0988, lng: 88.2514 },
+  "murshidabad": { name: "Murshidabad", state: "West Bengal (Heritage City)", lat: 24.1750, lng: 88.2800 },
+  "jangipur": { name: "Jangipur", state: "West Bengal (Murshidabad)", lat: 24.4686, lng: 88.0700 },
+  "farakka": { name: "Farakka", state: "West Bengal (Murshidabad)", lat: 24.8167, lng: 87.9000 },
+  "kandi": { name: "Kandi", state: "West Bengal (Murshidabad)", lat: 23.9556, lng: 88.0378 },
+  "kolkata": { name: "Kolkata", state: "West Bengal", lat: 22.6548, lng: 88.4467 },
+  "mayapur": { name: "Mayapur", state: "West Bengal (Nadia)", lat: 23.4232, lng: 88.3900 },
+  "siliguri": { name: "Siliguri", state: "West Bengal", lat: 26.7271, lng: 88.3953 },
+  "durgapur": { name: "Durgapur", state: "West Bengal", lat: 23.5204, lng: 87.3119 }
 };
 
 // Route Distances (km) and base highway times
 const ROUTE_MATRIX = {
+  "kolkata-mayapur": { dist: 132, time: "3h 30m", toll: 120 },
+  "mayapur-kolkata": { dist: 132, time: "3h 30m", toll: 120 },
   "pune-goa": { dist: 450, time: "9h 15m", toll: 480 },
   "goa-pune": { dist: 450, time: "9h 15m", toll: 480 },
   "mumbai-pune": { dist: 152, time: "2h 45m", toll: 320 },
@@ -27,7 +38,17 @@ const ROUTE_MATRIX = {
   "bengaluru-chennai": { dist: 346, time: "6h 15m", toll: 390 },
   "chennai-bengaluru": { dist: 346, time: "6h 15m", toll: 390 },
   "delhi-jaipur": { dist: 280, time: "4h 45m", toll: 340 },
-  "jaipur-delhi": { dist: 280, time: "4h 45m", toll: 340 }
+  "jaipur-delhi": { dist: 280, time: "4h 45m", toll: 340 },
+  "baharampur-kolkata": { dist: 205, time: "5h 15m", toll: 180 },
+  "kolkata-baharampur": { dist: 205, time: "5h 15m", toll: 180 },
+  "murshidabad-kolkata": { dist: 218, time: "5h 30m", toll: 180 },
+  "kolkata-murshidabad": { dist: 218, time: "5h 30m", toll: 180 },
+  "baharampur-farakka": { dist: 102, time: "2h 30m", toll: 90 },
+  "farakka-baharampur": { dist: 102, time: "2h 30m", toll: 90 },
+  "baharampur-jangipur": { dist: 65, time: "1h 35m", toll: 50 },
+  "jangipur-baharampur": { dist: 65, time: "1h 35m", toll: 50 },
+  "baharampur-kandi": { dist: 32, time: "55m", toll: 0 },
+  "kandi-baharampur": { dist: 32, time: "55m", toll: 0 }
 };
 
 // Global App State
@@ -70,6 +91,83 @@ const state = {
 
   // Driver Bidding State
   bidding: {
+    activeTripId: null,
+    availableTrips: [
+      {
+        id: 'trip-wb-101',
+        tripType: 'Outstation Cab',
+        fromLocation: 'Baharampur (Mohona Central Bus Stand)',
+        fromCity: 'Baharampur',
+        toLocation: 'Kolkata (Netaji Subhash Chandra Bose Intl Airport, CCU)',
+        toCity: 'Kolkata',
+        distanceKm: 205,
+        estimatedTime: '5h 15m',
+        fleetCategory: 'Prime Sedan / Ertiga',
+        customerName: 'Anirban Banerjee',
+        customerPhone: '+91 98301 22334',
+        customerBudget: 3800,
+        departureTime: 'Tomorrow, 06:30 AM',
+        tollEstimate: '₹180 (Included)',
+        notes: 'Airport transit drop by 01:00 PM. 2 standard luggage bags.',
+        status: 'Open for Bids',
+        bidPlaced: null
+      },
+      {
+        id: 'trip-mh-202',
+        tripType: 'Outstation Direct',
+        fromLocation: 'Swargate Bus Terminal, Pune',
+        fromCity: 'Pune',
+        toLocation: 'Panjim KTC Bus Stand / Calangute, Goa',
+        toCity: 'Goa',
+        distanceKm: 450,
+        estimatedTime: '9h 15m',
+        fleetCategory: 'Toyota Innova Crysta / SUV',
+        customerName: 'Rahul Sharma',
+        customerPhone: '+91 98765 43210',
+        customerBudget: 4800,
+        departureTime: 'Tonight, 09:30 PM',
+        tollEstimate: '₹480 (Included)',
+        notes: 'Family holiday trip. Smooth highway driving required.',
+        status: 'Open for Bids',
+        bidPlaced: null
+      },
+      {
+        id: 'trip-wb-303',
+        tripType: 'Heritage Intercity',
+        fromLocation: 'Murshidabad (Hazarduari Palace Heritage Gate)',
+        fromCity: 'Murshidabad',
+        toLocation: 'Kolkata (Howrah Railway Station / Central)',
+        toCity: 'Kolkata',
+        distanceKm: 218,
+        estimatedTime: '5h 30m',
+        fleetCategory: 'AC Sedan (Dzire / Etios)',
+        customerName: 'Poulomi Mukherjee',
+        customerPhone: '+91 98310 99887',
+        customerBudget: 3950,
+        departureTime: 'Tomorrow, 04:00 PM',
+        tollEstimate: '₹180 (Included)',
+        notes: 'Pickup from hotel lobby. Doorstep drop at Howrah Station.',
+        status: 'Open for Bids',
+        bidPlaced: null
+      },
+      {
+        id: 'trip-mh-404',
+        tripType: 'Expressway Transit',
+        fromLocation: 'Koregaon Park, Pune',
+        toLocation: 'Chhatrapati Shivaji Maharaj Intl Airport (T2), Mumbai',
+        distanceKm: 152,
+        estimatedTime: '2h 45m',
+        fleetCategory: 'Prime SUV',
+        customerName: 'Dr. Vikram Singhania',
+        customerPhone: '+91 99000 00001',
+        customerBudget: 2900,
+        departureTime: 'Today, 11:00 PM',
+        tollEstimate: '₹320 (Included)',
+        notes: 'Fastag expressway lane. Flight departure 04:30 AM.',
+        status: 'Open for Bids',
+        bidPlaced: null
+      }
+    ],
     activeTrip: {
       route: 'Pune to Goa (Outstation Cab)',
       date: 'Tomorrow, 07:00 AM',
@@ -160,10 +258,83 @@ const state = {
 
 // Fleet specs & rates
 const FLEET_TYPES = {
-  sedan: { name: 'Comfort Sedan', models: 'Dzire, Etios', seats: '4 Seats', luggage: '2 Bags', ratePerKm: 12.5, badge: 'Popular Value' },
-  prime: { name: 'Prime Sedan', models: 'Verna, Ciaz, City', seats: '4 Seats', luggage: '3 Bags', ratePerKm: 15.0, badge: 'High Comfort' },
-  suv: { name: 'Executive SUV', models: 'Innova Crysta, Ertiga', seats: '6-7 Seats', luggage: '4 Bags', ratePerKm: 18.0, badge: 'Family Favorite' },
-  luxury: { name: 'Luxury Business', models: 'Camry, Mercedes C-Class', seats: '4 Seats', luggage: '3 Bags', ratePerKm: 32.0, badge: 'VIP Experience' }
+  hatchback: {
+    category: 'hatchback',
+    name: 'Hatchback Economy',
+    models: 'WagonR, Tata Tiago',
+    seats: '4 Seats',
+    luggage: '2 Bags',
+    ratePerKm: 11.0,
+    badge: 'Budget Value',
+    extraKm: 11,
+    image: 'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&w=400&q=80'
+  },
+  sedan: {
+    category: 'sedan',
+    name: 'Comfort Sedan',
+    models: 'Maruti Dzire, Toyota Etios, Amaze',
+    seats: '4 Seats',
+    luggage: '3 Bags',
+    ratePerKm: 13.0,
+    badge: 'Most Popular',
+    extraKm: 13,
+    image: 'https://images.unsplash.com/photo-1550355291-bbee04a92027?auto=format&fit=crop&w=400&q=80'
+  },
+  prime: {
+    category: 'prime',
+    name: 'Prime Executive',
+    models: 'Honda City, Hyundai Verna, Ciaz',
+    seats: '4 Seats',
+    luggage: '3 Bags',
+    ratePerKm: 15.0,
+    badge: 'Executive Comfort',
+    extraKm: 15,
+    image: 'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?auto=format&fit=crop&w=400&q=80'
+  },
+  suv: {
+    category: 'suv',
+    name: 'Family SUV',
+    models: 'Maruti Ertiga, Mahindra Marazzo',
+    seats: '6 Seats',
+    luggage: '4 Bags',
+    ratePerKm: 17.5,
+    badge: 'Family Favorite',
+    extraKm: 17,
+    image: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=400&q=80'
+  },
+  innova: {
+    category: 'innova',
+    name: 'Innova Crysta Premium',
+    models: 'Toyota Innova Crysta (Dual AC)',
+    seats: '7 Seats',
+    luggage: '5 Bags',
+    ratePerKm: 21.0,
+    badge: 'Highway Champion',
+    extraKm: 21,
+    image: 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80'
+  },
+  tempo: {
+    category: 'tempo',
+    name: 'Tempo Traveller',
+    models: 'Force Urbania 12-17 Pushback',
+    seats: '12-17 Seats',
+    luggage: '10 Bags',
+    ratePerKm: 26.0,
+    badge: 'Group Travel',
+    extraKm: 26,
+    image: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=400&q=80'
+  },
+  luxury: {
+    category: 'luxury',
+    name: 'Luxury Business Fleet',
+    models: 'Toyota Camry, Mercedes E-Class',
+    seats: '4 Seats',
+    luggage: '3 Bags',
+    ratePerKm: 38.0,
+    badge: 'VIP Experience',
+    extraKm: 38,
+    image: 'https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&fit=crop&w=400&q=80'
+  }
 };
 
 let mapInstance = null;
@@ -239,6 +410,7 @@ function switchTab(tabId) {
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+window.switchTab = switchTab;
 
 // ==========================================
 // 1. Cabs Module Logic & OpenStreetMap
@@ -346,17 +518,346 @@ function initCabsModule() {
   }
 
   // ==========================================
-  // Simplified 3-Step Flow Navigation Engine
+  // CAR RENTAL BOOKING FLOW REDESIGN ENGINE
   // ==========================================
-  window.goToCabStep = function (step) {
-    const fromCity = document.getElementById('cab-from-city')?.value || 'pune';
-    const toCity = document.getElementById('cab-to-city')?.value || 'goa';
+  let activeRentalFilter = 'all';
+  let activeRentalSort = 'recommended';
 
-    if (step > 1 && fromCity === toCity) {
-      showToast('Pickup City and Destination City cannot be the same.', 'warning');
-      return;
+  window.switchRentalTab = function (type) {
+    state.cab.tripType = type;
+
+    // Toggle Tab button active state
+    document.querySelectorAll('.rental-type-tab').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.type === type);
+    });
+
+    // Toggle panels
+    const panels = ['oneway', 'roundtrip', 'local', 'airport'];
+    panels.forEach(p => {
+      const el = document.getElementById(`rental-form-${p}`);
+      if (el) el.style.display = (p === type) ? 'block' : 'none';
+    });
+
+    if (type === 'roundtrip') {
+      calculateTripDuration();
     }
 
+    updateRentalRouteStats();
+  };
+
+  window.syncRentalFromCity = function (val) {
+    if (!val) return;
+    const clean = val.split(',')[0].trim().toLowerCase();
+    state.cab.fromCity = clean;
+    const legacySelect = document.getElementById('cab-from-city');
+    if (legacySelect) legacySelect.value = clean;
+    updateRentalRouteStats();
+  };
+
+  window.syncRentalToCity = function (val) {
+    if (!val) return;
+    const clean = val.split(',')[0].trim().toLowerCase();
+    state.cab.toCity = clean;
+    const legacySelect = document.getElementById('cab-to-city');
+    if (legacySelect) legacySelect.value = clean;
+    updateRentalRouteStats();
+  };
+
+  window.swapRentalCities = function () {
+    const fromInput = document.getElementById('rental-from-city');
+    const toInput = document.getElementById('rental-to-city');
+    if (fromInput && toInput) {
+      const tmp = fromInput.value;
+      fromInput.value = toInput.value;
+      toInput.value = tmp;
+      syncRentalFromCity(fromInput.value);
+      syncRentalToCity(toInput.value);
+    }
+  };
+
+  window.syncRentalDate = function (val) {
+    const hiddenDate = document.getElementById('cab-pickup-date');
+    if (hiddenDate) hiddenDate.value = val;
+    updateRouteRecapTexts();
+  };
+
+  window.syncRentalTime = function (val) {
+    const hiddenTime = document.getElementById('cab-pickup-time');
+    if (hiddenTime) hiddenTime.value = val;
+    updateRouteRecapTexts();
+  };
+
+  window.calculateTripDuration = function () {
+    const pDateVal = document.getElementById('rental-rt-pickup-date')?.value;
+    const rDateVal = document.getElementById('rental-rt-return-date')?.value;
+    const pill = document.getElementById('rental-rt-duration-pill');
+    if (pDateVal && rDateVal && pill) {
+      const d1 = new Date(pDateVal);
+      const d2 = new Date(rDateVal);
+      const diffTime = d2 - d1;
+      const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+      pill.textContent = `Trip Duration: ${diffDays} Day${diffDays > 1 ? 's' : ''}`;
+    }
+  };
+
+  window.toggleAirportDirection = function (dir) {
+    const l1 = document.getElementById('rental-airport-label-1');
+    const l2 = document.getElementById('rental-airport-label-2');
+    if (dir === 'pickup') {
+      if (l1) l1.textContent = 'AIRPORT / TERMINAL';
+      if (l2) l2.textContent = 'DESTINATION ADDRESS';
+    } else {
+      if (l1) l1.textContent = 'PICKUP ADDRESS';
+      if (l2) l2.textContent = 'AIRPORT / TERMINAL';
+    }
+  };
+
+  function updateRentalRouteStats() {
+    let from = state.cab.fromCity || 'kolkata';
+    let to = state.cab.toCity || 'mayapur';
+
+    if (state.cab.tripType === 'roundtrip') {
+      from = document.getElementById('rental-rt-from')?.value?.split(',')[0].trim().toLowerCase() || from;
+      to = document.getElementById('rental-rt-to')?.value?.split(',')[0].trim().toLowerCase() || to;
+    } else if (state.cab.tripType === 'local') {
+      from = document.getElementById('rental-local-city')?.value?.split(',')[0].trim().toLowerCase() || from;
+      to = from;
+    } else if (state.cab.tripType === 'airport') {
+      from = 'kolkata';
+      to = 'kolkata';
+    }
+
+    const routeKey = `${from}-${to}`;
+    let route = ROUTE_MATRIX[routeKey];
+    if (!route) {
+      // Dynamic distance calculation based on coordinates if available
+      const c1 = CITY_DATABASE[from];
+      const c2 = CITY_DATABASE[to];
+      if (c1 && c2) {
+        const rad = Math.PI / 180;
+        const dLat = (c2.lat - c1.lat) * rad;
+        const dLng = (c2.lng - c1.lng) * rad;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(c1.lat * rad) * Math.cos(c2.lat * rad) * Math.sin(dLng/2) * Math.sin(dLng/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const straightKm = Math.round(6371 * c);
+        const roadKm = Math.round(straightKm * 1.25);
+        const hours = Math.floor(roadKm / 45);
+        const mins = Math.round((roadKm % 45) * 1.3);
+        route = { dist: Math.max(roadKm, 25), time: `${hours}h ${mins}m`, toll: Math.round(roadKm * 0.9) };
+      } else {
+        route = { dist: 132, time: "3h 30m", toll: 120 };
+      }
+    }
+
+    state.cab.distance = route.dist;
+    state.cab.travelTime = route.time;
+    state.cab.tollEstimate = route.toll;
+
+    updateRouteRecapTexts();
+    updateTotalCabFare();
+  }
+
+  // Explore Cabs Validation & Results Navigation
+  window.exploreCabs = function () {
+    const tripType = state.cab.tripType || 'oneway';
+
+    if (tripType === 'oneway') {
+      const fromVal = document.getElementById('rental-from-city')?.value.trim();
+      const toVal = document.getElementById('rental-to-city')?.value.trim();
+      if (!fromVal) {
+        showToast('Please enter a Pickup City / Location.', 'warning');
+        document.getElementById('rental-from-city')?.focus();
+        return;
+      }
+      if (!toVal) {
+        showToast('Please enter a Destination City / Location.', 'warning');
+        document.getElementById('rental-to-city')?.focus();
+        return;
+      }
+      if (fromVal.toLowerCase() === toVal.toLowerCase()) {
+        showToast('Pickup and Destination cannot be identical for One Way trips.', 'warning');
+        return;
+      }
+    } else if (tripType === 'roundtrip') {
+      const rtFrom = document.getElementById('rental-rt-from')?.value.trim();
+      const rtTo = document.getElementById('rental-rt-to')?.value.trim();
+      if (!rtFrom || !rtTo) {
+        showToast('Please specify both Pickup and Destination for Round Trip.', 'warning');
+        return;
+      }
+    } else if (tripType === 'local') {
+      const localCity = document.getElementById('rental-local-city')?.value.trim();
+      if (!localCity) {
+        showToast('Please select a City for Local Rental.', 'warning');
+        return;
+      }
+    }
+
+    // Update stats & render vehicles
+    updateRentalRouteStats();
+    renderRentalVehicles(activeRentalFilter, activeRentalSort);
+
+    // Advance to Step 2
+    goToCabStep(2);
+
+    // Smooth scroll down to comparison grid
+    const s2 = document.getElementById('cab-step-2');
+    if (s2) {
+      s2.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  // Render Vehicles Comparison Cards
+  window.renderRentalVehicles = function (filterCat = 'all', sortBy = 'recommended') {
+    const grid = document.getElementById('rental-vehicles-grid');
+    if (!grid) return;
+
+    activeRentalFilter = filterCat;
+    activeRentalSort = sortBy;
+
+    let dist = state.cab.distance || 132;
+    if (state.cab.tripType === 'roundtrip') dist = dist * 2;
+    if (state.cab.tripType === 'local') {
+      const pkg = document.getElementById('rental-local-package')?.value || '8_80';
+      dist = pkg === '4_40' ? 40 : (pkg === '8_80' ? 80 : (pkg === '10_100' ? 100 : 120));
+    }
+
+    let fleets = Object.entries(FLEET_TYPES).map(([key, f]) => {
+      let baseFare = Math.round(dist * f.ratePerKm);
+      let tollFare = state.cab.includeTolls ? (state.cab.tollEstimate || 120) : 0;
+      if (state.cab.tripType === 'roundtrip') tollFare = Math.round(tollFare * 1.8);
+      if (state.cab.tripType === 'local') tollFare = 0;
+      let totalFare = baseFare + tollFare;
+
+      return {
+        key,
+        ...f,
+        calculatedBase: baseFare,
+        calculatedToll: tollFare,
+        totalFare
+      };
+    });
+
+    // Filter by Category
+    if (filterCat !== 'all') {
+      fleets = fleets.filter(f => f.category === filterCat);
+    }
+
+    // Sort
+    if (sortBy === 'price_low') {
+      fleets.sort((a, b) => a.totalFare - b.totalFare);
+    } else if (sortBy === 'capacity_high') {
+      fleets.sort((a, b) => parseInt(b.seats) - parseInt(a.seats));
+    }
+
+    // Render Cards HTML
+    grid.innerHTML = fleets.map(f => `
+      <div class="rental-vehicle-card">
+        <div class="rental-vehicle-img-wrap">
+          <img src="${f.image}" alt="${f.name}" class="rental-vehicle-img" loading="lazy">
+        </div>
+        <div class="rental-vehicle-info">
+          <div class="rental-vehicle-head">
+            <span class="rental-vehicle-name">${f.name}</span>
+            <span class="rental-category-badge">${f.badge}</span>
+          </div>
+          <div class="rental-vehicle-models">${f.models} or similar</div>
+          <div class="rental-spec-chips">
+            <span class="rental-spec-chip"><span class="material-symbols-outlined" style="font-size:14px;">group</span> ${f.seats}</span>
+            <span class="rental-spec-chip"><span class="material-symbols-outlined" style="font-size:14px;">luggage</span> ${f.luggage}</span>
+            <span class="rental-spec-chip"><span class="material-symbols-outlined" style="font-size:14px;">ac_unit</span> AC Sanitized</span>
+            <span class="rental-spec-chip"><span class="material-symbols-outlined" style="font-size:14px;">person</span> Chauffeur Included</span>
+          </div>
+          <div class="rental-policy-strip">
+            <span>✓ Fastag Tolls & Taxes Included</span>
+            <span>✓ ₹${f.extraKm}/km after ${dist} km</span>
+            <span>✓ Free Cancellation upto 1 hr prior</span>
+          </div>
+        </div>
+        <div class="rental-vehicle-pricing">
+          <div class="rental-fare-total">₹${f.totalFare.toLocaleString('en-IN')}</div>
+          <div class="rental-fare-sub">up to ${dist} km • all inclusive</div>
+          <button type="button" class="btn-book-vehicle" onclick="selectRentalVehicle('${f.key}')">
+            <span>BOOK NOW</span>
+          </button>
+        </div>
+      </div>
+    `).join('');
+  };
+
+  window.filterRentalCategory = function (cat, btn) {
+    document.querySelectorAll('.rental-filter-pill').forEach(p => p.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    const sortVal = document.getElementById('rental-sort-by')?.value || 'recommended';
+    renderRentalVehicles(cat, sortVal);
+  };
+
+  window.sortRentalResults = function (by) {
+    renderRentalVehicles(activeRentalFilter, by);
+  };
+
+  window.selectRentalVehicle = function (fleetKey) {
+    state.cab.selectedFleet = fleetKey;
+    const fData = FLEET_TYPES[fleetKey] || FLEET_TYPES.suv;
+
+    // Update Step 3 Summary
+    const imgEl = document.getElementById('summary-vehicle-img');
+    if (imgEl && fData.image) imgEl.src = fData.image;
+
+    const fleetTitle = document.getElementById('recap-fleet-title');
+    if (fleetTitle) fleetTitle.textContent = `${fData.name} (${fData.models.split(',')[0]})`;
+
+    // Sync pickup / drop into Step 3 inputs
+    const fromVal = document.getElementById('rental-from-city')?.value || 'Kolkata';
+    const toVal = document.getElementById('rental-to-city')?.value || 'Mayapur, West Bengal';
+    const pInput = document.getElementById('cab-pickup-address');
+    const dInput = document.getElementById('cab-drop-address');
+    if (pInput && !pInput.value) pInput.value = `${fromVal} Central`;
+    if (dInput && !dInput.value) dInput.value = `${toVal} Landmark`;
+
+    updateTotalCabFare();
+    goToCabStep(3);
+
+    const s3 = document.getElementById('cab-step-3');
+    if (s3) {
+      s3.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  window.applyRentalCoupon = function () {
+    const input = document.getElementById('cab-coupon-input');
+    const val = input ? input.value.trim().toUpperCase() : '';
+    const msg = document.getElementById('coupon-msg');
+
+    if (val === 'FIRSTWHEELS') {
+      state.cab.appliedCoupon = 'FIRSTWHEELS';
+      if (msg) {
+        msg.textContent = '🎉 Coupon FIRSTWHEELS applied! 15% discount saved.';
+        msg.style.color = '#16a34a';
+      }
+      showToast('Promo code FIRSTWHEELS applied successfully!', 'success');
+    } else if (val === 'INTERCITY100') {
+      state.cab.appliedCoupon = 'INTERCITY100';
+      if (msg) {
+        msg.textContent = '🎉 Coupon INTERCITY100 applied! Flat ₹100 off.';
+        msg.style.color = '#16a34a';
+      }
+      showToast('Promo code INTERCITY100 applied successfully!', 'success');
+    } else {
+      state.cab.appliedCoupon = null;
+      if (msg) {
+        msg.textContent = '❌ Invalid coupon. Try FIRSTWHEELS or INTERCITY100';
+        msg.style.color = '#dc2626';
+      }
+      showToast('Invalid coupon code.', 'warning');
+    }
+    updateTotalCabFare();
+  };
+
+  // ==========================================
+  // Stepper Flow Navigation Engine
+  // ==========================================
+  window.goToCabStep = function (step) {
     // Update pills & indicators
     for (let i = 1; i <= 3; i++) {
       const pill = document.getElementById(`pill-step-${i}`);
@@ -376,7 +877,12 @@ function initCabsModule() {
 
       const panel = document.getElementById(`cab-step-${i}`);
       if (panel) {
-        panel.classList.toggle('active', i === step);
+        if (i === 1) {
+          // Hero Booking Panel remains visible as top hero section
+          panel.style.display = 'block';
+        } else {
+          panel.style.display = (i === step) ? 'block' : 'none';
+        }
       }
     }
 
@@ -384,19 +890,15 @@ function initCabsModule() {
     updateRouteRecapTexts();
     updateTotalCabFare();
 
+    if (step === 2) {
+      renderRentalVehicles(activeRentalFilter, activeRentalSort);
+    }
+
     // On Step 3: sync contact details from input
     if (step === 3) {
       const pickupInput = document.getElementById('cab-pickup-address');
       if (pickupInput && pickupInput.value) {
         state.cab.pickupAddress = pickupInput.value;
-      }
-    }
-
-    // Smooth scroll into view on small screens
-    if (window.innerWidth < 992) {
-      const header = document.querySelector('.cab-stepper-header');
-      if (header) {
-        header.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     }
   };
@@ -418,36 +920,46 @@ function initCabsModule() {
       sat.setDate(sat.getDate() + diff);
       dateInput.value = sat.toISOString().split('T')[0];
     }
-
-    document.querySelectorAll('.quick-date-chip').forEach(btn => btn.classList.remove('active'));
-    if (event && event.target) {
-      event.target.classList.add('active');
-    }
     updateRouteRecapTexts();
   };
 
   function updateRouteRecapTexts() {
-    const fromCityName = CITY_DATABASE[state.cab.fromCity]?.name || 'Pune';
-    const toCityName = CITY_DATABASE[state.cab.toCity]?.name || 'Goa';
-    const dist = state.cab.distance;
-    const time = state.cab.travelTime;
-    const toll = state.cab.tollEstimate;
+    let fromName = 'Kolkata';
+    let toName = 'Mayapur, West Bengal';
 
-    const dateVal = document.getElementById('cab-pickup-date')?.value;
-    const timeVal = document.getElementById('cab-pickup-time')?.value || '06:30';
+    if (state.cab.tripType === 'oneway') {
+      fromName = document.getElementById('rental-from-city')?.value || 'Kolkata';
+      toName = document.getElementById('rental-to-city')?.value || 'Mayapur, West Bengal';
+    } else if (state.cab.tripType === 'roundtrip') {
+      fromName = document.getElementById('rental-rt-from')?.value || 'Kolkata';
+      toName = document.getElementById('rental-rt-to')?.value || 'Mayapur, West Bengal';
+    } else if (state.cab.tripType === 'local') {
+      fromName = document.getElementById('rental-local-city')?.value || 'Kolkata';
+      toName = 'Local Package';
+    } else if (state.cab.tripType === 'airport') {
+      fromName = document.getElementById('rental-airport-name')?.value || 'Airport';
+      toName = document.getElementById('rental-airport-address')?.value || 'City Address';
+    }
 
-    let dateDisplay = 'Tomorrow at 06:30 AM';
+    const dist = state.cab.distance || 132;
+    const time = state.cab.travelTime || '3h 30m';
+    const toll = state.cab.tollEstimate || 120;
+
+    const dateVal = document.getElementById('rental-pickup-date')?.value || document.getElementById('cab-pickup-date')?.value;
+    const timeVal = document.getElementById('rental-pickup-time')?.value || document.getElementById('cab-pickup-time')?.value || '12:15 AM';
+
+    let dateDisplay = '11 Nov 2026, 12:15 AM';
     if (dateVal) {
       const parts = dateVal.split('-');
       if (parts.length === 3) {
         const d = new Date(parts[0], parts[1] - 1, parts[2]);
-        dateDisplay = `${d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}, ${timeVal}`;
+        dateDisplay = `${d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}, ${timeVal}`;
       }
     }
 
     // Step 1 strip
     const s1Route = document.getElementById('step1-route-name');
-    if (s1Route) s1Route.textContent = `${fromCityName} → ${toCityName}`;
+    if (s1Route) s1Route.textContent = `${fromName} → ${toName}`;
     const s1Dist = document.getElementById('step1-dist');
     if (s1Dist) s1Dist.textContent = `${dist} km`;
     const s1Time = document.getElementById('step1-time');
@@ -457,16 +969,20 @@ function initCabsModule() {
 
     // Step 2 banner
     const recapRoute = document.getElementById('recap-route');
-    if (recapRoute) recapRoute.textContent = `${fromCityName} → ${toCityName} (${dist} km)`;
+    if (recapRoute) recapRoute.textContent = `${fromName} → ${toName}`;
     const recapDatetime = document.getElementById('recap-datetime');
     if (recapDatetime) recapDatetime.textContent = dateDisplay;
+    const recapTripType = document.getElementById('recap-trip-type');
+    if (recapTripType) recapTripType.textContent = state.cab.tripType || 'One Way';
+    const recapDistance = document.getElementById('recap-distance');
+    if (recapDistance) recapDistance.textContent = `${dist} km (~${time})`;
 
     // Step 3 banner
     const fleetData = FLEET_TYPES[state.cab.selectedFleet] || FLEET_TYPES.suv;
     const recapFleet = document.getElementById('recap-fleet-title');
     if (recapFleet) recapFleet.textContent = `${fleetData.name} (${fleetData.models.split(',')[0]})`;
     const recapRouteMini = document.getElementById('recap-route-mini');
-    if (recapRouteMini) recapRouteMini.textContent = `${fromCityName} → ${toCityName}`;
+    if (recapRouteMini) recapRouteMini.textContent = `${fromName} → ${toName}`;
   }
 
   // ==========================================
@@ -476,11 +992,20 @@ function initCabsModule() {
     const btn = document.getElementById('book-cab-confirm-btn');
     const nameInput = document.getElementById('cab-rider-name');
     const phoneInput = document.getElementById('cab-rider-phone');
+    const emailInput = document.getElementById('cab-rider-email');
     const pickupInput = document.getElementById('cab-pickup-address');
     const dropInput = document.getElementById('cab-drop-address');
+    const termsCheck = document.getElementById('rental-terms-agree');
 
-    const customerName = nameInput ? nameInput.value.trim() : (window.CURRENT_USER?.name || 'Verified Traveller');
+    if (termsCheck && !termsCheck.checked) {
+      showToast('Please agree to the Privacy Policy and T&Cs to continue.', 'warning');
+      termsCheck.focus();
+      return;
+    }
+
+    const customerName = nameInput ? nameInput.value.trim() : (window.CURRENT_USER?.name || 'Aditya Sharma');
     const customerPhone = phoneInput ? phoneInput.value.trim() : '+91 98220 11920';
+    const customerEmail = emailInput ? emailInput.value.trim() : 'traveller@intercitywheels.com';
 
     if (!customerName) {
       showToast('Please enter passenger full name.', 'warning');
@@ -493,8 +1018,23 @@ function initCabsModule() {
       return;
     }
 
-    const fromCityName = CITY_DATABASE[state.cab.fromCity]?.name || 'Pune';
-    const toCityName = CITY_DATABASE[state.cab.toCity]?.name || 'Goa';
+    let fromCityName = 'Kolkata';
+    let toCityName = 'Mayapur';
+
+    if (state.cab.tripType === 'oneway') {
+      fromCityName = document.getElementById('rental-from-city')?.value.split(',')[0].trim() || 'Kolkata';
+      toCityName = document.getElementById('rental-to-city')?.value.split(',')[0].trim() || 'Mayapur';
+    } else if (state.cab.tripType === 'roundtrip') {
+      fromCityName = document.getElementById('rental-rt-from')?.value.split(',')[0].trim() || 'Kolkata';
+      toCityName = document.getElementById('rental-rt-to')?.value.split(',')[0].trim() || 'Mayapur';
+    } else if (state.cab.tripType === 'local') {
+      fromCityName = document.getElementById('rental-local-city')?.value.split(',')[0].trim() || 'Kolkata';
+      toCityName = fromCityName;
+    } else if (state.cab.tripType === 'airport') {
+      fromCityName = 'Kolkata';
+      toCityName = 'Kolkata Airport';
+    }
+
     const pickupLoc = (pickupInput && pickupInput.value.trim()) ? pickupInput.value.trim() : `${fromCityName} Central Area`;
     const dropLoc = (dropInput && dropInput.value.trim()) ? dropInput.value.trim() : `${toCityName} Center`;
 
@@ -510,7 +1050,11 @@ function initCabsModule() {
       drop_location: dropLoc,
       customer_name: customerName,
       customer_phone: customerPhone,
+      customer_email: customerEmail,
       fleet_category: state.cab.selectedFleet || 'suv',
+      local_package: document.getElementById('rental-local-package')?.value || '8_80',
+      airport_type: document.querySelector('input[name="airport_direction"]:checked')?.value || 'pickup',
+      flight_number: document.getElementById('rental-airport-flight')?.value || '',
       include_tolls: state.cab.includeTolls !== false,
       pet_friendly: Boolean(state.cab.petFriendly),
       night_allowance: Boolean(state.cab.nightAllowance),
@@ -541,17 +1085,17 @@ function initCabsModule() {
           id: b.booking_reference,
           type: 'Outstation Cab',
           route: `${fromCityName} → ${toCityName}`,
-          date: 'Today, Scheduled',
-          operator: `${FLEET_TYPES[state.cab.selectedFleet]?.name || 'Executive SUV'} (Intercity Fleet)`,
-          berths: ['Private Cab'],
+          date: 'Scheduled, Confirmed',
+          operator: `${FLEET_TYPES[state.cab.selectedFleet]?.name || 'Executive SUV'} (Intercity Wheels)`,
+          berths: ['Private Car Rental'],
           passengers: [customerName],
           amount: b.total_amount,
-          status: 'Confirmed & Paid',
+          status: 'Confirmed & Reserved',
           otp: String(b.start_otp)
         };
 
         state.bookings.unshift(localBooking);
-        showToast(`🎉 Outstation Cab Booked! Reference: ${b.booking_reference} (Ride OTP: ${b.start_otp})`, 'success');
+        showToast(`🎉 Cab Booked Successfully! Reference: ${b.booking_reference} (Ride OTP: ${b.start_otp})`, 'success');
 
         // Update My Trips badge counter in header if present
         const badge = document.querySelector('.nav-tab-badge.badge-primary');
@@ -565,7 +1109,7 @@ function initCabsModule() {
         showToast(data.message || 'Booking validation error. Please verify input.', 'danger');
       }
     } catch (err) {
-      console.warn('Booking fallback simulation:', err);
+      console.warn('Booking submission error:', err);
       openPaymentModal('cab');
     } finally {
       if (btn) {
@@ -576,8 +1120,6 @@ function initCabsModule() {
   }
 
   function handleCityChange() {
-    const from = document.getElementById('cab-from-city').value;
-    const to = document.getElementById('cab-to-city').value;
     const fromSelect = document.getElementById('cab-from-city');
     const toSelect = document.getElementById('cab-to-city');
     if (!fromSelect || !toSelect) return;
@@ -966,39 +1508,234 @@ function initCabsModule() {
     const container = document.getElementById('bidding-cards-stream');
     if (!container) return;
 
-    container.innerHTML = state.bidding.drivers.map(drv => `
-    <div class="bid-card" id="card-${drv.id}">
-      <div class="bid-driver-info">
-        <div class="driver-avatar-circle">
-          <span style="font-size: 28px;">${drv.avatar}</span>
-        </div>
-        <div class="driver-details-col">
-          <div class="driver-name">
-            ${drv.name}
-            <span class="material-symbols-outlined driver-verified-check">verified</span>
+    if (!state.bidding.availableTrips || !state.bidding.availableTrips.length) {
+      container.innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8;">No active trip requests available for bidding at the moment.</div>`;
+      return;
+    }
+
+    container.innerHTML = state.bidding.availableTrips.map(trip => {
+      const isBidPlaced = Boolean(trip.bidPlaced);
+      return `
+      <div class="bid-card" id="card-${trip.id}" style="display:flex; flex-direction:column; gap:12px; padding:16px 18px; border:1px solid ${isBidPlaced ? '#86efac' : '#e2e8f0'}; background:${isBidPlaced ? '#f0fdf4' : '#ffffff'}; border-radius:10px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+        <!-- Top Metadata Row -->
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="admin-badge badge-primary" style="font-size:10.5px; font-weight:700;">${trip.tripType}</span>
+            <span style="font-size:11.5px; color:#64748b; font-weight:600;">📅 ${trip.departureTime}</span>
           </div>
-          <div class="driver-vehicle-tag">${drv.car} • <strong style="color:#0f172a;">${drv.plate}</strong></div>
-          <div class="driver-ratings-row">
-            <span class="rating-pill">★ ${drv.rating}</span>
-            <span>${drv.trips} trips</span>
-            <span style="color:#16a34a; font-weight:600;">• ${drv.eta}</span>
+          <div>
+            ${isBidPlaced 
+              ? `<span class="admin-badge badge-success" style="font-size:11px; padding:4px 8px;">✓ Your Bid Placed: ₹${trip.bidPlaced.amount.toLocaleString('en-IN')} (Accepted)</span>`
+              : `<span class="admin-badge badge-gold" style="font-size:10.5px;">⚡ Bidding Live</span>`
+            }
+          </div>
+        </div>
+
+        <!-- From -> To & KM Display Row -->
+        <div style="display:grid; grid-template-columns: 1fr auto 1fr; gap:12px; align-items:center; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px;">
+          <!-- FROM LOCATION -->
+          <div>
+            <div style="font-size:10px; font-weight:800; color:#0284c7; text-transform:uppercase; display:flex; align-items:center; gap:4px; letter-spacing:0.04em;">
+              <span class="material-symbols-outlined" style="font-size:14px;">trip_origin</span>
+              <span>Pickup (From)</span>
+            </div>
+            <div style="font-size:13.5px; font-weight:700; color:#0f172a; margin-top:2px;">
+              ${trip.fromLocation}
+            </div>
+          </div>
+
+          <!-- DISTANCE IN KM PILL -->
+          <div style="text-align:center; padding:0 8px;">
+            <div style="background:#0b0f19; color:#f8fafc; border:1px solid rgba(212,155,76,0.4); border-radius:20px; padding:4px 12px; font-size:12px; font-weight:800; font-family:monospace; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+              <span>🛣️</span>
+              <span style="color:#d49b4c;">${trip.distanceKm} KM</span>
+            </div>
+            <div style="font-size:10.5px; color:#64748b; margin-top:3px; font-weight:600;">⏱️ ${trip.estimatedTime}</div>
+          </div>
+
+          <!-- TO LOCATION -->
+          <div>
+            <div style="font-size:10px; font-weight:800; color:#16a34a; text-transform:uppercase; display:flex; align-items:center; gap:4px; letter-spacing:0.04em;">
+              <span class="material-symbols-outlined" style="font-size:14px;">location_on</span>
+              <span>Drop (To)</span>
+            </div>
+            <div style="font-size:13.5px; font-weight:700; color:#0f172a; margin-top:2px;">
+              ${trip.toLocation}
+            </div>
+          </div>
+        </div>
+
+        <!-- Trip Details & Actions Row -->
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-top:1px dashed #e2e8f0; padding-top:10px;">
+          <div style="font-size:12px; color:#475569;">
+            <span>Passenger: <strong>${trip.customerName}</strong></span> &bull; 
+            <span>Vehicle: <strong>${trip.fleetCategory}</strong></span> &bull; 
+            <span style="color:#64748b; font-style:italic;">"${trip.notes}"</span>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="text-align:right;">
+              <div style="font-size:10px; text-transform:uppercase; color:#64748b; font-weight:700;">Customer Budget</div>
+              <div style="font-size:18px; font-weight:800; color:#16a34a;">₹${trip.customerBudget.toLocaleString('en-IN')}</div>
+            </div>
+
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="btn btn-sm btn-outline-gold" onclick="openDriverBidModal('${trip.id}')" title="Place your binding bid">
+                <span class="material-symbols-outlined" style="font-size:15px;">gavel</span>
+                <span>${isBidPlaced ? 'Modify Bid' : 'Bid on This Ride'}</span>
+              </button>
+              <button type="button" class="btn btn-sm btn-primary" onclick="quickAcceptTrip('${trip.id}')" title="Conclusively accept at passenger budget">
+                <span class="material-symbols-outlined" style="font-size:15px;">check_circle</span>
+                <span>Accept at ₹${trip.customerBudget.toLocaleString('en-IN')}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
-      <div class="bid-actions-col">
-        <div class="bid-price-display">₹${drv.bid.toLocaleString('en-IN')}</div>
-        <div class="bid-buttons-row">
-          <button class="btn btn-sm btn-outline" onclick="openCounterOfferModal('${drv.id}', ${drv.bid})">
-            Counter Bid
-          </button>
-          <button class="btn btn-sm btn-accent" onclick="acceptDriverBid('${drv.id}')">
-            Accept Ride
-          </button>
-        </div>
-      </div>
-    </div>
-  `).join('');
+      `;
+    }).join('');
   }
+
+  window.openDriverBidModal = function (tripId) {
+    const trip = state.bidding.availableTrips.find(t => t.id === tripId);
+    if (!trip) return;
+
+    state.bidding.activeTripId = tripId;
+
+    document.getElementById('driver-bid-trip-type').textContent = trip.tripType;
+    document.getElementById('driver-bid-trip-schedule').textContent = `📅 ${trip.departureTime}`;
+    document.getElementById('driver-bid-from-loc').textContent = trip.fromLocation;
+    document.getElementById('driver-bid-to-loc').textContent = trip.toLocation;
+    document.getElementById('driver-bid-distance-km').textContent = `${trip.distanceKm} km`;
+    document.getElementById('driver-bid-est-time').textContent = trip.estimatedTime;
+    document.getElementById('driver-bid-customer-budget').textContent = `₹${trip.customerBudget.toLocaleString('en-IN')}`;
+
+    const input = document.getElementById('driver-bid-amount-input');
+    input.value = trip.bidPlaced ? trip.bidPlaced.amount : trip.customerBudget;
+
+    const chk = document.getElementById('driver-bid-accept-checkbox');
+    if (chk) chk.checked = true;
+    toggleBidSubmitButton(true);
+
+    updateConclusiveWriteup();
+
+    const modal = document.getElementById('driver-bid-modal');
+    if (modal) modal.classList.add('active');
+  };
+
+  window.quickAcceptTrip = function (tripId) {
+    const trip = state.bidding.availableTrips.find(t => t.id === tripId);
+    if (!trip) return;
+
+    openDriverBidModal(tripId);
+    const input = document.getElementById('driver-bid-amount-input');
+    if (input) input.value = trip.customerBudget;
+    updateConclusiveWriteup();
+  };
+
+  window.updateConclusiveWriteup = function () {
+    const tripId = state.bidding.activeTripId;
+    const trip = state.bidding.availableTrips.find(t => t.id === tripId);
+    if (!trip) return;
+
+    const input = document.getElementById('driver-bid-amount-input');
+    const amount = parseInt(input.value, 10) || trip.customerBudget;
+
+    document.getElementById('writeup-from').textContent = trip.fromLocation;
+    document.getElementById('writeup-to').textContent = trip.toLocation;
+    document.getElementById('writeup-km').textContent = `${trip.distanceKm} km`;
+    document.getElementById('writeup-price').textContent = `₹${amount.toLocaleString('en-IN')}`;
+    document.getElementById('btn-bid-amount-preview').textContent = `₹${amount.toLocaleString('en-IN')}`;
+  };
+
+  window.adjustDriverBidPrice = function (delta) {
+    const input = document.getElementById('driver-bid-amount-input');
+    let val = parseInt(input.value, 10) || 1000;
+    val = Math.max(100, val + delta);
+    input.value = val;
+    updateConclusiveWriteup();
+  };
+
+  window.resetDriverBidToTarget = function () {
+    const tripId = state.bidding.activeTripId;
+    const trip = state.bidding.availableTrips.find(t => t.id === tripId);
+    if (!trip) return;
+
+    const input = document.getElementById('driver-bid-amount-input');
+    input.value = trip.customerBudget;
+    updateConclusiveWriteup();
+  };
+
+  window.toggleBidSubmitButton = function (checked) {
+    const btn = document.getElementById('btn-submit-conclusive-bid');
+    if (btn) {
+      btn.disabled = !checked;
+      btn.style.opacity = checked ? '1' : '0.5';
+    }
+  };
+
+  window.submitConclusiveDriverBid = async function () {
+    const tripId = state.bidding.activeTripId;
+    const trip = state.bidding.availableTrips.find(t => t.id === tripId);
+    if (!trip) return;
+
+    const chk = document.getElementById('driver-bid-accept-checkbox');
+    if (chk && !chk.checked) {
+      showToast('Please check the acceptance declaration to confirm this bid.', 'warning');
+      return;
+    }
+
+    const input = document.getElementById('driver-bid-amount-input');
+    const amount = parseInt(input.value, 10);
+    if (!amount || amount < 100) {
+      showToast('Please enter a valid fare proposal.', 'warning');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/bids/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        },
+        body: JSON.stringify({
+          trip_id: trip.id,
+          from_location: trip.fromLocation,
+          to_location: trip.toLocation,
+          distance_km: trip.distanceKm,
+          bid_amount: amount
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        trip.bidPlaced = {
+          amount: amount,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          statement: data.bid?.conclusive_statement || `I will take and do this ride from ${trip.fromLocation} to ${trip.toLocation} (${trip.distanceKm} km) at this price: ₹${amount.toLocaleString('en-IN')}. I accept this.`
+        };
+
+        closeModal('driver-bid-modal');
+        renderBiddingList();
+
+        showToast(`🤝 Bid Confirmed: "I will take and do this ride from ${trip.fromLocation} to ${trip.toLocation} (${trip.distanceKm} km) at ₹${amount.toLocaleString('en-IN')}. I accept this."`, 'success');
+      } else {
+        showToast(data.message || 'Failed to submit bid.', 'warning');
+      }
+    } catch (err) {
+      console.error('Bid submit error:', err);
+      // Fallback local update if offline or network glitch
+      trip.bidPlaced = {
+        amount: amount,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      closeModal('driver-bid-modal');
+      renderBiddingList();
+      showToast(`🤝 Bid of ₹${amount.toLocaleString('en-IN')} confirmed for ${trip.fromLocation} → ${trip.toLocation}!`, 'success');
+    }
+  };
 
   function startBiddingCountdown() {
     const timerEl = document.getElementById('bidding-timer-text');
@@ -1151,6 +1888,10 @@ function initCabsModule() {
       'fleet': 'Drivers & Bidding Fleet',
       'bookings': 'Outstation Bookings & Dispatch Management',
       'users': 'Registered Users & Drivers Directory',
+      'locations': 'Service Locations & Network Hubs',
+      'berth-routes': 'Berth Routes & Sleeper Schedules',
+      'berth-layouts': 'Vehicle Berth & Seat Customizer',
+      'vehicles': 'Driver Vehicles & Fleet Approvals',
       'system': 'System & Platform Health'
     };
     const crumbTitle = document.getElementById('admin-crumb-title');
@@ -2768,5 +3509,686 @@ function initCabsModule() {
     if (window.currentViewingUserId) {
       closeModal('admin-view-user-modal');
       openEditUserModal(window.currentViewingUserId);
+    }
+  };
+
+  // ========================================================
+  // 1. SERVICE LOCATIONS MANAGEMENT (Admin)
+  // ========================================================
+  const getAdminCsrfToken = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+  window.openAddLocationModal = function () {
+    document.getElementById('admin-location-modal-title').textContent = 'Add Service Location';
+    document.getElementById('admin-loc-id').value = '';
+    document.getElementById('admin-loc-name').value = '';
+    document.getElementById('admin-loc-state').value = '';
+    document.getElementById('admin-loc-lat').value = '18.5204';
+    document.getElementById('admin-loc-lng').value = '73.8567';
+    document.getElementById('admin-loc-airport').value = '';
+    document.getElementById('admin-loc-has-airport').checked = true;
+    document.getElementById('admin-loc-active').checked = true;
+
+    const modal = document.getElementById('admin-location-modal');
+    if (modal) modal.classList.add('active');
+  };
+
+  window.openEditLocationModal = async function (id) {
+    try {
+      const res = await fetch(`/api/admin/locations/${id}`);
+      const data = await res.json();
+      if (!data.success || !data.location) return;
+
+      const loc = data.location;
+      document.getElementById('admin-location-modal-title').textContent = `Edit Location: ${loc.name}`;
+      document.getElementById('admin-loc-id').value = loc.id;
+      document.getElementById('admin-loc-name').value = loc.name;
+      document.getElementById('admin-loc-state').value = loc.state;
+      document.getElementById('admin-loc-lat').value = loc.latitude;
+      document.getElementById('admin-loc-lng').value = loc.longitude;
+      document.getElementById('admin-loc-airport').value = loc.airport_code || '';
+      document.getElementById('admin-loc-has-airport').checked = Boolean(loc.has_airport_service);
+      document.getElementById('admin-loc-active').checked = Boolean(loc.is_active);
+
+      const modal = document.getElementById('admin-location-modal');
+      if (modal) modal.classList.add('active');
+    } catch (err) {
+      console.error('Fetch location error:', err);
+      showToast('Failed to load location details.', 'warning');
+    }
+  };
+
+  window.saveAdminLocation = async function (e) {
+    e.preventDefault();
+    const id = document.getElementById('admin-loc-id').value;
+    const isEdit = Boolean(id);
+
+    const payload = {
+      name: document.getElementById('admin-loc-name').value.trim(),
+      state: document.getElementById('admin-loc-state').value.trim(),
+      latitude: parseFloat(document.getElementById('admin-loc-lat').value),
+      longitude: parseFloat(document.getElementById('admin-loc-lng').value),
+      airport_code: document.getElementById('admin-loc-airport').value.trim().toUpperCase() || null,
+      has_airport_service: document.getElementById('admin-loc-has-airport').checked,
+      is_active: document.getElementById('admin-loc-active').checked,
+    };
+
+    const url = isEdit ? `/api/admin/locations/${id}` : '/api/admin/locations';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    try {
+      const res = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message, 'success');
+        closeModal('admin-location-modal');
+        setTimeout(() => location.reload(), 600);
+      } else {
+        showToast(data.message || 'Validation error while saving location.', 'danger');
+      }
+    } catch (err) {
+      console.error('Save location error:', err);
+      showToast('Network error while saving location.', 'warning');
+    }
+  };
+
+  window.toggleLocationStatus = async function (id) {
+    try {
+      const res = await fetch(`/api/admin/locations/${id}/toggle`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'info');
+        setTimeout(() => location.reload(), 500);
+      }
+    } catch (err) {
+      showToast('Failed to toggle location status.', 'warning');
+    }
+  };
+
+  window.deleteLocation = async function (id) {
+    if (!confirm('Are you sure you want to delete this service location?')) return;
+    try {
+      const res = await fetch(`/api/admin/locations/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'success');
+        const row = document.getElementById(`admin-loc-row-${id}`);
+        if (row) row.remove();
+      }
+    } catch (err) {
+      showToast('Failed to delete location.', 'warning');
+    }
+  };
+
+  // ========================================================
+  // 2. BERTH ROUTES MANAGEMENT (Admin)
+  // ========================================================
+  window.openAddBerthRouteModal = function () {
+    document.getElementById('admin-broute-modal-title').textContent = 'Add Berth Route';
+    document.getElementById('admin-broute-id').value = '';
+    document.getElementById('admin-broute-from').value = '';
+    document.getElementById('admin-broute-to').value = '';
+    document.getElementById('admin-broute-operator').value = 'Intercity Express';
+    document.getElementById('admin-broute-coach').value = '';
+    document.getElementById('admin-broute-vehicle').value = 'Volvo Multi-Axle AC Sleeper';
+    document.getElementById('admin-broute-dept').value = '09:30 PM';
+    document.getElementById('admin-broute-arr').value = '06:45 AM';
+    document.getElementById('admin-broute-price').value = '850';
+    document.getElementById('admin-broute-total-berths').value = '30';
+    document.getElementById('admin-broute-active').checked = true;
+
+    const modal = document.getElementById('admin-berth-route-modal');
+    if (modal) modal.classList.add('active');
+  };
+
+  window.openEditBerthRouteModal = async function (id) {
+    try {
+      const res = await fetch(`/api/admin/berth-routes/${id}`);
+      const data = await res.json();
+      if (!data.success || !data.route) return;
+
+      const r = data.route;
+      document.getElementById('admin-broute-modal-title').textContent = `Edit Berth Route: ${r.from_city} → ${r.to_city}`;
+      document.getElementById('admin-broute-id').value = r.id;
+      document.getElementById('admin-broute-from').value = r.from_city;
+      document.getElementById('admin-broute-to').value = r.to_city;
+      document.getElementById('admin-broute-operator').value = r.operator_name;
+      document.getElementById('admin-broute-coach').value = r.coach_code;
+      document.getElementById('admin-broute-vehicle').value = r.vehicle_type;
+      document.getElementById('admin-broute-dept').value = r.departure_time;
+      document.getElementById('admin-broute-arr').value = r.arrival_time;
+      document.getElementById('admin-broute-price').value = r.base_price;
+      document.getElementById('admin-broute-total-berths').value = r.total_berths;
+      document.getElementById('admin-broute-active').checked = Boolean(r.is_active);
+
+      const modal = document.getElementById('admin-berth-route-modal');
+      if (modal) modal.classList.add('active');
+    } catch (err) {
+      showToast('Failed to load berth route.', 'warning');
+    }
+  };
+
+  window.saveAdminBerthRoute = async function (e) {
+    e.preventDefault();
+    const id = document.getElementById('admin-broute-id').value;
+    const isEdit = Boolean(id);
+
+    const payload = {
+      from_city: document.getElementById('admin-broute-from').value.trim(),
+      to_city: document.getElementById('admin-broute-to').value.trim(),
+      operator_name: document.getElementById('admin-broute-operator').value.trim(),
+      coach_code: document.getElementById('admin-broute-coach').value.trim(),
+      vehicle_type: document.getElementById('admin-broute-vehicle').value.trim(),
+      departure_time: document.getElementById('admin-broute-dept').value.trim(),
+      arrival_time: document.getElementById('admin-broute-arr').value.trim(),
+      base_price: parseFloat(document.getElementById('admin-broute-price').value),
+      total_berths: parseInt(document.getElementById('admin-broute-total-berths').value, 10),
+      is_active: document.getElementById('admin-broute-active').checked,
+    };
+
+    const url = isEdit ? `/api/admin/berth-routes/${id}` : '/api/admin/berth-routes';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    try {
+      const res = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message, 'success');
+        closeModal('admin-berth-route-modal');
+        setTimeout(() => location.reload(), 600);
+      } else {
+        showToast(data.message || 'Validation error while saving route.', 'danger');
+      }
+    } catch (err) {
+      showToast('Network error while saving berth route.', 'warning');
+    }
+  };
+
+  window.toggleBerthRouteStatus = async function (id) {
+    try {
+      const res = await fetch(`/api/admin/berth-routes/${id}/toggle`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'info');
+        setTimeout(() => location.reload(), 500);
+      }
+    } catch (err) {
+      showToast('Failed to toggle berth route.', 'warning');
+    }
+  };
+
+  window.deleteBerthRoute = async function (id) {
+    if (!confirm('Are you sure you want to delete this berth route?')) return;
+    try {
+      const res = await fetch(`/api/admin/berth-routes/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'success');
+        const row = document.getElementById(`admin-broute-row-${id}`);
+        if (row) row.remove();
+      }
+    } catch (err) {
+      showToast('Failed to delete berth route.', 'warning');
+    }
+  };
+
+  window.jumpToBerthLayout = function (coachCode) {
+    switchAdminSection('berth-layouts');
+    const filter = document.getElementById('admin-berth-coach-filter');
+    if (filter) {
+      filter.value = coachCode;
+      filterBerthsByCoach(coachCode);
+    }
+  };
+
+  // ========================================================
+  // 3. VEHICLE BERTH & SEAT CUSTOMIZER (Admin)
+  // ========================================================
+  window.filterBerthsByCoach = function (coachCode) {
+    const rows = document.querySelectorAll('.admin-berth-row');
+    rows.forEach(r => {
+      if (coachCode === 'all' || r.dataset.coach === coachCode) {
+        r.style.display = '';
+      } else {
+        r.style.display = 'none';
+      }
+    });
+  };
+
+  window.openAddBerthModal = function () {
+    document.getElementById('admin-berth-modal-title').textContent = 'Add Custom Berth to Vehicle';
+    document.getElementById('admin-berth-id').value = '';
+    const activeFilter = document.getElementById('admin-berth-coach-filter')?.value;
+    document.getElementById('admin-berth-coach').value = (activeFilter && activeFilter !== 'all') ? activeFilter : '8092';
+    document.getElementById('admin-berth-operator').value = 'Intercity Express';
+    document.getElementById('admin-berth-num').value = '';
+    document.getElementById('admin-berth-deck').value = 'lower';
+    document.getElementById('admin-berth-type').value = 'window';
+    document.getElementById('admin-berth-price').value = '850';
+    document.getElementById('admin-berth-ladies').checked = false;
+    document.getElementById('admin-berth-booked').checked = false;
+
+    const modal = document.getElementById('admin-berth-modal');
+    if (modal) modal.classList.add('active');
+  };
+
+  window.openEditBerthModal = async function (id) {
+    try {
+      const res = await fetch(`/api/admin/berths/${id}`);
+      const data = await res.json();
+      if (!data.success || !data.berth) return;
+
+      const b = data.berth;
+      document.getElementById('admin-berth-modal-title').textContent = `Edit Berth: ${b.berth_number} (Vehicle ${b.coach_code})`;
+      document.getElementById('admin-berth-id').value = b.id;
+      document.getElementById('admin-berth-coach').value = b.coach_code;
+      document.getElementById('admin-berth-operator').value = b.operator_name;
+      document.getElementById('admin-berth-num').value = b.berth_number;
+      document.getElementById('admin-berth-deck').value = b.deck;
+      document.getElementById('admin-berth-type').value = b.berth_type;
+      document.getElementById('admin-berth-price').value = b.price;
+      document.getElementById('admin-berth-ladies').checked = Boolean(b.is_ladies_quota);
+      document.getElementById('admin-berth-booked').checked = Boolean(b.is_booked);
+
+      const modal = document.getElementById('admin-berth-modal');
+      if (modal) modal.classList.add('active');
+    } catch (err) {
+      showToast('Failed to load berth details.', 'warning');
+    }
+  };
+
+  window.saveAdminBerth = async function (e) {
+    e.preventDefault();
+    const id = document.getElementById('admin-berth-id').value;
+    const isEdit = Boolean(id);
+
+    const payload = {
+      coach_code: document.getElementById('admin-berth-coach').value.trim(),
+      operator_name: document.getElementById('admin-berth-operator').value.trim(),
+      deck: document.getElementById('admin-berth-deck').value,
+      berth_number: document.getElementById('admin-berth-num').value.trim().toUpperCase(),
+      berth_type: document.getElementById('admin-berth-type').value,
+      price: parseFloat(document.getElementById('admin-berth-price').value),
+      is_ladies_quota: document.getElementById('admin-berth-ladies').checked,
+      is_booked: document.getElementById('admin-berth-booked').checked,
+    };
+
+    const url = isEdit ? `/api/admin/berths/${id}` : '/api/admin/berths';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    try {
+      const res = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message, 'success');
+        closeModal('admin-berth-modal');
+        setTimeout(() => location.reload(), 600);
+      } else {
+        showToast(data.message || 'Error saving berth configuration.', 'danger');
+      }
+    } catch (err) {
+      showToast('Network error while saving berth.', 'warning');
+    }
+  };
+
+  window.deleteBerth = async function (id) {
+    if (!confirm('Are you sure you want to remove this berth from the vehicle?')) return;
+    try {
+      const res = await fetch(`/api/admin/berths/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'success');
+        const row = document.getElementById(`admin-berth-row-${id}`);
+        if (row) row.remove();
+      }
+    } catch (err) {
+      showToast('Failed to delete berth.', 'warning');
+    }
+  };
+
+  // ========================================================
+  // 4. DRIVER VEHICLE LISTING & FLEET APPROVALS (Admin + Driver)
+  // ========================================================
+  window.openDriverListVehicleModal = function () {
+    const modal = document.getElementById('driver-list-vehicle-modal');
+    if (modal) modal.classList.add('active');
+  };
+
+  window.submitDriverNewVehicle = async function (e) {
+    e.preventDefault();
+    const payload = {
+      vehicle_model: document.getElementById('driver-new-veh-model').value.trim(),
+      vehicle_plate: document.getElementById('driver-new-veh-plate').value.trim().toUpperCase(),
+      fleet_category: document.getElementById('driver-new-veh-category').value,
+      seating_capacity: parseInt(document.getElementById('driver-new-veh-seats').value, 10),
+      berth_capacity: parseInt(document.getElementById('driver-new-veh-berths').value || 0, 10),
+      fuel_type: document.getElementById('driver-new-veh-fuel').value,
+      model_year: document.getElementById('driver-new-veh-year').value.trim(),
+      rc_number: document.getElementById('driver-new-veh-rc').value.trim(),
+    };
+
+    try {
+      const res = await fetch('/api/driver/vehicles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message, 'success');
+        closeModal('driver-list-vehicle-modal');
+        setTimeout(() => location.reload(), 600);
+      } else {
+        showToast(data.message || 'Failed to submit vehicle.', 'danger');
+      }
+    } catch (err) {
+      showToast('Network error while registering vehicle.', 'warning');
+    }
+  };
+
+  window.filterAdminVehicles = function (status) {
+    const rows = document.querySelectorAll('.admin-veh-row');
+    rows.forEach(r => {
+      if (status === 'all' || r.dataset.status === status) {
+        r.style.display = '';
+      } else {
+        r.style.display = 'none';
+      }
+    });
+  };
+
+  window.reloadAdminVehicles = function () {
+    location.reload();
+  };
+
+  window.openEditVehicleModal = async function (id) {
+    window.currentEditingVehicleId = id;
+    try {
+      const res = await fetch(`/api/admin/vehicles/${id}`);
+      const data = await res.json();
+      if (!data.success || !data.vehicle) return;
+
+      const v = data.vehicle;
+      document.getElementById('admin-veh-id').value = v.id;
+      document.getElementById('admin-veh-driver-name').value = v.driver_name;
+      document.getElementById('admin-veh-driver-phone').value = v.driver_phone;
+      document.getElementById('admin-veh-model').value = v.vehicle_model;
+      document.getElementById('admin-veh-plate').value = v.vehicle_plate;
+      document.getElementById('admin-veh-category').value = v.fleet_category;
+      document.getElementById('admin-veh-seats').value = v.seating_capacity;
+      document.getElementById('admin-veh-berths').value = v.berth_capacity;
+      document.getElementById('admin-veh-coach').value = v.coach_code || '';
+      document.getElementById('admin-veh-fuel').value = v.fuel_type || 'Diesel';
+      document.getElementById('admin-veh-year').value = v.model_year || '2023';
+      document.getElementById('admin-veh-rc').value = v.rc_number || '';
+      document.getElementById('admin-veh-status').value = v.status;
+      document.getElementById('admin-veh-notes').value = v.admin_notes || '';
+      document.getElementById('admin-veh-active').checked = Boolean(v.is_active);
+
+      const modal = document.getElementById('admin-vehicle-modal');
+      if (modal) modal.classList.add('active');
+    } catch (err) {
+      showToast('Failed to load vehicle details.', 'warning');
+    }
+  };
+
+  window.saveAdminVehicle = async function (e) {
+    e.preventDefault();
+    const id = document.getElementById('admin-veh-id').value;
+    const payload = {
+      driver_name: document.getElementById('admin-veh-driver-name').value.trim(),
+      driver_phone: document.getElementById('admin-veh-driver-phone').value.trim(),
+      vehicle_model: document.getElementById('admin-veh-model').value.trim(),
+      vehicle_plate: document.getElementById('admin-veh-plate').value.trim().toUpperCase(),
+      fleet_category: document.getElementById('admin-veh-category').value,
+      seating_capacity: parseInt(document.getElementById('admin-veh-seats').value, 10),
+      berth_capacity: parseInt(document.getElementById('admin-veh-berths').value || 0, 10),
+      coach_code: document.getElementById('admin-veh-coach').value.trim() || null,
+      fuel_type: document.getElementById('admin-veh-fuel').value,
+      model_year: document.getElementById('admin-veh-year').value.trim(),
+      rc_number: document.getElementById('admin-veh-rc').value.trim() || null,
+      status: document.getElementById('admin-veh-status').value,
+      admin_notes: document.getElementById('admin-veh-notes').value.trim() || null,
+      is_active: document.getElementById('admin-veh-active').checked,
+    };
+
+    try {
+      const res = await fetch(`/api/admin/vehicles/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message, 'success');
+        closeModal('admin-vehicle-modal');
+        setTimeout(() => location.reload(), 600);
+      } else {
+        showToast(data.message || 'Failed to update vehicle.', 'danger');
+      }
+    } catch (err) {
+      showToast('Network error while saving vehicle.', 'warning');
+    }
+  };
+
+  window.approveDriverVehicle = async function (id) {
+    if (!confirm('Approve this driver vehicle and activate for outstation dispatch?')) return;
+    try {
+      const res = await fetch(`/api/admin/vehicles/${id}/approve`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'success');
+        setTimeout(() => location.reload(), 500);
+      }
+    } catch (err) {
+      showToast('Failed to approve vehicle.', 'warning');
+    }
+  };
+
+  window.rejectDriverVehicle = async function (id) {
+    const reason = prompt('Please specify the reason for rejection (e.g. Invalid RC or expired fitness certificate):', 'Expired commercial taxi fitness certificate');
+    if (!reason) return;
+
+    try {
+      const res = await fetch(`/api/admin/vehicles/${id}/reject`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        },
+        body: JSON.stringify({ admin_notes: reason })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'info');
+        setTimeout(() => location.reload(), 500);
+      }
+    } catch (err) {
+      showToast('Failed to reject vehicle.', 'warning');
+    }
+  };
+
+  window.deleteVehicle = async function (id) {
+    if (!confirm('Are you sure you want to permanently delete this vehicle record?')) return;
+    try {
+      const res = await fetch(`/api/admin/vehicles/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'success');
+        const row = document.getElementById(`admin-veh-row-${id}`);
+        if (row) row.remove();
+      }
+    } catch (err) {
+      showToast('Failed to delete vehicle.', 'warning');
+    }
+  };
+
+  window.deleteVehicleFromModal = function () {
+    if (window.currentEditingVehicleId) {
+      closeModal('admin-vehicle-modal');
+      deleteVehicle(window.currentEditingVehicleId);
+    }
+  };
+
+  window.handleLocationSearch = function (query) {
+    const q = (query || '').toLowerCase().trim();
+    const rows = document.querySelectorAll('#admin-locations-tbody tr');
+    rows.forEach(row => {
+      const searchData = row.getAttribute('data-search') || row.innerText || '';
+      if (!q || searchData.toLowerCase().includes(q)) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  };
+
+  window.openTicketModal = async function (reference) {
+    let b = (state.bookings || []).find(item => item.id === reference || item.booking_reference === reference);
+    if (!b) {
+      try {
+        const res = await fetch(`/api/bookings/${reference}`);
+        const data = await res.json();
+        if (data && data.success && data.booking) {
+          const dbBooking = data.booking;
+          b = {
+            id: dbBooking.booking_reference,
+            route: `${dbBooking.pickup_city || ''} → ${dbBooking.drop_city || ''}`,
+            operator: dbBooking.driver ? `${dbBooking.driver.name} (${dbBooking.driver.vehicle_model || 'Cab'})` : (dbBooking.service_type === 'berth' ? 'Intercity Sleeper Bus' : 'Intercity Verified Cab'),
+            berths: (dbBooking.seat_numbers && Array.isArray(dbBooking.seat_numbers) && dbBooking.seat_numbers.length) ? dbBooking.seat_numbers : [dbBooking.fleet_category ? dbBooking.fleet_category.toUpperCase() : 'Cab'],
+            amount: Number(dbBooking.total_amount || 0),
+            otp: dbBooking.start_otp || '----'
+          };
+        }
+      } catch (err) {
+        console.error('Failed to fetch ticket info:', err);
+      }
+    }
+    if (b) {
+      showTicketModal(b);
+    } else {
+      showToast('Booking ticket details not found.', 'warning');
+    }
+  };
+
+  window.updatePolicyPreview = function () {
+    const privUrl = document.getElementById('setting-privacy-url')?.value.trim() || '/privacy-policy';
+    const termsUrl = document.getElementById('setting-terms-url')?.value.trim() || '/terms-conditions';
+
+    const privPreview = document.getElementById('preview-link-privacy');
+    const termsPreview = document.getElementById('preview-link-terms');
+    if (privPreview) privPreview.href = privUrl;
+    if (termsPreview) termsPreview.href = termsUrl;
+
+    const loginPriv = document.getElementById('login-link-privacy');
+    const loginTerms = document.getElementById('login-link-terms');
+    if (loginPriv) loginPriv.href = privUrl;
+    if (loginTerms) loginTerms.href = termsUrl;
+  };
+
+  window.saveAdminPolicyUrls = async function (e) {
+    if (e && e.preventDefault) e.preventDefault();
+
+    const privUrl = document.getElementById('setting-privacy-url')?.value.trim() || '/privacy-policy';
+    const termsUrl = document.getElementById('setting-terms-url')?.value.trim() || '/terms-conditions';
+
+    try {
+      const res = await fetch('/api/admin/settings/policy-urls', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        },
+        body: JSON.stringify({
+          privacy_policy_url: privUrl,
+          terms_conditions_url: termsUrl
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || 'Legal & Policy URLs updated successfully!', 'success');
+        updatePolicyPreview();
+      } else {
+        showToast(data.message || 'Failed to update policy URLs.', 'danger');
+      }
+    } catch (err) {
+      console.error('Save policy error:', err);
+      showToast('Network error while saving policy URLs.', 'warning');
     }
   };

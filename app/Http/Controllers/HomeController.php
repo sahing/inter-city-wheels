@@ -10,6 +10,9 @@ use App\Models\DynamicFormField;
 use App\Models\WorkflowStage;
 use App\Models\Coupon;
 use App\Models\Booking;
+use App\Models\ServiceLocation;
+use App\Models\BerthRoute;
+use App\Models\DriverVehicle;
 
 class HomeController extends Controller
 {
@@ -26,6 +29,16 @@ class HomeController extends Controller
         $allDrivers = Driver::all();
         $allUsers = \App\Models\User::latest()->get();
         $currentUser = auth()->user();
+
+        // Admin Datasets for Locations, Berth Routes, Berth Layouts & Vehicles
+        $serviceLocations = ServiceLocation::orderBy('name')->get();
+        $berthRoutes = BerthRoute::with('seatLayouts')->latest()->get();
+        $allSeatLayouts = SeatLayout::orderBy('coach_code')->orderBy('deck')->orderBy('berth_number')->get();
+        $driverVehicles = DriverVehicle::with('driver')->latest()->get();
+        $platformSettings = [
+            'privacy_policy_url' => \App\Models\PlatformSetting::get('privacy_policy_url', '/privacy-policy'),
+            'terms_conditions_url' => \App\Models\PlatformSetting::get('terms_conditions_url', '/terms-conditions'),
+        ];
 
         // Role-Specific Datasets
         $customerBookings = collect();
@@ -45,10 +58,20 @@ class HomeController extends Controller
 
         $driverProfile = null;
         $driverTrips = collect();
+        $driverMyVehicles = collect();
         if ($currentUser && $currentUser->role === 'driver') {
             $driverProfile = Driver::where('phone', $currentUser->phone)
                 ->orWhere('name', 'like', '%' . explode(' ', $currentUser->name)[0] . '%')
                 ->first() ?: Driver::first();
+
+            $driverMyVehicles = DriverVehicle::where('driver_phone', $currentUser->phone)
+                ->orWhere('driver_name', 'like', '%' . explode(' ', $currentUser->name)[0] . '%')
+                ->latest()
+                ->get();
+
+            if ($driverMyVehicles->isEmpty() && $driverProfile) {
+                $driverMyVehicles = DriverVehicle::where('driver_id', $driverProfile->id)->latest()->get();
+            }
 
             if ($driverProfile) {
                 $driverTrips = Booking::with('driver')
@@ -83,7 +106,13 @@ class HomeController extends Controller
             'customerBookings',
             'driverProfile',
             'driverTrips',
-            'allUsers'
+            'allUsers',
+            'serviceLocations',
+            'berthRoutes',
+            'allSeatLayouts',
+            'driverVehicles',
+            'driverMyVehicles',
+            'platformSettings'
         ));
     }
 }

@@ -17,11 +17,17 @@ class BookingController extends Controller
             'service_type' => 'required|in:cab,bus',
             'trip_type' => 'nullable|string',
             'from_city' => 'required|string',
-            'to_city' => 'required|string',
+            'to_city' => 'nullable|string',
             'pickup_location' => 'required|string',
-            'drop_location' => 'required|string',
+            'drop_location' => 'nullable|string',
             'customer_name' => 'required|string|max:120',
             'customer_phone' => 'required|string|max:20',
+            'customer_email' => 'nullable|email',
+            'departure_time' => 'nullable|string',
+            'return_time' => 'nullable|string',
+            'local_package' => 'nullable|string',
+            'airport_type' => 'nullable|string',
+            'flight_number' => 'nullable|string',
             'passengers' => 'nullable|array',
             'selected_units' => 'nullable|array',
             'fleet_category' => 'nullable|string',
@@ -32,29 +38,53 @@ class BookingController extends Controller
             'dynamic_fields' => 'nullable|array'
         ]);
 
+        $tripType = $validated['trip_type'] ?? 'oneway';
+        $toCity = $validated['to_city'] ?? ($tripType === 'local' ? ($validated['from_city'] . ' Local') : 'Destination');
+        $dropLocation = $validated['drop_location'] ?? ($tripType === 'local' ? 'Local City Sightseeing & Transit' : 'Drop Address');
+
         $route = RouteFare::where('from_city', $validated['from_city'])
-            ->where('to_city', $validated['to_city'])
+            ->where('to_city', $toCity)
             ->first();
 
         $distance = $route ? $route->distance_km : 450;
         $baseToll = ($request->boolean('include_tolls') && $route) ? $route->base_toll : 0;
 
         $rates = [
+            'hatchback' => 11.0,
             'sedan' => 12.5,
             'prime' => 15.0,
             'suv' => 18.0,
+            'innova' => 22.0,
+            'tempo' => 28.0,
             'luxury' => 32.0
         ];
 
-        $fleet = $validated['fleet_category'] ?? 'suv';
+        $fleet = strtolower($validated['fleet_category'] ?? 'suv');
         $ratePerKm = $rates[$fleet] ?? 18.0;
 
         $baseFare = 0;
         if ($validated['service_type'] === 'cab') {
-            $baseFare = round($distance * $ratePerKm);
-            if ($validated['trip_type'] === 'roundtrip') {
-                $baseFare *= 2;
-                $baseToll *= 1.8;
+            if ($tripType === 'local') {
+                $pkg = $validated['local_package'] ?? '8_80';
+                $pkgMultipliers = [
+                    '4_40' => 40 * 1.8,
+                    '8_80' => 80 * 1.7,
+                    '10_100' => 100 * 1.65,
+                    '12_120' => 120 * 1.6,
+                ];
+                $kmEquivalent = $pkgMultipliers[$pkg] ?? (80 * 1.7);
+                $baseFare = round($kmEquivalent * $ratePerKm);
+                $baseToll = 0; // Local trips typically do not include highway tolls
+            } elseif ($tripType === 'airport') {
+                $airportDist = $route ? $route->distance_km : 45;
+                $baseFare = round($airportDist * $ratePerKm);
+                $baseToll = $request->boolean('include_tolls') ? 120 : 0; // Airport toll & parking
+            } else {
+                $baseFare = round($distance * $ratePerKm);
+                if ($tripType === 'roundtrip') {
+                    $baseFare *= 2;
+                    $baseToll *= 1.8;
+                }
             }
         } else {
             // Bus calculation
@@ -88,12 +118,13 @@ class BookingController extends Controller
         $booking = Booking::create([
             'booking_reference' => $bookingRef,
             'service_type' => $validated['service_type'],
-            'trip_type' => $validated['trip_type'] ?? 'oneway',
-            'route_summary' => "{$validated['from_city']} → {$validated['to_city']}",
+            'trip_type' => $tripType,
+            'route_summary' => "{$validated['from_city']} → {$toCity}",
             'pickup_location' => $validated['pickup_location'],
-            'drop_location' => $validated['drop_location'],
+            'drop_location' => $dropLocation,
             'customer_name' => $validated['customer_name'],
             'customer_phone' => $validated['customer_phone'],
+            'customer_email' => $validated['customer_email'] ?? null,
             'passengers' => $validated['passengers'] ?? [],
             'selected_units' => $validated['selected_units'] ?? [$fleet],
             'base_fare' => $baseFare,
@@ -115,7 +146,7 @@ class BookingController extends Controller
 
     public function show($reference)
     {
-        $booking = Booking::where('booking_reference', $reference)->firstOrFail();
+        $booking = Booking::with('driver')->where('booking_reference', $reference)->firstOrFail();
         return response()->json([
             'success' => true,
             'booking' => $booking

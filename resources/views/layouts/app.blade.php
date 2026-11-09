@@ -26,7 +26,7 @@
     $defaultTab = match($userRole) {
         'admin' => 'admin',
         'driver' => 'bidding',
-        default => 'schedules'
+        default => 'cabs'
     };
 @endphp
 <body class="{{ $defaultTab === 'admin' ? 'role-admin-mode admin-active-view' : '' }}">
@@ -35,8 +35,8 @@
     <div class="top-notice-bar">
         <div class="notice-container">
             <div class="notice-left">
-                <span class="notice-tag">LARAVEL 12 BACKEND</span>
-                <span>⚡ Verified Outstation Cabs, Luxury Sleeper Berths & Driver Bidding</span>
+                <span class="notice-tag">Intercity Wheels Pvt. Ltd.</span>
+                <span>⚡ Verified Outstation Cabs, Luxury Sleeper Berths available</span>
             </div>
             <div class="notice-right">
                 <span style="display:flex; align-items:center; gap:4px; font-weight:600; color:#f5d061;">
@@ -54,7 +54,7 @@
     <header class="main-header">
         <div class="header-container">
             <!-- Brand Logo & Tagline -->
-            <a class="brand-link" onclick="switchTab('schedules')">
+            <a class="brand-link" onclick="switchTab('cabs')" style="cursor:pointer;">
                 <img src="{{ asset('assets/logo.jpg') }}" alt="Intercity Wheels Logo" class="brand-logo-img">
                 <div class="brand-fallback-title">
                     <span class="brand-name">INTERCITY WHEELS</span>
@@ -269,10 +269,18 @@
                         <span class="material-symbols-outlined" style="font-size:18px;">lock_open</span>
                         <span id="login-submit-label">Sign In as Customer</span>
                     </button>
+
+                    <!-- Terms & Privacy Policy Legal Agreement Notice -->
+                    <div class="login-terms-notice" style="text-align:center; font-size:11px; color:#64748b; margin-top:12px; line-height:1.4;">
+                        By proceeding, you agree to 
+                        <a href="{{ $platformSettings['privacy_policy_url'] ?? '/privacy-policy' }}" id="login-link-privacy" target="_blank" style="color:var(--primary); font-weight:600; text-decoration:underline;">Privacy Policy</a> 
+                        and 
+                        <a href="{{ $platformSettings['terms_conditions_url'] ?? '/terms-conditions' }}" id="login-link-terms" target="_blank" style="color:var(--primary); font-weight:600; text-decoration:underline;">T&Cs</a>.
+                    </div>
                 </form>
 
                 <!-- One-Click Quick Role Switchers -->
-                <div class="demo-login-drawer">
+                <!-- <div class="demo-login-drawer">
                     <div class="demo-login-divider">
                         <span>⚡ One-Click Instant Role Demo</span>
                     </div>
@@ -290,7 +298,7 @@
                             <span class="demo-label">Platform Admin</span>
                         </button>
                     </div>
-                </div>
+                </div> -->
             </div>
         </div>
     </div>

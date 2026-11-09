@@ -33,6 +33,37 @@ class DriverBiddingController extends Controller
         ]);
     }
 
+    public function submitDriverBid(Request $request)
+    {
+        $validated = $request->validate([
+            'trip_id' => 'required|string',
+            'from_location' => 'required|string',
+            'to_location' => 'required|string',
+            'distance_km' => 'required|numeric',
+            'bid_amount' => 'required|numeric|min:100',
+            'driver_id' => 'nullable|exists:drivers,id',
+            'notes' => 'nullable|string'
+        ]);
+
+        $currentUser = auth()->user();
+        $driverName = $currentUser ? $currentUser->name : 'Verified Chauffeur';
+        $conclusiveStatement = "I will take and do this ride from {$validated['from_location']} to {$validated['to_location']} ({$validated['distance_km']} km) at this price: ₹" . number_format($validated['bid_amount']) . ". I accept this.";
+
+        return response()->json([
+            'success' => true,
+            'message' => "Binding bid of ₹" . number_format($validated['bid_amount']) . " submitted! {$conclusiveStatement}",
+            'bid' => [
+                'trip_id' => $validated['trip_id'],
+                'from_location' => $validated['from_location'],
+                'to_location' => $validated['to_location'],
+                'distance_km' => (float) $validated['distance_km'],
+                'bid_amount' => (float) $validated['bid_amount'],
+                'conclusive_statement' => $conclusiveStatement,
+                'status' => 'Bid Placed & Accepted'
+            ]
+        ]);
+    }
+
     public function acceptBid(Request $request)
     {
         $validated = $request->validate([

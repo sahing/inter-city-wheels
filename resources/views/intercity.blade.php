@@ -6,373 +6,602 @@
     $defaultTab = match($userRole) {
         'admin' => 'admin',
         'driver' => 'bidding',
-        default => 'schedules'
+        default => 'cabs'
     };
 @endphp
 <main id="app-viewport" class="app-viewport" style="width:100%; max-width:100%; margin:0; padding:0;">
 
         <!-- ======================================================== -->
-        <!-- TAB 1: OUTSTATION CABS (SIMPLIFIED 3-STEP SCREEN FLOW)   -->
+        <!-- TAB 1: OUTSTATION CABS (REDESIGNED LUXURY CAR RENTAL)    -->
         <!-- ======================================================== -->
-        <section id="tab-cabs" class="tab-pane {{ $defaultTab === 'cabs' ? 'active' : '' }}">
-            <div class="hero-banner animate-load stagger-1">
-                <h1 class="hero-title">Outstation Mobility, <span class="gold-text">Simplified</span></h1>
-                <p class="hero-subtitle">Sanitized cabs, top-tier chauffeurs, zero hidden cancellation fees, and toll-inclusive highway pricing.</p>
-                <div class="hero-chips">
-                    <span class="hero-chip"><span class="material-symbols-outlined">verified</span> Verified Chauffeurs</span>
-                    <span class="hero-chip"><span class="material-symbols-outlined">toll</span> Tolls Included</span>
-                    <span class="hero-chip"><span class="material-symbols-outlined">pets</span> Pet-Friendly</span>
-                    <span class="hero-chip"><span class="material-symbols-outlined">lock</span> 4-Digit Ride OTP</span>
+        <section id="tab-cabs" class="tab-pane {{ $defaultTab === 'cabs' ? 'active' : '' }}" style="width:100%; max-width:100%; margin:0; padding:0;">
+            <!-- Autocomplete Suggestions Datalist -->
+            <datalist id="cities-datalist">
+                @foreach($serviceLocations as $loc)
+                    <option value="{{ $loc->name }}, {{ $loc->state }}">{{ $loc->name }}</option>
+                @endforeach
+                <option value="Kolkata, West Bengal">Kolkata</option>
+                <option value="Mayapur, West Bengal">Mayapur (ISKCON)</option>
+                <option value="Baharampur, West Bengal (Murshidabad)">Baharampur</option>
+                <option value="Murshidabad, West Bengal (Heritage City)">Murshidabad</option>
+                <option value="Jangipur, West Bengal (Murshidabad)">Jangipur</option>
+                <option value="Farakka, West Bengal (Murshidabad)">Farakka</option>
+                <option value="Kandi, West Bengal (Murshidabad)">Kandi</option>
+                <option value="Siliguri, West Bengal">Siliguri</option>
+                <option value="Durgapur, West Bengal">Durgapur</option>
+                <option value="Pune, Maharashtra">Pune</option>
+                <option value="Mumbai, Maharashtra">Mumbai</option>
+                <option value="Goa (Panjim / Airport)">Goa</option>
+                <option value="Bengaluru, Karnataka">Bengaluru</option>
+                <option value="Hyderabad, Telangana">Hyderabad</option>
+                <option value="New Delhi, Delhi NCR">New Delhi</option>
+                <option value="Jaipur, Rajasthan">Jaipur</option>
+                <option value="Chennai, Tamil Nadu">Chennai</option>
+            </datalist>
+
+            <!-- ======================================================== -->
+            <!-- 1. HOMEPAGE HERO SECTION                                 -->
+            <!-- ======================================================== -->
+            <div class="rental-hero-container">
+                <!-- Main Bold Uppercase Heading -->
+                <h1 class="rental-hero-title">SERVICES ACROSS 2000+ CITIES</h1>
+                <p class="rental-hero-subtitle">India's Trusted Car Rental & Outstation Travel Partner.</p>
+
+                <!-- Centered White Booking Panel -->
+                <div class="rental-booking-card" id="cab-step-1">
+                    <!-- Booking Type Tabs at Top Center -->
+                    <div class="rental-tabs-wrapper">
+                        <div class="rental-type-tabs">
+                            <button type="button" class="rental-type-tab active" data-type="oneway" onclick="switchRentalTab('oneway')">ONE WAY</button>
+                            <button type="button" class="rental-type-tab" data-type="roundtrip" onclick="switchRentalTab('roundtrip')">ROUND TRIP</button>
+                            <button type="button" class="rental-type-tab" data-type="local" onclick="switchRentalTab('local')">LOCAL</button>
+                            <button type="button" class="rental-type-tab" data-type="airport" onclick="switchRentalTab('airport')">AIRPORT</button>
+                        </div>
+                    </div>
+
+                    <!-- Hidden legacy inputs for backward compatibility -->
+                    <select id="cab-from-city" style="display:none;">
+                        @foreach($serviceLocations as $loc)
+                            <option value="{{ strtolower($loc->name) }}" {{ strtolower($loc->name) === 'kolkata' ? 'selected' : '' }}>{{ $loc->name }}</option>
+                        @endforeach
+                        <option value="kolkata" selected>Kolkata</option>
+                        <option value="mayapur">Mayapur</option>
+                        <option value="pune">Pune</option>
+                        <option value="goa">Goa</option>
+                        <option value="mumbai">Mumbai</option>
+                    </select>
+                    <select id="cab-to-city" style="display:none;">
+                        @foreach($serviceLocations as $loc)
+                            <option value="{{ strtolower($loc->name) }}" {{ strtolower($loc->name) === 'mayapur' ? 'selected' : '' }}>{{ $loc->name }}</option>
+                        @endforeach
+                        <option value="mayapur" selected>Mayapur</option>
+                        <option value="kolkata">Kolkata</option>
+                        <option value="goa">Goa</option>
+                        <option value="pune">Pune</option>
+                    </select>
+
+                    <!-- TAB A: ONE WAY -->
+                    <div id="rental-form-oneway" class="rental-tab-panel">
+                        <div class="rental-form-grid">
+                            <!-- FROM -->
+                            <div class="rental-field-box">
+                                <label class="rental-field-label" for="rental-from-city">FROM</label>
+                                <div class="rental-input-wrap">
+                                    <span class="material-symbols-outlined rental-input-icon">search</span>
+                                    <input type="text" id="rental-from-city" class="rental-input" list="cities-datalist" value="Kolkata" placeholder="Pickup City / Area" onchange="syncRentalFromCity(this.value)">
+                                </div>
+                            </div>
+
+                            <!-- Swap Button -->
+                            <button type="button" id="cab-swap-cities-btn" class="rental-swap-btn" title="Swap Route Direction" onclick="swapRentalCities()">
+                                <span class="material-symbols-outlined" style="font-size:20px;">swap_horiz</span>
+                            </button>
+
+                            <!-- TO -->
+                            <div class="rental-field-box">
+                                <label class="rental-field-label" for="rental-to-city">TO</label>
+                                <div class="rental-input-wrap">
+                                    <span class="material-symbols-outlined rental-input-icon">search</span>
+                                    <input type="text" id="rental-to-city" class="rental-input" list="cities-datalist" value="Mayapur, West Bengal" placeholder="Destination City / Area" onchange="syncRentalToCity(this.value)">
+                                    <button type="button" class="rental-add-stop-btn" title="Add Stop / Multi-City" onclick="showToast('Multi-city stopovers supported for round trips and customized routes.', 'info')">
+                                        <span class="material-symbols-outlined" style="font-size:18px;">add_circle</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- PICK UP DATE -->
+                            <div class="rental-field-box" style="max-width:220px;">
+                                <label class="rental-field-label" for="rental-pickup-date">PICK UP DATE</label>
+                                <div class="rental-input-wrap">
+                                    <input type="date" id="rental-pickup-date" class="rental-input" value="{{ date('Y-m-d', strtotime('+1 day')) }}" onchange="syncRentalDate(this.value)">
+                                    <span class="material-symbols-outlined rental-chevron">expand_more</span>
+                                </div>
+                            </div>
+
+                            <!-- PICK UP TIME -->
+                            <div class="rental-field-box" style="max-width:200px;">
+                                <label class="rental-field-label" for="rental-pickup-time">PICK UP TIME</label>
+                                <div class="rental-input-wrap">
+                                    <select id="rental-pickup-time" class="rental-select" onchange="syncRentalTime(this.value)">
+                                        <option value="12:15 AM" selected>12:15 AM</option>
+                                        <option value="04:00 AM">04:00 AM</option>
+                                        <option value="06:00 AM">06:00 AM</option>
+                                        <option value="08:30 AM">08:30 AM</option>
+                                        <option value="10:00 AM">10:00 AM</option>
+                                        <option value="12:00 PM">12:00 PM</option>
+                                        <option value="02:30 PM">02:30 PM</option>
+                                        <option value="05:00 PM">05:00 PM</option>
+                                        <option value="07:30 PM">07:30 PM</option>
+                                        <option value="10:00 PM">10:00 PM</option>
+                                    </select>
+                                    <span class="material-symbols-outlined rental-chevron">expand_more</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB B: ROUND TRIP -->
+                    <div id="rental-form-roundtrip" class="rental-tab-panel" style="display:none;">
+                        <div class="rental-form-grid">
+                            <div class="rental-field-box">
+                                <label class="rental-field-label">FROM</label>
+                                <div class="rental-input-wrap">
+                                    <span class="material-symbols-outlined rental-input-icon">search</span>
+                                    <input type="text" id="rental-rt-from" class="rental-input" list="cities-datalist" value="Kolkata" placeholder="Pickup City">
+                                </div>
+                            </div>
+                            <div class="rental-field-box">
+                                <label class="rental-field-label">TO</label>
+                                <div class="rental-input-wrap">
+                                    <span class="material-symbols-outlined rental-input-icon">search</span>
+                                    <input type="text" id="rental-rt-to" class="rental-input" list="cities-datalist" value="Mayapur, West Bengal" placeholder="Destination City">
+                                </div>
+                            </div>
+                            <div class="rental-field-box" style="max-width:180px;">
+                                <label class="rental-field-label">PICK UP DATE</label>
+                                <div class="rental-input-wrap">
+                                    <input type="date" id="rental-rt-pickup-date" class="rental-input" value="{{ date('Y-m-d', strtotime('+1 day')) }}" onchange="calculateTripDuration()">
+                                    <span class="material-symbols-outlined rental-chevron">expand_more</span>
+                                </div>
+                            </div>
+                            <div class="rental-field-box" style="max-width:150px;">
+                                <label class="rental-field-label">PICK UP TIME</label>
+                                <div class="rental-input-wrap">
+                                    <select id="rental-rt-pickup-time" class="rental-select">
+                                        <option value="06:00 AM" selected>06:00 AM</option>
+                                        <option value="09:00 AM">09:00 AM</option>
+                                        <option value="12:00 PM">12:00 PM</option>
+                                        <option value="03:00 PM">03:00 PM</option>
+                                    </select>
+                                    <span class="material-symbols-outlined rental-chevron">expand_more</span>
+                                </div>
+                            </div>
+                            <div class="rental-field-box" style="max-width:180px;">
+                                <label class="rental-field-label">RETURN DATE</label>
+                                <div class="rental-input-wrap">
+                                    <input type="date" id="rental-rt-return-date" class="rental-input" value="{{ date('Y-m-d', strtotime('+3 days')) }}" onchange="calculateTripDuration()">
+                                    <span class="material-symbols-outlined rental-chevron">expand_more</span>
+                                </div>
+                            </div>
+                            <div class="rental-field-box" style="max-width:150px;">
+                                <label class="rental-field-label">RETURN TIME</label>
+                                <div class="rental-input-wrap">
+                                    <select id="rental-rt-return-time" class="rental-select">
+                                        <option value="08:00 PM" selected>08:00 PM</option>
+                                        <option value="05:00 PM">05:00 PM</option>
+                                        <option value="10:00 PM">10:00 PM</option>
+                                    </select>
+                                    <span class="material-symbols-outlined rental-chevron">expand_more</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+                            <span id="rental-rt-duration-pill" style="font-size:12px; font-weight:700; color:#0284c7; background:#e0f2fe; padding:3px 10px; border-radius:12px;">Trip Duration: 2 Days</span>
+                        </div>
+                    </div>
+
+                    <!-- TAB C: LOCAL HOURLY RENTAL -->
+                    <div id="rental-form-local" class="rental-tab-panel" style="display:none;">
+                        <div class="rental-form-grid">
+                            <div class="rental-field-box">
+                                <label class="rental-field-label">CITY</label>
+                                <div class="rental-input-wrap">
+                                    <span class="material-symbols-outlined rental-input-icon">location_city</span>
+                                    <input type="text" id="rental-local-city" class="rental-input" list="cities-datalist" value="Kolkata" placeholder="Select City">
+                                </div>
+                            </div>
+                            <div class="rental-field-box" style="max-width:200px;">
+                                <label class="rental-field-label">PICK UP DATE</label>
+                                <div class="rental-input-wrap">
+                                    <input type="date" id="rental-local-date" class="rental-input" value="{{ date('Y-m-d', strtotime('+1 day')) }}">
+                                    <span class="material-symbols-outlined rental-chevron">expand_more</span>
+                                </div>
+                            </div>
+                            <div class="rental-field-box" style="max-width:180px;">
+                                <label class="rental-field-label">PICK UP TIME</label>
+                                <div class="rental-input-wrap">
+                                    <select id="rental-local-time" class="rental-select">
+                                        <option value="09:00 AM" selected>09:00 AM</option>
+                                        <option value="10:00 AM">10:00 AM</option>
+                                        <option value="01:00 PM">01:00 PM</option>
+                                        <option value="04:00 PM">04:00 PM</option>
+                                    </select>
+                                    <span class="material-symbols-outlined rental-chevron">expand_more</span>
+                                </div>
+                            </div>
+                            <div class="rental-field-box">
+                                <label class="rental-field-label">DURATION / PACKAGE</label>
+                                <div class="rental-input-wrap">
+                                    <select id="rental-local-package" class="rental-select">
+                                        <option value="4_40">4 Hours / 40 KM</option>
+                                        <option value="8_80" selected>8 Hours / 80 KM (Most Popular)</option>
+                                        <option value="10_100">10 Hours / 100 KM (Full Day)</option>
+                                        <option value="12_120">12 Hours / 120 KM (Extended)</option>
+                                    </select>
+                                    <span class="material-symbols-outlined rental-chevron">expand_more</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB D: AIRPORT TRANSFER -->
+                    <div id="rental-form-airport" class="rental-tab-panel" style="display:none;">
+                        <div style="display:flex; gap:16px; margin-bottom:14px;">
+                            <label style="display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color:#0f172a; cursor:pointer;">
+                                <input type="radio" name="airport_direction" value="pickup" checked onchange="toggleAirportDirection('pickup')">
+                                <span>Pickup from Airport</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color:#0f172a; cursor:pointer;">
+                                <input type="radio" name="airport_direction" value="drop" onchange="toggleAirportDirection('drop')">
+                                <span>Drop to Airport</span>
+                            </label>
+                        </div>
+                        <div class="rental-form-grid">
+                            <div class="rental-field-box">
+                                <label class="rental-field-label" id="rental-airport-label-1">AIRPORT / TERMINAL</label>
+                                <div class="rental-input-wrap">
+                                    <span class="material-symbols-outlined rental-input-icon">flight</span>
+                                    <input type="text" id="rental-airport-name" class="rental-input" value="Netaji Subhash Chandra Bose Intl (CCU), Kolkata" placeholder="Enter Airport / Terminal">
+                                </div>
+                            </div>
+                            <div class="rental-field-box">
+                                <label class="rental-field-label" id="rental-airport-label-2">DESTINATION ADDRESS</label>
+                                <div class="rental-input-wrap">
+                                    <span class="material-symbols-outlined rental-input-icon">pin_drop</span>
+                                    <input type="text" id="rental-airport-address" class="rental-input" value="Salt Lake Sector V, Kolkata" placeholder="Enter City Area / Hotel / Landmark">
+                                </div>
+                            </div>
+                            <div class="rental-field-box" style="max-width:180px;">
+                                <label class="rental-field-label">DATE</label>
+                                <div class="rental-input-wrap">
+                                    <input type="date" id="rental-airport-date" class="rental-input" value="{{ date('Y-m-d', strtotime('+1 day')) }}">
+                                    <span class="material-symbols-outlined rental-chevron">expand_more</span>
+                                </div>
+                            </div>
+                            <div class="rental-field-box" style="max-width:150px;">
+                                <label class="rental-field-label">TIME</label>
+                                <div class="rental-input-wrap">
+                                    <select id="rental-airport-time" class="rental-select">
+                                        <option value="12:15 AM">12:15 AM</option>
+                                        <option value="06:00 AM">06:00 AM</option>
+                                        <option value="11:30 AM" selected>11:30 AM</option>
+                                        <option value="04:00 PM">04:00 PM</option>
+                                        <option value="08:45 PM">08:45 PM</option>
+                                    </select>
+                                    <span class="material-symbols-outlined rental-chevron">expand_more</span>
+                                </div>
+                            </div>
+                            <div class="rental-field-box" style="max-width:160px;">
+                                <label class="rental-field-label">FLIGHT NO. (OPTIONAL)</label>
+                                <div class="rental-input-wrap">
+                                    <input type="text" id="rental-airport-flight" class="rental-input" placeholder="e.g. 6E-204" style="text-transform:uppercase;">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Hidden Date & Time inputs for test backward compatibility -->
+                    <input type="hidden" id="cab-pickup-date" value="{{ date('Y-m-d', strtotime('+1 day')) }}">
+                    <input type="hidden" id="cab-pickup-time" value="12:15">
+                    <input type="hidden" id="cab-return-date" value="{{ date('Y-m-d', strtotime('+3 days')) }}">
+                    <input type="hidden" id="cab-return-time" value="17:00">
+
+                    <!-- Instant Highway Route Insight Strip (Required by Automated Tests) -->
+                    <div class="cab-route-insight-strip" style="margin-top:14px; background:#0f172a; border-radius:8px; padding:10px 16px; color:#ffffff; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span class="material-symbols-outlined" style="color:#20A9D2; font-size:18px;">alt_route</span>
+                            <span><strong id="step1-route-name">Kolkata → Mayapur, West Bengal</strong></span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:16px; font-size:12px;">
+                            <span><strong id="step1-dist" style="color:#f8fafc;">132 km</strong> (<span id="step1-time">3h 30m</span>)</span>
+                            <span>Highway Tolls: <strong id="step1-toll" style="color:#20A9D2;">₹120 Included</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- CTA Explore Cabs Button -->
+                    <div class="rental-cta-container">
+                        <button type="button" id="btn-explore-cabs" class="btn-explore-cabs" onclick="exploreCabs()">
+                            <span class="material-symbols-outlined" style="font-size:20px;">directions_car</span>
+                            <span>EXPLORE CABS</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Laurel Wreath Badge -->
+                <div class="rental-laurel-badge">
+                    <span style="font-size:16px;">🌿</span>
+                    <span>India's Top Rated Car Rental Service</span>
+                    <span style="font-size:16px;">🌿</span>
+                </div>
+
+                <!-- Floating Trust & Social Proof Pill -->
+                <div class="rental-trust-pill-container">
+                    <div class="rental-trust-pill">
+                        <!-- App Store -->
+                        <div class="rental-trust-item">
+                            <div class="rental-trust-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="#0f172a"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.62-.75 1.04-1.8 1.01-2.87-.96.04-2.13.64-2.82 1.44-.6.69-1.13 1.76-.99 2.81 1.07.08 2.18-.63 2.8-1.38z"/></svg>
+                            </div>
+                            <div class="rental-trust-meta">
+                                <span class="rental-trust-source">App Store</span>
+                                <span class="rental-trust-stars">★★★★★</span>
+                                <span class="rental-trust-count">(4.2K+ Reviews)</span>
+                            </div>
+                        </div>
+
+                        <!-- Google -->
+                        <div class="rental-trust-item">
+                            <div class="rental-trust-icon">
+                                <svg width="22" height="22" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+                            </div>
+                            <div class="rental-trust-meta">
+                                <span class="rental-trust-source">Google</span>
+                                <span class="rental-trust-stars">★★★★★</span>
+                                <span class="rental-trust-count">(6.1K+ Reviews)</span>
+                            </div>
+                        </div>
+
+                        <!-- Play Store -->
+                        <div class="rental-trust-item">
+                            <div class="rental-trust-icon">
+                                <svg width="22" height="22" viewBox="0 0 24 24"><path fill="#4285F4" d="M3.6 1.8L14.2 12.4 3.6 23z"/><path fill="#34A853" d="M17.4 9.2L3.6 1.8l10.6 10.6z"/><path fill="#EA4335" d="M3.6 23l13.8-7.4-3.2-3.2z"/><path fill="#FBBC05" d="M21.2 11.2l-3.8-2-3.2 3.2 3.2 3.2 3.8-2c.8-.5.8-1.9 0-2.4z"/></svg>
+                            </div>
+                            <div class="rental-trust-meta">
+                                <span class="rental-trust-source">Play Store</span>
+                                <span class="rental-trust-stars">★★★★★</span>
+                                <span class="rental-trust-count">(15.5K+ Reviews)</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="content-grid-split">
-                <!-- Left Column: Simplified Progressive Booking Flow -->
-                <div class="card animate-load stagger-2" style="padding: 20px 22px;">
-                    <!-- Step Progress Navigation Bar -->
-                    <div class="cab-stepper-header">
-                        <button type="button" class="cab-step-pill active" id="pill-step-1" onclick="goToCabStep(1)">
-                            <span class="step-num" id="step-num-1">1</span>
-                            <span class="step-label">Route & Time</span>
-                        </button>
-                        <div class="step-connector"></div>
-                        <button type="button" class="cab-step-pill" id="pill-step-2" onclick="goToCabStep(2)">
-                            <span class="step-num" id="step-num-2">2</span>
-                            <span class="step-label">Choose Cab</span>
-                        </button>
-                        <div class="step-connector"></div>
-                        <button type="button" class="cab-step-pill" id="pill-step-3" onclick="goToCabStep(3)">
-                            <span class="step-num" id="step-num-3">3</span>
-                            <span class="step-label">Confirm & Ride</span>
-                        </button>
+            <!-- ======================================================== -->
+            <!-- 2. PROMOTIONAL BANNER SECTION                            -->
+            <!-- ======================================================== -->
+            <div class="rental-promo-section">
+                <div class="rental-promo-grid">
+                    <!-- Card 1 -->
+                    <div class="rental-promo-card card-zero-cost" onclick="exploreCabs()">
+                        <span class="rental-promo-badge">PROMO ASSURED</span>
+                        <h3 class="rental-promo-title">Book Now at zero cost</h3>
+                        <p class="rental-promo-sub">No booking charges. Pay 20% advance or pay later to driver.</p>
                     </div>
 
-                    <!-- ======================================================== -->
-                    <!-- STEP 1: ROUTE & SCHEDULE                                 -->
-                    <!-- ======================================================== -->
-                    <div id="cab-step-1" class="cab-step-content active">
-                        <!-- Trip Type Pills -->
-                        <div class="trip-type-pill-group">
-                            <button type="button" class="trip-type-pill active" data-type="oneway">One-Way</button>
-                            <button type="button" class="trip-type-pill" data-type="roundtrip">Round Trip</button>
-                            <button type="button" class="trip-type-pill" data-type="airport">Airport Transfer</button>
+                    <!-- Card 2 -->
+                    <div class="rental-promo-card card-chardham" onclick="exploreCabs()">
+                        <span class="rental-promo-badge">POPULAR CIRCUITS</span>
+                        <h3 class="rental-promo-title">EXCLUSIVE OUTSTATION OFFERS</h3>
+                        <p class="rental-promo-sub">Discover special pilgrimage, weekend getaways & custom tours.</p>
+                    </div>
+
+                    <!-- Card 3 -->
+                    <div class="rental-promo-card card-free-cancel" onclick="exploreCabs()">
+                        <span class="rental-promo-badge">PEACE OF MIND</span>
+                        <h3 class="rental-promo-title">Free Cancellations</h3>
+                        <p class="rental-promo-sub">Zero cancellation fee up to 1 hour before scheduled pickup.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- STEPPER HEADER (Used for seamless multi-step navigation)  -->
+            <!-- ======================================================== -->
+            <div class="rental-results-section" style="margin-top:10px; margin-bottom:10px;">
+                <div class="cab-stepper-header" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px 20px;">
+                    <button type="button" class="cab-step-pill active" id="pill-step-1" onclick="goToCabStep(1)">
+                        <span class="step-num" id="step-num-1">1</span>
+                        <span class="step-label">Route & Time</span>
+                    </button>
+                    <div class="step-connector"></div>
+                    <button type="button" class="cab-step-pill" id="pill-step-2" onclick="goToCabStep(2)">
+                        <span class="step-num" id="step-num-2">2</span>
+                        <span class="step-label">Choose Cab</span>
+                    </button>
+                    <div class="step-connector"></div>
+                    <button type="button" class="cab-step-pill" id="pill-step-3" onclick="goToCabStep(3)">
+                        <span class="step-num" id="step-num-3">3</span>
+                        <span class="step-label">Confirm & Ride</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- STEP 2: VEHICLE SEARCH RESULTS COMPARISON                -->
+            <!-- ======================================================== -->
+            <div id="cab-step-2" class="rental-results-section cab-step-content" style="display:none;">
+                <!-- Search Summary Bar with Edit Search CTA -->
+                <div class="rental-summary-bar">
+                    <div class="rental-summary-info">
+                        <span class="material-symbols-outlined" style="color:#20A9D2; font-size:22px;">navigation</span>
+                        <span style="font-weight:700; font-size:15px; color:#0f172a;" id="recap-route">Kolkata → Mayapur, West Bengal</span>
+                        <span style="color:#cbd5e1;">•</span>
+                        <span id="recap-datetime" style="color:#475569; font-weight:600;">11 Nov 2026, 12:15 AM</span>
+                        <span style="color:#cbd5e1;">•</span>
+                        <span id="recap-trip-type" style="background:#e0f2fe; color:#0284c7; padding:2px 8px; border-radius:4px; font-weight:700; font-size:11px; text-transform:uppercase;">One Way</span>
+                        <span style="color:#cbd5e1;">•</span>
+                        <span id="recap-distance" style="font-weight:600; color:#475569;">132 km (~3.5 hrs)</span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="goToCabStep(1)" style="display:flex; align-items:center; gap:6px;">
+                        <span class="material-symbols-outlined" style="font-size:15px;">edit</span>
+                        <span>Edit Search</span>
+                    </button>
+                </div>
+
+                <!-- Filters & Sorting Toolbar -->
+                <div class="rental-filter-bar">
+                    <div class="rental-filter-pills">
+                        <button type="button" class="rental-filter-pill active" onclick="filterRentalCategory('all', this)">All Cabs</button>
+                        <button type="button" class="rental-filter-pill" onclick="filterRentalCategory('hatchback', this)">Hatchback</button>
+                        <button type="button" class="rental-filter-pill" onclick="filterRentalCategory('sedan', this)">Sedan</button>
+                        <button type="button" class="rental-filter-pill" onclick="filterRentalCategory('suv', this)">SUV</button>
+                        <button type="button" class="rental-filter-pill" onclick="filterRentalCategory('innova', this)">Innova Crysta</button>
+                        <button type="button" class="rental-filter-pill" onclick="filterRentalCategory('tempo', this)">Tempo Traveller</button>
+                        <button type="button" class="rental-filter-pill" onclick="filterRentalCategory('luxury', this)">Luxury</button>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:12.5px; font-weight:600; color:#64748b;">Sort By:</span>
+                        <select id="rental-sort-by" onchange="sortRentalResults(this.value)" style="border:1px solid #cbd5e1; border-radius:6px; padding:6px 10px; font-size:12.5px; font-weight:600; color:#0f172a; background:#ffffff;">
+                            <option value="recommended">Recommended</option>
+                            <option value="price_low">Lowest Price</option>
+                            <option value="capacity_high">Highest Capacity</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Vehicle Comparison Cards Grid -->
+                <div class="rental-vehicle-grid" id="rental-vehicles-grid">
+                    <!-- Cards will be dynamically calculated & refreshed by JS -->
+                </div>
+
+                <!-- Trust Inclusions Highlight Strip -->
+                <div class="trust-inclusions-strip" style="margin-top:24px; background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:16px 20px; display:flex; justify-content:space-around; align-items:center; flex-wrap:wrap; gap:16px;">
+                    <div class="trust-item" style="display:flex; align-items:center; gap:8px; font-weight:600; font-size:13px; color:#0f172a;">
+                        <span class="material-symbols-outlined" style="color:#16a34a;">toll</span>
+                        <span>Tolls & Taxes Included</span>
+                    </div>
+                    <div class="trust-item" style="display:flex; align-items:center; gap:8px; font-weight:600; font-size:13px; color:#0f172a;">
+                        <span class="material-symbols-outlined" style="color:#16a34a;">verified</span>
+                        <span>Verified Chauffeur</span>
+                    </div>
+                    <div class="trust-item" style="display:flex; align-items:center; gap:8px; font-weight:600; font-size:13px; color:#0f172a;">
+                        <span class="material-symbols-outlined" style="color:#16a34a;">ac_unit</span>
+                        <span>Clean & AC Sanitized</span>
+                    </div>
+                    <div class="trust-item" style="display:flex; align-items:center; gap:8px; font-weight:600; font-size:13px; color:#0f172a;">
+                        <span class="material-symbols-outlined" style="color:#16a34a;">lock</span>
+                        <span>4-Digit Ride OTP</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- STEP 3: 2-COLUMN PASSENGER DETAILS & CHECKOUT            -->
+            <!-- ======================================================== -->
+            <div id="cab-step-3" class="rental-results-section cab-step-content" style="display:none;">
+                <div class="rental-checkout-grid">
+                    <!-- LEFT COLUMN: Passenger & Trip Details Form -->
+                    <div class="card" style="padding:24px; background:#ffffff; border:1px solid #e2e8f0; border-radius:14px;">
+                        <div style="font-family:'Plus Jakarta Sans',sans-serif; font-size:18px; font-weight:800; color:#0f172a; margin-bottom:16px; display:flex; align-items:center; gap:8px;">
+                            <span class="material-symbols-outlined" style="color:#20A9D2;">badge</span>
+                            <span>Passenger & Pickup Coordinates</span>
                         </div>
 
-                        <!-- Route Selection Grid -->
-                        <div class="form-row" style="align-items: flex-start;">
-                            <div class="form-group" style="flex: 1;">
-                                <label class="form-label" for="cab-from-city">
-                                    <span>Pickup City</span>
-                                    <span class="material-symbols-outlined" style="font-size:14px; color:var(--primary);">trip_origin</span>
-                                </label>
+                        <div class="form-row">
+                            <div class="form-group" style="flex:1;">
+                                <label class="rental-field-label">Full Name *</label>
+                                <div class="input-with-icon">
+                                    <span class="material-symbols-outlined">person</span>
+                                    <input type="text" id="cab-rider-name" class="form-control" placeholder="Full Name" value="{{ Auth::check() ? Auth::user()->name : 'Aditya Sharma' }}" required>
+                                </div>
+                            </div>
+                            <div class="form-group" style="flex:1;">
+                                <label class="rental-field-label">Mobile Number *</label>
+                                <div class="input-with-icon">
+                                    <span class="material-symbols-outlined">call</span>
+                                    <input type="tel" id="cab-rider-phone" class="form-control" placeholder="Mobile Number (+91)" value="{{ Auth::check() ? (Auth::user()->phone ?? '+91 98220 11920') : '+91 98220 11920' }}" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row" style="margin-top:12px;">
+                            <div class="form-group" style="flex:1;">
+                                <label class="rental-field-label">Email Address (For Tax Invoice & Receipt)</label>
+                                <div class="input-with-icon">
+                                    <span class="material-symbols-outlined">mail</span>
+                                    <input type="email" id="cab-rider-email" class="form-control" placeholder="Email Address" value="{{ Auth::check() ? Auth::user()->email : 'traveller@intercitywheels.com' }}">
+                                </div>
+                            </div>
+                            <div class="form-group" style="flex:1;">
+                                <label class="rental-field-label">Number of Passengers</label>
+                                <div class="input-with-icon">
+                                    <span class="material-symbols-outlined">group</span>
+                                    <select id="cab-rider-passengers" class="form-control">
+                                        <option value="1">1 Passenger</option>
+                                        <option value="2">2 Passengers</option>
+                                        <option value="3">3 Passengers</option>
+                                        <option value="4" selected>4 Passengers</option>
+                                        <option value="5">5 Passengers</option>
+                                        <option value="6">6 Passengers</option>
+                                        <option value="7">7 Passengers</option>
+                                        <option value="12">12+ Passengers (Tempo)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row" style="margin-top:12px;">
+                            <div class="form-group" style="flex:1;">
+                                <label class="rental-field-label">Exact Pickup Address / Landmark *</label>
                                 <div class="input-with-icon">
                                     <span class="material-symbols-outlined">my_location</span>
-                                    <select id="cab-from-city" class="form-control">
-                                        <option value="pune" selected>Pune, MH</option>
-                                        <option value="mumbai">Mumbai, MH</option>
-                                        <option value="goa">Goa (Panjim / Airport)</option>
-                                        <option value="bengaluru">Bengaluru, KA</option>
-                                        <option value="hyderabad">Hyderabad, TS</option>
-                                        <option value="delhi">New Delhi, NCR</option>
-                                        <option value="jaipur">Jaipur, RJ</option>
-                                        <option value="chennai">Chennai, TN</option>
-                                    </select>
-                                </div>
-                                <div style="margin-top: 6px;">
-                                    <input type="text" id="cab-pickup-address" class="form-control" placeholder="Exact Pickup Area / Landmark (e.g. Baner, Airport T2)" value="Baner, Pune" style="font-size:12px; height:38px;">
+                                    <input type="text" id="cab-pickup-address" class="form-control" placeholder="Building, Street, Landmark" value="Salt Lake Sector V, Kolkata">
                                 </div>
                             </div>
-
-                            <button type="button" id="cab-swap-cities-btn" class="route-swap-btn" title="Swap Route Direction">
-                                <span class="material-symbols-outlined" style="font-size:18px;">swap_horiz</span>
-                            </button>
-
-                            <div class="form-group" style="flex: 1;">
-                                <label class="form-label" for="cab-to-city">
-                                    <span>Destination</span>
-                                    <span class="material-symbols-outlined" style="font-size:14px; color:var(--secondary);">location_on</span>
-                                </label>
+                            <div class="form-group" style="flex:1;">
+                                <label class="rental-field-label">Exact Drop Address *</label>
                                 <div class="input-with-icon">
-                                    <span class="material-symbols-outlined" style="color:var(--secondary);">location_on</span>
-                                    <select id="cab-to-city" class="form-control">
-                                        <option value="goa" selected>Goa (Panjim / Calangute)</option>
-                                        <option value="pune">Pune, MH</option>
-                                        <option value="mumbai">Mumbai, MH</option>
-                                        <option value="bengaluru">Bengaluru, KA</option>
-                                        <option value="hyderabad">Hyderabad, TS</option>
-                                        <option value="delhi">New Delhi, NCR</option>
-                                        <option value="jaipur">Jaipur, RJ</option>
-                                        <option value="chennai">Chennai, TN</option>
-                                    </select>
-                                </div>
-                                <div style="margin-top: 6px;">
-                                    <input type="text" id="cab-drop-address" class="form-control" placeholder="Exact Drop Location (e.g. Panjim / Hotel Resort)" value="Panjim, Goa" style="font-size:12px; height:38px;">
+                                    <span class="material-symbols-outlined" style="color:#0284c7;">pin_drop</span>
+                                    <input type="text" id="cab-drop-address" class="form-control" placeholder="Drop Hotel / Landmark" value="Mayapur ISKCON Temple Main Gate">
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Schedule Row -->
-                        <div class="form-row" style="margin-top: 6px;">
-                            <div class="form-group" style="flex: 1;">
-                                <label class="form-label">
-                                    <span>Departure Date & Time</span>
-                                    <span class="material-symbols-outlined" style="font-size:14px; color:var(--primary);">schedule</span>
-                                </label>
-                                <div style="display:flex; gap:8px;">
-                                    <div class="input-with-icon" style="flex:1.4;">
-                                        <span class="material-symbols-outlined">calendar_today</span>
-                                        <input type="date" id="cab-pickup-date" class="form-control" style="font-size:12.5px;">
-                                    </div>
-                                    <div class="input-with-icon" style="flex:1;">
-                                        <span class="material-symbols-outlined">access_time</span>
-                                        <input type="time" id="cab-pickup-time" class="form-control" value="06:30" style="font-size:12.5px;">
-                                    </div>
-                                </div>
-                                <div class="quick-date-chips">
-                                    <button type="button" class="quick-date-chip active" onclick="setQuickCabDate('tomorrow')">Tomorrow</button>
-                                    <button type="button" class="quick-date-chip" onclick="setQuickCabDate('today')">Today</button>
-                                    <button type="button" class="quick-date-chip" onclick="setQuickCabDate('weekend')">Weekend</button>
-                                </div>
-                            </div>
-
-                            <div class="form-group" id="return-date-group" style="flex: 1; display:none;">
-                                <label class="form-label">
-                                    <span>Return Schedule</span>
-                                    <span class="material-symbols-outlined" style="font-size:14px; color:var(--secondary);">event_repeat</span>
-                                </label>
-                                <div style="display:flex; gap:8px;">
-                                    <div class="input-with-icon" style="flex:1.4;">
-                                        <span class="material-symbols-outlined">calendar_today</span>
-                                        <input type="date" id="cab-return-date" class="form-control" style="font-size:12.5px;">
-                                    </div>
-                                    <div class="input-with-icon" style="flex:1;">
-                                        <span class="material-symbols-outlined">access_time</span>
-                                        <input type="time" id="cab-return-time" class="form-control" value="17:00" style="font-size:12.5px;">
-                                    </div>
-                                </div>
-                            </div>
+                        <!-- Special Instructions -->
+                        <div class="form-group" style="margin-top:12px;">
+                            <label class="rental-field-label">Special Chauffeur Instructions / Flight No.</label>
+                            <input type="text" id="cab-special-instructions" class="form-control" placeholder="e.g. Please carry booster seat, flight arriving at Gate 3">
                         </div>
 
-                        <!-- Instant Highway Route Insight Strip -->
-                        <div class="cab-route-insight-strip">
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <span class="material-symbols-outlined" style="color:var(--gold); font-size:18px;">alt_route</span>
-                                <span><strong id="step1-route-name">Pune → Goa</strong></span>
-                            </div>
-                            <div style="display:flex; align-items:center; gap:16px; font-size:12px;">
-                                <span><strong id="step1-dist" style="color:#f8fafc;">450 km</strong> (<span id="step1-time">9h 15m</span>)</span>
-                                <span>Fastag Tolls: <strong id="step1-toll" style="color:var(--gold);">₹480 Included</strong></span>
-                            </div>
-                        </div>
-
-                        <!-- Step 1 Navigation -->
-                        <div class="cab-step-actions">
-                            <div style="font-size:12px; color:#64748b; display:flex; align-items:center; gap:4px;">
-                                <span class="material-symbols-outlined" style="font-size:15px; color:#16a34a;">check_circle</span>
-                                <span>Zero cancellation fee on upfront booking</span>
-                            </div>
-                            <button type="button" class="btn btn-accent" onclick="goToCabStep(2)">
-                                <span>Select Cab & View Fares</span>
-                                <span class="material-symbols-outlined" style="font-size:17px;">arrow_forward</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- ======================================================== -->
-                    <!-- STEP 2: CHOOSE CAB FLEET                                 -->
-                    <!-- ======================================================== -->
-                    <div id="cab-step-2" class="cab-step-content">
-                        <!-- Route Recap Banner -->
-                        <div class="cab-recap-banner">
-                            <div class="cab-recap-info">
-                                <span class="material-symbols-outlined" style="color:var(--gold); font-size:18px;">navigation</span>
-                                <span id="recap-route">Pune → Goa (450 km)</span>
-                                <span style="color:#cbd5e1;">•</span>
-                                <span id="recap-datetime" style="color:#64748b;">Tomorrow at 06:30 AM</span>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-secondary" onclick="goToCabStep(1)">
-                                <span class="material-symbols-outlined" style="font-size:13px;">edit</span>
-                                <span>Change Route</span>
-                            </button>
-                        </div>
-
-                        <label class="form-label" style="margin-bottom:8px;">Select Outstation Vehicle Class</label>
-                        <!-- Fleet Selection Grid -->
-                        <div class="fleet-grid">
-                            <div class="fleet-card" data-fleet="sedan">
-                                <div>
-                                    <div class="fleet-top">
-                                        <span class="fleet-name">Comfort Sedan</span>
-                                        <span class="fleet-badge">Value</span>
-                                    </div>
-                                    <div style="font-size:11.5px; color:#475569;">Dzire, Etios</div>
-                                    <div class="fleet-specs">
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">group</span> 4 Seats</span>
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">luggage</span> 2 Bags</span>
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">ac_unit</span> AC</span>
-                                    </div>
-                                </div>
-                                <div class="fleet-pricing">
-                                    <div class="fleet-price" id="fleet-price-sedan">₹5,625</div>
-                                    <div class="fleet-rate">₹12.5/km</div>
-                                </div>
-                            </div>
-
-                            <div class="fleet-card" data-fleet="prime">
-                                <div>
-                                    <div class="fleet-top">
-                                        <span class="fleet-name">Prime Sedan</span>
-                                        <span class="fleet-badge">Comfort</span>
-                                    </div>
-                                    <div style="font-size:11.5px; color:#475569;">City, Verna, Ciaz</div>
-                                    <div class="fleet-specs">
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">group</span> 4 Seats</span>
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">luggage</span> 3 Bags</span>
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">ac_unit</span> Climate</span>
-                                    </div>
-                                </div>
-                                <div class="fleet-pricing">
-                                    <div class="fleet-price" id="fleet-price-prime">₹6,750</div>
-                                    <div class="fleet-rate">₹15.0/km</div>
-                                </div>
-                            </div>
-
-                            <div class="fleet-card selected" data-fleet="suv">
-                                <div>
-                                    <div class="fleet-top">
-                                        <span class="fleet-name">Executive SUV</span>
-                                        <span class="fleet-badge" style="background:rgba(212, 155, 76, 0.18); color:#8c5d1e;">Most Popular</span>
-                                    </div>
-                                    <div style="font-size:11.5px; color:#475569;">Innova Crysta, Ertiga</div>
-                                    <div class="fleet-specs">
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">group</span> 6-7 Seats</span>
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">luggage</span> 4 Bags</span>
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">airline_seat_recline_extra</span> Captain</span>
-                                    </div>
-                                </div>
-                                <div class="fleet-pricing">
-                                    <div class="fleet-price" id="fleet-price-suv">₹8,100</div>
-                                    <div class="fleet-rate">₹18.0/km</div>
-                                </div>
-                            </div>
-
-                            <div class="fleet-card" data-fleet="luxury">
-                                <div>
-                                    <div class="fleet-top">
-                                        <span class="fleet-name">Luxury Class</span>
-                                        <span class="fleet-badge" style="background:#fef3c7; color:#92400e;">VIP</span>
-                                    </div>
-                                    <div style="font-size:11.5px; color:#475569;">Camry, C-Class</div>
-                                    <div class="fleet-specs">
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">group</span> 4 Seats</span>
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">luggage</span> 3 Bags</span>
-                                        <span><span class="material-symbols-outlined" style="font-size:13px;">stars</span> Chauffeur</span>
-                                    </div>
-                                </div>
-                                <div class="fleet-pricing">
-                                    <div class="fleet-price" id="fleet-price-luxury">₹14,400</div>
-                                    <div class="fleet-rate">₹32.0/km</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Trust Inclusions Highlight -->
-                        <div class="trust-inclusions-strip">
-                            <div class="trust-item">
-                                <span class="material-symbols-outlined">toll</span>
-                                <span>Tolls Included</span>
-                            </div>
-                            <div class="trust-item">
-                                <span class="material-symbols-outlined">verified</span>
-                                <span>Top Chauffeur</span>
-                            </div>
-                            <div class="trust-item">
-                                <span class="material-symbols-outlined">ac_unit</span>
-                                <span>AC Sanitized</span>
-                            </div>
-                            <div class="trust-item">
-                                <span class="material-symbols-outlined">lock</span>
-                                <span>4-Digit Ride OTP</span>
-                            </div>
-                        </div>
-
-                        <!-- Step 2 Navigation -->
-                        <div class="cab-step-actions">
-                            <button type="button" class="btn btn-secondary" onclick="goToCabStep(1)">
-                                <span class="material-symbols-outlined" style="font-size:17px;">arrow_back</span>
-                                <span>Back</span>
-                            </button>
-                            <button type="button" class="btn btn-accent" onclick="goToCabStep(3)">
-                                <span>Continue to Rider Details</span>
-                                <span class="material-symbols-outlined" style="font-size:17px;">arrow_forward</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- ======================================================== -->
-                    <!-- STEP 3: PASSENGER, FARE REVIEW & INSTANT CONFIRMATION     -->
-                    <!-- ======================================================== -->
-                    <div id="cab-step-3" class="cab-step-content">
-                        <!-- Summary Recap Strip -->
-                        <div class="cab-recap-banner">
-                            <div class="cab-recap-info">
-                                <span class="material-symbols-outlined" style="color:var(--gold); font-size:18px;">local_taxi</span>
-                                <span><strong id="recap-fleet-title">Executive SUV</strong> (<span id="recap-route-mini">Pune → Goa</span>)</span>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-secondary" onclick="goToCabStep(2)">
-                                <span class="material-symbols-outlined" style="font-size:13px;">tune</span>
-                                <span>Change Vehicle</span>
-                            </button>
-                        </div>
-
-                        <!-- Passenger Contact Information -->
-                        <div style="margin-bottom: 14px;">
-                            <label class="form-label">Passenger Contact (For Driver Coordination & Ride OTP)</label>
-                            <div class="form-row">
-                                <div class="form-group" style="flex:1;">
-                                    <div class="input-with-icon">
-                                        <span class="material-symbols-outlined">person</span>
-                                        <input type="text" id="cab-rider-name" class="form-control" placeholder="Full Name" value="{{ Auth::check() ? Auth::user()->name : 'Aditya Sharma' }}" required>
-                                    </div>
-                                </div>
-                                <div class="form-group" style="flex:1;">
-                                    <div class="input-with-icon">
-                                        <span class="material-symbols-outlined">call</span>
-                                        <input type="tel" id="cab-rider-phone" class="form-control" placeholder="Mobile Number (+91)" value="{{ Auth::check() ? (Auth::user()->phone ?? '+91 98220 11920') : '+91 98220 11920' }}" required>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Add-ons & Travel Preferences -->
-                        <div style="margin-top: 10px;">
-                            <label class="form-label">Trip Add-ons & Highway Preferences</label>
+                        <!-- Add-ons -->
+                        <div style="margin-top:16px; padding-top:14px; border-top:1px solid #f1f5f9;">
+                            <label class="rental-field-label" style="margin-bottom:8px;">Trip Preferences & Add-ons</label>
                             <div class="addons-group">
                                 <label class="addon-item">
                                     <div class="addon-label">
-                                        <input type="checkbox" id="addon-tolls" checked>
-                                        <span>Highway Tolls</span>
+                                        <input type="checkbox" id="addon-tolls" checked onchange="updateTotalCabFare()">
+                                        <span>Highway Fastag Tolls</span>
                                     </div>
-                                    <span class="addon-price">₹480</span>
+                                    <span class="addon-price">Included</span>
                                 </label>
                                 <label class="addon-item">
                                     <div class="addon-label">
-                                        <input type="checkbox" id="addon-pet">
-                                        <span>Pet Sanitized</span>
+                                        <input type="checkbox" id="addon-pet" onchange="updateTotalCabFare()">
+                                        <span>Pet Sanitized Cab</span>
                                     </div>
-                                    <span class="addon-price">+₹350</span>
+                                    <span class="addon-price">+₹300</span>
                                 </label>
                                 <label class="addon-item">
                                     <div class="addon-label">
-                                        <input type="checkbox" id="addon-night">
-                                        <span>Night Halt</span>
+                                        <input type="checkbox" id="addon-night" onchange="updateTotalCabFare()">
+                                        <span>Chauffeur Night Stay</span>
                                     </div>
-                                    <span class="addon-price">+₹400</span>
+                                    <span class="addon-price">+₹500</span>
                                 </label>
                                 <label class="addon-item">
                                     <div class="addon-label">
-                                        <input type="checkbox" id="addon-luggage">
-                                        <span>Luggage Carrier</span>
+                                        <input type="checkbox" id="addon-luggage" onchange="updateTotalCabFare()">
+                                        <span>Rooftop Luggage Carrier</span>
                                     </div>
                                     <span class="addon-price">+₹200</span>
                                 </label>
@@ -381,126 +610,102 @@
 
                         <!-- Dynamic Form Fields from Database -->
                         @if($dynamicFields->count() > 0)
-                        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--outline);">
-                            <label class="form-label">Special Custom Specifications</label>
+                        <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;">
+                            <label class="rental-field-label">Custom Specifications</label>
                             @foreach($dynamicFields as $field)
-                            <div class="form-group" style="margin-bottom: 8px;">
-                                <label style="font-size: 11.5px; font-weight: 600; color: #475569;">{{ $field->label }}</label>
-                                <input type="{{ $field->field_type }}" class="form-control" placeholder="Enter {{ $field->label }}" style="height: 38px; font-size:12px;">
+                            <div class="form-group" style="margin-bottom:8px;">
+                                <label style="font-size:12px; font-weight:600; color:#475569;">{{ $field->label }}</label>
+                                <input type="{{ $field->field_type }}" class="form-control" placeholder="Enter {{ $field->label }}">
                             </div>
                             @endforeach
                         </div>
                         @endif
-
-                        <!-- Promo Code Apply -->
-                        <div style="margin-top: 10px;">
-                            <label class="form-label">Coupon & Promo Discount</label>
-                            <div style="display:flex; gap:8px;">
-                                <input type="text" id="cab-coupon-input" class="form-control" placeholder="Promo code (e.g. FIRSTWHEELS)" style="text-transform:uppercase; height:42px;" value="FIRSTWHEELS">
-                                <button type="button" id="apply-coupon-btn" class="btn btn-secondary" style="height:42px; padding:0 16px;">Apply</button>
-                            </div>
-                            <div id="coupon-msg" class="text-xs font-semibold text-emerald-600 mt-1">🎉 FIRSTWHEELS applied (15% discount)</div>
-                        </div>
-
-                        <!-- Complete Transparent Fare Breakdown -->
-                        <div style="margin-top: 16px; background:#f8fafc; border: 1.5px solid var(--outline); border-radius: var(--radius-sm); padding: 14px 16px;">
-                            <div style="font-family:var(--font-display); font-weight:700; font-size:13.5px; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
-                                <span class="material-symbols-outlined" style="color:var(--gold); font-size:17px;">receipt_long</span>
-                                <span>Transparent Fare Summary</span>
-                            </div>
-                            <div style="display:flex; flex-direction:column; gap:6px; font-size:12.5px;">
-                                <div style="display:flex; justify-content:space-between; color:#475569;">
-                                    <span>Base Highway Distance Fare</span>
-                                    <span id="fare-base" style="font-weight:700; color:#0f172a;" class="text-tabular">₹8,100</span>
-                                </div>
-                                <div style="display:flex; justify-content:space-between; color:#475569;">
-                                    <span>Fastag Highway Tolls</span>
-                                    <span id="fare-tolls" style="font-weight:700; color:#0f172a;" class="text-tabular">₹480</span>
-                                </div>
-                                <div style="display:flex; justify-content:space-between; color:#475569;">
-                                    <span>Selected Add-ons</span>
-                                    <span id="fare-addons" style="font-weight:700; color:#0f172a;" class="text-tabular">₹0</span>
-                                </div>
-                                <div style="display:flex; justify-content:space-between; color:#16a34a; font-weight:600;">
-                                    <span>Promo Discount</span>
-                                    <span id="fare-discount" class="text-tabular">-₹500</span>
-                                </div>
-                                <div style="border-top:1px dashed var(--outline); padding-top:10px; margin-top:4px; display:flex; justify-content:space-between; align-items:baseline;">
-                                    <div>
-                                        <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Total Payable</div>
-                                        <div style="font-size:10.5px; color:#16a34a;">All taxes, tolls & driver allowance included</div>
-                                    </div>
-                                    <span id="fare-grand-total" style="font-family:var(--font-display); font-size:22px; font-weight:800; color:var(--text-main);" class="text-tabular">₹8,080</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Step 3 Action Navigation -->
-                        <div class="cab-step-actions">
-                            <button type="button" class="btn btn-secondary" onclick="goToCabStep(2)">
-                                <span class="material-symbols-outlined" style="font-size:17px;">arrow_back</span>
-                                <span>Change Cab</span>
-                            </button>
-                            <button type="button" id="book-cab-confirm-btn" class="btn btn-accent" style="height:48px; font-size:14.5px; padding:0 24px;">
-                                <span class="material-symbols-outlined" style="font-size:19px;">verified_user</span>
-                                <span>Confirm & Book Outstation Cab</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Right Column: Live Map & Highway Trip Companion -->
-                <div class="animate-load stagger-3">
-                    <div class="card" style="padding: 14px; margin-bottom: 16px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                            <span class="card-title" style="font-size:14px;">
-                                <span class="material-symbols-outlined" style="color:var(--primary); font-size:18px;">map</span>
-                                <span>Live Highway Route</span>
-                            </span>
-                            <span style="font-size:11px; color:#16a34a; font-weight:700; display:flex; align-items:center; gap:4px;">
-                                <span class="live-gps-dot"></span> Live GPS
-                            </span>
-                        </div>
-
-                        <div class="route-map-container">
-                            <div id="live-leaflet-map"></div>
-                        </div>
-
-                        <div class="route-summary-bar">
-                            <div class="route-stat">
-                                <span class="route-stat-label">Distance</span>
-                                <span class="route-stat-val" id="cab-stat-distance">450 km</span>
-                            </div>
-                            <div class="route-stat">
-                                <span class="route-stat-label">Duration</span>
-                                <span class="route-stat-val" id="cab-stat-time">9h 15m</span>
-                            </div>
-                            <div class="route-stat">
-                                <span class="route-stat-label">Tolls</span>
-                                <span class="route-stat-val" id="cab-stat-toll">₹480</span>
-                            </div>
-                        </div>
                     </div>
 
-                    <!-- Safety & Peace of Mind Assurance Card -->
-                    <div class="card" style="padding: 16px; border: 1.5px solid var(--outline); background: #ffffff;">
-                        <div style="font-family:var(--font-display); font-size:13.5px; font-weight:700; color:#0f172a; margin-bottom:10px; display:flex; align-items:center; gap:7px;">
-                            <span class="material-symbols-outlined" style="color:var(--gold); font-size:18px;">security</span>
-                            <span>Intercity Wheels Assurance</span>
+                    <!-- RIGHT COLUMN: Sticky Booking Summary -->
+                    <div class="card" style="padding:22px; background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; position:sticky; top:80px; box-shadow:0 4px 18px rgba(0,0,0,0.06);">
+                        <div style="font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:800; color:#0f172a; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+                            <span>Booking Summary</span>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="goToCabStep(2)" style="font-size:11px; padding:3px 8px;">Change Cab</button>
                         </div>
-                        <div style="display:flex; flex-direction:column; gap:8px; font-size:12px; color:#475569;">
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <span class="material-symbols-outlined" style="font-size:16px; color:#16a34a;">pin_drop</span>
-                                <span>Live GPS highway tracking shared via SMS</span>
+
+                        <!-- Selected Vehicle Snapshot -->
+                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px; margin-bottom:14px; display:flex; align-items:center; gap:12px;">
+                            <img id="summary-vehicle-img" src="https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80" alt="Selected Cab" style="width:70px; height:45px; object-fit:cover; border-radius:6px;">
+                            <div>
+                                <div style="font-weight:800; font-size:14px; color:#0f172a;" id="recap-fleet-title">Executive SUV (Innova Crysta)</div>
+                                <div style="font-size:11.5px; color:#64748b;" id="recap-route-mini">Kolkata → Mayapur, West Bengal</div>
                             </div>
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <span class="material-symbols-outlined" style="font-size:16px; color:#16a34a;">phone_in_talk</span>
-                                <span>24/7 Highway Control Room: <strong>1800-209-WHEELS</strong></span>
+                        </div>
+
+                        <!-- Fare Breakdown Table -->
+                        <div style="display:flex; flex-direction:column; gap:8px; font-size:13px; color:#475569;">
+                            <div style="display:flex; justify-content:space-between;">
+                                <span>Base Route Fare</span>
+                                <span id="fare-base" style="font-weight:700; color:#0f172a;" class="text-tabular">₹2,850</span>
                             </div>
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <span class="material-symbols-outlined" style="font-size:16px; color:#16a34a;">receipt</span>
-                                <span>Automated GST tax invoice delivered instantly</span>
+                            <div style="display:flex; justify-content:space-between;">
+                                <span>Fastag Tolls & Taxes</span>
+                                <span id="fare-tolls" style="font-weight:700; color:#0f172a;" class="text-tabular">₹120</span>
                             </div>
+                            <div style="display:flex; justify-content:space-between;">
+                                <span>Selected Add-ons</span>
+                                <span id="fare-addons" style="font-weight:700; color:#0f172a;" class="text-tabular">₹0</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; color:#16a34a; font-weight:600;">
+                                <span>Promo Discount</span>
+                                <span id="fare-discount" class="text-tabular">-₹420</span>
+                            </div>
+
+                            <!-- Coupon Code Input -->
+                            <div style="margin-top:6px; margin-bottom:6px;">
+                                <div style="display:flex; gap:6px;">
+                                    <input type="text" id="cab-coupon-input" class="form-control" placeholder="COUPON (e.g. FIRSTWHEELS)" style="text-transform:uppercase; font-size:12px; height:36px;" value="FIRSTWHEELS">
+                                    <button type="button" id="apply-coupon-btn" class="btn btn-secondary" onclick="applyRentalCoupon()" style="height:36px; padding:0 12px; font-size:12px;">Apply</button>
+                                </div>
+                                <div id="coupon-msg" style="font-size:11px; font-weight:600; color:#16a34a; margin-top:3px;">🎉 FIRSTWHEELS applied (15% discount)</div>
+                            </div>
+
+                            <div style="border-top:1px dashed #cbd5e1; padding-top:10px; margin-top:4px; display:flex; justify-content:space-between; align-items:baseline;">
+                                <div>
+                                    <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Total Payable</div>
+                                    <div style="font-size:10.5px; color:#16a34a;">GST, Tolls & Driver Included</div>
+                                </div>
+                                <span id="fare-grand-total" style="font-family:'Plus Jakarta Sans',sans-serif; font-size:24px; font-weight:800; color:#0f172a;" class="text-tabular">₹2,550</span>
+                            </div>
+                        </div>
+
+                        <!-- Payment Method Radios -->
+                        <div style="margin-top:14px; background:#f8fafc; border-radius:8px; padding:10px 12px;">
+                            <div style="font-size:11.5px; font-weight:700; color:#334155; text-transform:uppercase; margin-bottom:6px;">Select Payment Mode</div>
+                            <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; margin-bottom:4px; cursor:pointer;">
+                                <input type="radio" name="rental_pay_mode" value="full" checked>
+                                <span>Pay Full Online (UPI / Card / NetBanking)</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; margin-bottom:4px; cursor:pointer;">
+                                <input type="radio" name="rental_pay_mode" value="advance">
+                                <span>Pay 20% Advance (Balance to Driver)</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; cursor:pointer;">
+                                <input type="radio" name="rental_pay_mode" value="cash">
+                                <span>Pay Later to Chauffeur (Cash / UPI)</span>
+                            </label>
+                        </div>
+
+                        <!-- Terms & Conditions Checkbox -->
+                        <div style="margin-top:12px; font-size:11.5px; color:#475569; display:flex; align-items:flex-start; gap:6px;">
+                            <input type="checkbox" id="rental-terms-agree" checked style="margin-top:2px;">
+                            <label for="rental-terms-agree">
+                                By proceeding, you agree to <a href="/legal/privacy" target="_blank" style="color:#0284c7; text-decoration:underline;">Privacy Policy</a> and <a href="/legal/terms" target="_blank" style="color:#0284c7; text-decoration:underline;">T&Cs</a>.
+                            </label>
+                        </div>
+
+                        <!-- Confirm & Book Button -->
+                        <div style="margin-top:16px;">
+                            <button type="button" id="book-cab-confirm-btn" class="btn-explore-cabs" onclick="handleConfirmCabBooking()" style="width:100%; justify-content:center; padding:14px 20px; font-size:15px;">
+                                <span class="material-symbols-outlined" style="font-size:20px;">verified_user</span>
+                                <span>CONFIRM & BOOK CAB</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -899,34 +1104,72 @@
                         <div style="font-size:10.5px; text-transform:uppercase; color:#94a3b8; font-weight:700;">Wallet Balance</div>
                         <div style="font-size:20px; font-weight:800; color:#38bdf8;" id="driver-header-wallet-bal">₹{{ number_format($driverProfile->wallet_balance ?? 14500) }}</div>
                     </div>
+                    <button type="button" class="btn btn-sm btn-primary" onclick="openDriverListVehicleModal()">
+                        <span class="material-symbols-outlined" style="font-size:15px;">add_circle</span>
+                        <span>Register Car</span>
+                    </button>
                     <button type="button" class="btn btn-sm btn-outline-gold" onclick="switchTab('driver-trips')">
                         <span class="material-symbols-outlined" style="font-size:15px;">local_taxi</span>
-                        <span>My Assigned Trips</span>
+                        <span>My Trips</span>
                     </button>
                 </div>
             </div>
 
-            <div class="bidding-auction-header animate-load stagger-1">
-                <div>
-                    <span class="text-micro" style="color:#fb923c;">Live Chauffeur Auction</span>
-                    <h2 style="font-family:var(--font-display); font-size:20px; font-weight:800; margin:3px 0;">Pune → Goa Direct</h2>
-                    <div style="font-size:12.5px; color:#cbd5e1;">Target Fare: <strong id="bidding-target-budget" style="color:#ffffff;">₹4,800</strong> • AC Sedan / SUV</div>
+            <!-- Driver Registered Vehicles & Approval Status Card -->
+            <div class="card animate-load stagger-1" style="margin-bottom:16px; padding:14px 18px; border:1px solid rgba(212,155,76,0.3); background:#ffffff;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">garage</span>
+                        <span style="font-family:var(--font-display); font-weight:700; font-size:14px; color:#0f172a;">My Registered Cars & Fleet Status</span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline" onclick="openDriverListVehicleModal()">
+                        <span class="material-symbols-outlined" style="font-size:14px;">add</span>
+                        <span>List Another Car</span>
+                    </button>
                 </div>
-                <div class="countdown-clock">
-                    <span class="material-symbols-outlined" style="font-size:16px;">timer</span>
-                    <span>Ends in <strong id="bidding-timer-text">04:50</strong></span>
+
+                <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:10px;" id="driver-my-vehicles-grid">
+                    @forelse($driverMyVehicles as $v)
+                        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:12px; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <div style="font-weight:700; font-size:13px; color:#0f172a;">{{ $v->vehicle_model }}</div>
+                                <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
+                                    <span style="font-family:monospace; font-weight:700; color:#8c5d1e;">{{ $v->vehicle_plate }}</span> &bull; 
+                                    <span>{{ ucfirst($v->fleet_category) }} ({{ $v->seating_capacity }} Seats{{ $v->berth_capacity > 0 ? ', ' . $v->berth_capacity . ' Berths' : '' }})</span>
+                                </div>
+                                @if($v->admin_notes)
+                                    <div style="font-size:10.5px; color:#64748b; margin-top:4px; font-style:italic;">Admin Note: {{ $v->admin_notes }}</div>
+                                @endif
+                            </div>
+                            <div>
+                                @if($v->status === 'Approved')
+                                    <span class="admin-badge badge-success" style="font-size:10.5px; padding:4px 8px;">✅ Approved</span>
+                                @elseif($v->status === 'Pending')
+                                    <span class="admin-badge badge-warning" style="font-size:10.5px; padding:4px 8px;">⏳ Pending Approval</span>
+                                @else
+                                    <span class="admin-badge badge-danger" style="font-size:10.5px; padding:4px 8px;">❌ Rejected</span>
+                                @endif
+                            </div>
+                        </div>
+                    @empty
+                        <div style="grid-column: 1 / -1; text-align:center; padding:16px; color:#94a3b8; font-size:12px;">
+                            No cars registered yet. Click <strong>"Register Car"</strong> to submit your vehicle for admin approval.
+                        </div>
+                    @endforelse
                 </div>
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
                 <div>
-                    <h3 style="font-family:var(--font-display); font-size:15px; font-weight:700;">Incoming Proposals & Active Bids</h3>
-                    <p style="font-size:11.5px; color:#64748b;">Place counter-offers or accept incoming passenger trip requests</p>
+                    <h3 style="font-family:var(--font-display); font-size:16px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                        <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px;">hail</span>
+                        <span>Available Outstation Trips for Driver Bidding</span>
+                    </h3>
+                    <p style="font-size:11.5px; color:#64748b; margin:2px 0 0;">Review passenger pickup (From), destination (To), highway distance (KM), and submit your conclusive ride commitment bid.</p>
                 </div>
-                <button type="button" id="post-custom-trip-btn" class="btn btn-sm btn-outline-gold">
-                    <span class="material-symbols-outlined" style="font-size:15px;">edit</span>
-                    <span>Edit Target Budget</span>
-                </button>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="admin-badge badge-success" style="font-size:11px;">🟢 Live Trip Requests</span>
+                </div>
             </div>
 
             <div class="bidding-cards-list animate-load stagger-2" id="bidding-cards-stream"></div>
@@ -1151,6 +1394,43 @@
                                     <span class="admin-nav-badge badge-info" id="admin-badge-users-count">{{ count($allUsers) }}</span>
                                 </a>
                             </li>
+
+                            <li class="admin-nav-header">NETWORK & SERVICE SETUP</li>
+                            <li class="admin-nav-item">
+                                <a href="javascript:void(0)" class="admin-nav-link" data-section="locations" onclick="switchAdminSection('locations')">
+                                    <span class="material-symbols-outlined admin-nav-icon">pin_drop</span>
+                                    <span class="admin-nav-text">Service Locations</span>
+                                    <span class="admin-nav-badge badge-primary" id="admin-badge-locations-count">{{ count($serviceLocations) }}</span>
+                                </a>
+                            </li>
+                            <li class="admin-nav-item">
+                                <a href="javascript:void(0)" class="admin-nav-link" data-section="berth-routes" onclick="switchAdminSection('berth-routes')">
+                                    <span class="material-symbols-outlined admin-nav-icon">directions_bus</span>
+                                    <span class="admin-nav-text">Berth Routes</span>
+                                    <span class="admin-nav-badge badge-info" id="admin-badge-berth-routes-count">{{ count($berthRoutes) }}</span>
+                                </a>
+                            </li>
+                            <li class="admin-nav-item">
+                                <a href="javascript:void(0)" class="admin-nav-link" data-section="berth-layouts" onclick="switchAdminSection('berth-layouts')">
+                                    <span class="material-symbols-outlined admin-nav-icon">airline_seat_recline_extra</span>
+                                    <span class="admin-nav-text">Berth & Seat Layouts</span>
+                                    <span class="admin-nav-badge badge-gold" id="admin-badge-berths-count">{{ count($allSeatLayouts) }}</span>
+                                </a>
+                            </li>
+                            <li class="admin-nav-item">
+                                <a href="javascript:void(0)" class="admin-nav-link" data-section="vehicles" onclick="switchAdminSection('vehicles')">
+                                    <span class="material-symbols-outlined admin-nav-icon">no_crash</span>
+                                    <span class="admin-nav-text">Driver Vehicles & Approvals</span>
+                                    @php $pendingVehiclesCount = $driverVehicles->where('status', 'Pending')->count(); @endphp
+                                    @if($pendingVehiclesCount > 0)
+                                        <span class="admin-nav-badge badge-danger" id="admin-badge-pending-vehicles">{{ $pendingVehiclesCount }} Pending</span>
+                                    @else
+                                        <span class="admin-nav-badge badge-success" id="admin-badge-pending-vehicles">{{ count($driverVehicles) }} Cars</span>
+                                    @endif
+                                </a>
+                            </li>
+
+                            <li class="admin-nav-header">DYNAMIC FORMS & PIPELINE</li>
                             <li class="admin-nav-item">
                                 <a href="javascript:void(0)" class="admin-nav-link" data-section="form-builder" onclick="switchAdminSection('form-builder')">
                                     <span class="material-symbols-outlined admin-nav-icon">dynamic_form</span>
@@ -2011,6 +2291,447 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Platform Legal & Policy URLs Settings -->
+                            <div class="card" style="margin-top:20px;">
+                                <div class="card-header" style="flex-wrap:wrap; gap:10px;">
+                                    <div>
+                                        <h3 class="card-title" style="display:flex; align-items:center; gap:8px;">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">policy</span>
+                                            <span>Legal Agreements & Policy URLs Configuration</span>
+                                        </h3>
+                                        <p class="card-subtitle">Set the destination URLs for the Login Pop-up notice: "By proceeding, you agree to Privacy Policy and T&Cs"</p>
+                                    </div>
+                                    <span class="admin-badge badge-gold">Auth Compliance</span>
+                                </div>
+
+                                <form id="admin-policy-urls-form" onsubmit="saveAdminPolicyUrls(event)" style="padding:16px 20px;">
+                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:14px;">
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-privacy-url">
+                                                <span style="font-weight:700;">Privacy Policy URL</span>
+                                                <span style="font-size:11px; color:#64748b;">(Internal route or external link)</span>
+                                            </label>
+                                            <div class="input-with-icon">
+                                                <span class="material-symbols-outlined">verified_user</span>
+                                                <input type="text" id="setting-privacy-url" class="form-control" value="{{ $platformSettings['privacy_policy_url'] ?? '/privacy-policy' }}" required placeholder="/privacy-policy or https://..." oninput="updatePolicyPreview()">
+                                            </div>
+                                        </div>
+
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-terms-url">
+                                                <span style="font-weight:700;">Terms & Conditions (T&Cs) URL</span>
+                                                <span style="font-size:11px; color:#64748b;">(Internal route or external link)</span>
+                                            </label>
+                                            <div class="input-with-icon">
+                                                <span class="material-symbols-outlined">description</span>
+                                                <input type="text" id="setting-terms-url" class="form-control" value="{{ $platformSettings['terms_conditions_url'] ?? '/terms-conditions' }}" required placeholder="/terms-conditions or https://..." oninput="updatePolicyPreview()">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Live Preview & Save Row -->
+                                    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                                        <div>
+                                            <div style="font-size:10.5px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Login Pop-up Notice Preview:</div>
+                                            <div style="font-size:12.5px; color:#334155; margin-top:2px;">
+                                                By proceeding, you agree to 
+                                                <a href="{{ $platformSettings['privacy_policy_url'] ?? '/privacy-policy' }}" id="preview-link-privacy" target="_blank" style="color:var(--primary); font-weight:600; text-decoration:underline;">Privacy Policy</a> 
+                                                and 
+                                                <a href="{{ $platformSettings['terms_conditions_url'] ?? '/terms-conditions' }}" id="preview-link-terms" target="_blank" style="color:var(--primary); font-weight:600; text-decoration:underline;">T&Cs</a>.
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-sm btn-primary">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">save</span>
+                                            <span>Save Policy URLs</span>
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- ======================================================== -->
+                        <!-- 5. SERVICE LOCATIONS SETUP (Admin)                       -->
+                        <!-- ======================================================== -->
+                        <div class="admin-section" id="admin-sec-locations">
+                            <div class="card" style="margin-bottom:20px;">
+                                <div class="card-header" style="flex-wrap:wrap; gap:12px;">
+                                    <div>
+                                        <h3 class="card-title">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">pin_drop</span>
+                                            <span>Service Locations & Network Hubs</span>
+                                        </h3>
+                                        <p class="card-subtitle">Setup operational cities, GPS latitude/longitude, and airport transit service coverage</p>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="openAddLocationModal()">
+                                        <span class="material-symbols-outlined" style="font-size:16px;">add</span>
+                                        <span>Add Location</span>
+                                    </button>
+                                </div>
+
+                                <div class="admin-bookings-toolbar" style="padding:10px 16px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; gap:12px; align-items:center;">
+                                    <div class="admin-search-box" style="flex:1; max-width:320px;">
+                                        <span class="material-symbols-outlined">search</span>
+                                        <input type="text" id="admin-location-search-input" placeholder="Search city, state, airport code..." oninput="handleLocationSearch(this.value)">
+                                    </div>
+                                </div>
+
+                                <div class="table-responsive">
+                                    <table class="admin-table-compact" id="admin-locations-table">
+                                        <thead>
+                                            <tr>
+                                                <th>City / Hub</th>
+                                                <th>State</th>
+                                                <th>GPS Coordinates</th>
+                                                <th>Airport Tag</th>
+                                                <th>Coverage Status</th>
+                                                <th style="text-align:right;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="admin-locations-tbody">
+                                            @forelse($serviceLocations as $loc)
+                                            <tr id="admin-loc-row-{{ $loc->id }}" data-search="{{ strtolower($loc->name . ' ' . $loc->state . ' ' . ($loc->airport_code ?: '')) }}">
+                                                <td>
+                                                    <strong>{{ $loc->name }}</strong>
+                                                </td>
+                                                <td>{{ $loc->state }}</td>
+                                                <td style="font-family:monospace; font-size:11.5px; color:#475569;">
+                                                    {{ $loc->latitude }}, {{ $loc->longitude }}
+                                                </td>
+                                                <td>
+                                                    @if($loc->airport_code)
+                                                        <span class="admin-badge badge-primary">{{ $loc->airport_code }}</span>
+                                                    @else
+                                                        <span style="color:#94a3b8; font-size:11px;">Standard</span>
+                                                    @endif
+                                                </td>
+                                                <td>
+                                                    @if($loc->is_active)
+                                                        <span class="admin-badge badge-success" style="cursor:pointer;" onclick="toggleLocationStatus({{ $loc->id }})" title="Click to toggle">Active</span>
+                                                    @else
+                                                        <span class="admin-badge badge-danger" style="cursor:pointer;" onclick="toggleLocationStatus({{ $loc->id }})" title="Click to toggle">Inactive</span>
+                                                    @endif
+                                                </td>
+                                                <td style="text-align:right;">
+                                                    <div class="admin-action-btn-group" style="justify-content:flex-end;">
+                                                        <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditLocationModal({{ $loc->id }})" title="Edit Location">
+                                                            <span class="material-symbols-outlined">edit</span>
+                                                        </button>
+                                                        <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteLocation({{ $loc->id }})" title="Delete Location">
+                                                            <span class="material-symbols-outlined">delete</span>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            @empty
+                                            <tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">No service locations configured yet.</td></tr>
+                                            @endforelse
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ======================================================== -->
+                        <!-- 6. BERTH ROUTES SETUP (Admin)                            -->
+                        <!-- ======================================================== -->
+                        <div class="admin-section" id="admin-sec-berth-routes">
+                            <div class="card" style="margin-bottom:20px;">
+                                <div class="card-header" style="flex-wrap:wrap; gap:12px;">
+                                    <div>
+                                        <h3 class="card-title">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">directions_bus</span>
+                                            <span>Berth Routes & Sleeper Schedules</span>
+                                        </h3>
+                                        <p class="card-subtitle">Setup routes for sleeper buses and berth-fitted passenger vehicles with timings and base fares</p>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="openAddBerthRouteModal()">
+                                        <span class="material-symbols-outlined" style="font-size:16px;">add</span>
+                                        <span>Add Berth Route</span>
+                                    </button>
+                                </div>
+
+                                <div class="table-responsive">
+                                    <table class="admin-table-compact" id="admin-berth-routes-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Route</th>
+                                                <th>Coach Code</th>
+                                                <th>Operator & Vehicle Type</th>
+                                                <th>Departure & Arrival</th>
+                                                <th>Base Fare</th>
+                                                <th>Berths</th>
+                                                <th>Status</th>
+                                                <th style="text-align:right;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="admin-berth-routes-tbody">
+                                            @forelse($berthRoutes as $br)
+                                            <tr id="admin-broute-row-{{ $br->id }}">
+                                                <td>
+                                                    <strong>{{ $br->from_city }} → {{ $br->to_city }}</strong>
+                                                </td>
+                                                <td>
+                                                    <span class="admin-badge badge-gold" style="font-family:monospace;">{{ $br->coach_code }}</span>
+                                                </td>
+                                                <td>
+                                                    <div style="font-weight:600; color:#0f172a;">{{ $br->operator_name }}</div>
+                                                    <div style="font-size:11px; color:#64748b;">{{ $br->vehicle_type }}</div>
+                                                </td>
+                                                <td>
+                                                    <div style="font-size:12px; font-weight:600; color:#0f172a;">{{ $br->departure_time }}</div>
+                                                    <div style="font-size:11px; color:#64748b;">Arr: {{ $br->arrival_time }}</div>
+                                                </td>
+                                                <td style="font-weight:700; color:#16a34a;">₹{{ number_format($br->base_price) }}</td>
+                                                <td>{{ $br->total_berths }} Berths</td>
+                                                <td>
+                                                    @if($br->is_active)
+                                                        <span class="admin-badge badge-success" style="cursor:pointer;" onclick="toggleBerthRouteStatus({{ $br->id }})" title="Click to toggle">Active</span>
+                                                    @else
+                                                        <span class="admin-badge badge-danger" style="cursor:pointer;" onclick="toggleBerthRouteStatus({{ $br->id }})" title="Click to toggle">Inactive</span>
+                                                    @endif
+                                                </td>
+                                                <td style="text-align:right;">
+                                                    <div class="admin-action-btn-group" style="justify-content:flex-end;">
+                                                        <button type="button" class="btn btn-xs btn-outline-gold" onclick="jumpToBerthLayout('{{ $br->coach_code }}')" title="Customise Berths">
+                                                            <span class="material-symbols-outlined" style="font-size:13px;">airline_seat_recline_extra</span>
+                                                            <span>Berths</span>
+                                                        </button>
+                                                        <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditBerthRouteModal({{ $br->id }})" title="Edit Route">
+                                                            <span class="material-symbols-outlined">edit</span>
+                                                        </button>
+                                                        <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteBerthRoute({{ $br->id }})" title="Delete Route">
+                                                            <span class="material-symbols-outlined">delete</span>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            @empty
+                                            <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">No berth routes configured yet.</td></tr>
+                                            @endforelse
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ======================================================== -->
+                        <!-- 7. VEHICLE BERTH & SEAT LAYOUT CUSTOMIZER (Admin)        -->
+                        <!-- ======================================================== -->
+                        <div class="admin-section" id="admin-sec-berth-layouts">
+                            <div class="card" style="margin-bottom:20px;">
+                                <div class="card-header" style="flex-wrap:wrap; gap:12px;">
+                                    <div>
+                                        <h3 class="card-title">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">airline_seat_recline_extra</span>
+                                            <span>Vehicle Berth & Seat Customizer</span>
+                                        </h3>
+                                        <p class="card-subtitle">Each vehicle or coach can have completely distinct berth mappings, lower/upper decks, and pricing</p>
+                                    </div>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <button type="button" class="btn btn-sm btn-primary" onclick="openAddBerthModal()">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">add</span>
+                                            <span>Add Custom Berth</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Vehicle / Coach Code Selector Toolbar -->
+                                <div class="admin-bookings-toolbar" style="background:#f8fafc; border-bottom:1px solid #e2e8f0; padding:12px 16px;">
+                                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                        <label style="font-size:12.5px; font-weight:700; color:#334155;">Select Vehicle / Coach Layout:</label>
+                                        <select id="admin-berth-coach-filter" class="form-control" style="width:260px; height:38px; font-size:12.5px;" onchange="filterBerthsByCoach(this.value)">
+                                            <option value="all">All Vehicles & Coaches</option>
+                                            @php
+                                                $coaches = $allSeatLayouts->pluck('coach_code')->unique();
+                                            @endphp
+                                            @foreach($coaches as $cc)
+                                                <option value="{{ $cc }}">Coach / Vehicle #{{ $cc }}</option>
+                                            @endforeach
+                                        </select>
+                                        <span style="font-size:11.5px; color:#64748b;">Showing distinct berths & deck configurations</span>
+                                    </div>
+                                </div>
+
+                                <div class="table-responsive">
+                                    <table class="admin-table-compact" id="admin-berths-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Coach / Car</th>
+                                                <th>Berth No.</th>
+                                                <th>Deck Level</th>
+                                                <th>Berth Type</th>
+                                                <th>Price</th>
+                                                <th>Ladies Quota</th>
+                                                <th>Status</th>
+                                                <th style="text-align:right;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="admin-berths-tbody">
+                                            @forelse($allSeatLayouts as $sb)
+                                            <tr class="admin-berth-row" data-coach="{{ $sb->coach_code }}" id="admin-berth-row-{{ $sb->id }}">
+                                                <td>
+                                                    <span class="admin-badge badge-gold" style="font-family:monospace;">{{ $sb->coach_code }}</span>
+                                                    <span style="font-size:11px; color:#64748b; margin-left:4px;">{{ $sb->operator_name }}</span>
+                                                </td>
+                                                <td>
+                                                    <strong style="font-size:13px; color:#0f172a;">{{ $sb->berth_number }}</strong>
+                                                </td>
+                                                <td>
+                                                    @if($sb->deck === 'lower')
+                                                        <span class="admin-badge badge-primary">Lower Deck</span>
+                                                    @elseif($sb->deck === 'upper')
+                                                        <span class="admin-badge badge-info">Upper Deck</span>
+                                                    @else
+                                                        <span class="admin-badge badge-gold">Single Cabin</span>
+                                                    @endif
+                                                </td>
+                                                <td>{{ ucfirst($sb->berth_type) }}</td>
+                                                <td style="font-weight:700; color:#16a34a;">₹{{ number_format($sb->price) }}</td>
+                                                <td>
+                                                    @if($sb->is_ladies_quota)
+                                                        <span class="admin-badge" style="background:#fdf2f8; color:#db2777; border:1px solid #fbcfe8;">Ladies Quota</span>
+                                                    @else
+                                                        <span style="color:#94a3b8; font-size:11.5px;">General</span>
+                                                    @endif
+                                                </td>
+                                                <td>
+                                                    @if($sb->is_booked)
+                                                        <span class="admin-badge badge-danger">Booked</span>
+                                                    @else
+                                                        <span class="admin-badge badge-success">Available</span>
+                                                    @endif
+                                                </td>
+                                                <td style="text-align:right;">
+                                                    <div class="admin-action-btn-group" style="justify-content:flex-end;">
+                                                        <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditBerthModal({{ $sb->id }})" title="Edit Berth">
+                                                            <span class="material-symbols-outlined">edit</span>
+                                                        </button>
+                                                        <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteBerth({{ $sb->id }})" title="Delete Berth">
+                                                            <span class="material-symbols-outlined">delete</span>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            @empty
+                                            <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">No vehicle berths configured yet.</td></tr>
+                                            @endforelse
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ======================================================== -->
+                        <!-- 8. DRIVER VEHICLES & FLEET APPROVALS (Admin)             -->
+                        <!-- ======================================================== -->
+                        <div class="admin-section" id="admin-sec-vehicles">
+                            <div class="card" style="margin-bottom:20px;">
+                                <div class="card-header" style="flex-wrap:wrap; gap:12px;">
+                                    <div>
+                                        <h3 class="card-title">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">no_crash</span>
+                                            <span>Driver Vehicles & Fleet Approvals</span>
+                                        </h3>
+                                        <p class="card-subtitle">Review driver vehicle submissions, verify RC permits, approve/reject fleet cars, and edit details</p>
+                                    </div>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <button type="button" class="btn btn-sm btn-outline" onclick="reloadAdminVehicles()">
+                                            <span class="material-symbols-outlined" style="font-size:14px;">refresh</span>
+                                            <span>Refresh</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="admin-bookings-toolbar">
+                                    <div class="admin-toolbar-filters">
+                                        <div class="admin-filter-item">
+                                            <label>Filter Status:</label>
+                                            <select id="admin-vehicle-filter-status" onchange="filterAdminVehicles(this.value)">
+                                                <option value="all">All Vehicles ({{ count($driverVehicles) }})</option>
+                                                <option value="Pending">Pending Approval ({{ $driverVehicles->where('status', 'Pending')->count() }})</option>
+                                                <option value="Approved">Approved & Active ({{ $driverVehicles->where('status', 'Approved')->count() }})</option>
+                                                <option value="Rejected">Rejected ({{ $driverVehicles->where('status', 'Rejected')->count() }})</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="table-responsive">
+                                    <table class="admin-table-compact" id="admin-vehicles-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Driver Details</th>
+                                                <th>Vehicle Model & Year</th>
+                                                <th>Plate Number</th>
+                                                <th>Category</th>
+                                                <th>Capacity</th>
+                                                <th>RC Number</th>
+                                                <th>Approval Status</th>
+                                                <th style="text-align:right;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="admin-vehicles-tbody">
+                                            @forelse($driverVehicles as $veh)
+                                            <tr class="admin-veh-row" data-status="{{ $veh->status }}" id="admin-veh-row-{{ $veh->id }}">
+                                                <td>
+                                                    <div style="font-weight:700; color:#0f172a;">{{ $veh->driver_name }}</div>
+                                                    <div style="font-size:11px; color:#64748b;">{{ $veh->driver_phone }}</div>
+                                                </td>
+                                                <td>
+                                                    <div style="font-weight:600; color:#0f172a;">{{ $veh->vehicle_model }}</div>
+                                                    <div style="font-size:11px; color:#64748b;">Year: {{ $veh->model_year }} &bull; Fuel: {{ $veh->fuel_type }}</div>
+                                                </td>
+                                                <td>
+                                                    <span class="admin-badge badge-gold" style="font-family:monospace; font-size:11.5px;">{{ $veh->vehicle_plate }}</span>
+                                                </td>
+                                                <td>
+                                                    <span class="admin-badge badge-primary">{{ strtoupper($veh->fleet_category) }}</span>
+                                                </td>
+                                                <td>
+                                                    <div>{{ $veh->seating_capacity }} Seats</div>
+                                                    @if($veh->berth_capacity > 0)
+                                                        <div style="font-size:10.5px; color:#16a34a; font-weight:700;">{{ $veh->berth_capacity }} Berths Fitted</div>
+                                                    @endif
+                                                </td>
+                                                <td style="font-family:monospace; font-size:11px;">{{ $veh->rc_number ?: 'Pending Upload' }}</td>
+                                                <td>
+                                                    @if($veh->status === 'Approved')
+                                                        <span class="admin-badge badge-success">Approved</span>
+                                                    @elseif($veh->status === 'Pending')
+                                                        <span class="admin-badge badge-warning">Pending Approval</span>
+                                                    @else
+                                                        <span class="admin-badge badge-danger">Rejected</span>
+                                                    @endif
+                                                </td>
+                                                <td style="text-align:right;">
+                                                    <div class="admin-action-btn-group" style="justify-content:flex-end;">
+                                                        @if($veh->status === 'Pending')
+                                                        <button type="button" class="btn btn-xs btn-primary" onclick="approveDriverVehicle({{ $veh->id }})" title="Approve Vehicle">
+                                                            <span class="material-symbols-outlined" style="font-size:13px;">check</span>
+                                                            <span>Approve</span>
+                                                        </button>
+                                                        <button type="button" class="btn btn-xs btn-outline" style="color:#ef4444; border-color:#fca5a5;" onclick="rejectDriverVehicle({{ $veh->id }})" title="Reject Vehicle">
+                                                            <span class="material-symbols-outlined" style="font-size:13px;">close</span>
+                                                            <span>Reject</span>
+                                                        </button>
+                                                        @endif
+                                                        <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditVehicleModal({{ $veh->id }})" title="Edit Vehicle">
+                                                            <span class="material-symbols-outlined">edit</span>
+                                                        </button>
+                                                        <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteVehicle({{ $veh->id }})" title="Delete Vehicle">
+                                                            <span class="material-symbols-outlined">delete</span>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            @empty
+                                            <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">No driver vehicles listed yet.</td></tr>
+                                            @endforelse
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </main>
@@ -2101,6 +2822,105 @@
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('payment-modal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: CONCLUSIVE DRIVER BID & COMMITMENT POPUP          -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="driver-bid-modal">
+    <div class="modal-dialog" style="max-width: 580px;">
+        <div class="modal-header" style="background:#0b0f19; color:#f8fafc; border-bottom:1px solid #1e293b;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div style="width:36px; height:36px; border-radius:8px; background:rgba(212,155,76,0.15); border:1px solid #d49b4c; display:flex; align-items:center; justify-content:center; color:#d49b4c;">
+                    <span class="material-symbols-outlined" style="font-size:22px;">gavel</span>
+                </div>
+                <div>
+                    <h3 class="modal-title" style="color:#ffffff; font-size:16px;">Chauffeur Ride Commitment & Bidding</h3>
+                    <p style="font-size:11px; color:#94a3b8; margin:0;">Conclusive trip agreement & binding fare proposal</p>
+                </div>
+            </div>
+            <button type="button" class="modal-close-btn" style="color:#cbd5e1;" onclick="closeModal('driver-bid-modal')">×</button>
+        </div>
+        <div class="modal-body" style="padding:18px 20px;">
+            <!-- Trip Route & Distance Details Box -->
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <span class="admin-badge badge-primary" id="driver-bid-trip-type" style="font-size:10.5px;">Outstation Trip</span>
+                    <span style="font-size:11.5px; color:#64748b; font-weight:600;" id="driver-bid-trip-schedule">Scheduled Departure</span>
+                </div>
+                
+                <!-- From & To Route Display -->
+                <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; margin-bottom:12px;">
+                    <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px;">
+                        <div style="font-size:10px; font-weight:700; color:#0284c7; text-transform:uppercase; letter-spacing:0.04em;">From (Pickup Location)</div>
+                        <div style="font-size:13px; font-weight:700; color:#0f172a; margin-top:2px;" id="driver-bid-from-loc">Pickup Location</div>
+                    </div>
+                    <div style="text-align:center; color:var(--primary); font-weight:800; font-size:20px;">➔</div>
+                    <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px;">
+                        <div style="font-size:10px; font-weight:700; color:#16a34a; text-transform:uppercase; letter-spacing:0.04em;">To (Drop Location)</div>
+                        <div style="font-size:13px; font-weight:700; color:#0f172a; margin-top:2px;" id="driver-bid-to-loc">Drop Location</div>
+                    </div>
+                </div>
+
+                <!-- Distance, Time & Passenger Budget Row -->
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; border-top:1px dashed #cbd5e1; padding-top:10px;">
+                    <div>
+                        <span style="color:#64748b;">Distance:</span>
+                        <strong style="color:#0f172a; margin-left:4px; font-family:monospace; font-size:14px;" id="driver-bid-distance-km">450 km</strong>
+                        <span style="color:#94a3b8; margin:0 6px;">&bull;</span>
+                        <span style="color:#64748b;">Est. Time:</span>
+                        <strong style="color:#0f172a; margin-left:4px;" id="driver-bid-est-time">9h 15m</strong>
+                    </div>
+                    <div>
+                        <span style="color:#64748b;">Passenger Budget:</span>
+                        <strong style="color:#16a34a; margin-left:4px; font-size:14px;" id="driver-bid-customer-budget">₹4,800</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Driver Fare Input -->
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>Your Proposed Ride Price (₹)</span>
+                    <span style="font-size:11px; color:#64748b;">Enter final all-inclusive trip fare</span>
+                </label>
+                <div class="input-with-icon">
+                    <span class="material-symbols-outlined" style="color:var(--primary);">currency_rupee</span>
+                    <input type="number" id="driver-bid-amount-input" class="form-control" style="font-size:20px; font-weight:800; color:#0f172a; height:46px;" oninput="updateConclusiveWriteup()" min="100" step="50">
+                </div>
+                <!-- Quick Amount Adjusters -->
+                <div style="display:flex; gap:6px; margin-top:8px;">
+                    <button type="button" class="btn btn-xs btn-outline" onclick="adjustDriverBidPrice(-100)">- ₹100</button>
+                    <button type="button" class="btn btn-xs btn-outline-gold" onclick="resetDriverBidToTarget()">Match Budget</button>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="adjustDriverBidPrice(200)">+ ₹200</button>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="adjustDriverBidPrice(500)">+ ₹500</button>
+                </div>
+            </div>
+
+            <!-- Mandatory Conclusive Write-up & Acceptance Box -->
+            <div style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:8px; padding:14px; margin-top:14px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+                    <span class="material-symbols-outlined" style="color:#d97706; font-size:18px;">verified</span>
+                    <span style="font-size:11px; text-transform:uppercase; font-weight:800; color:#92400e; letter-spacing:0.05em;">Conclusive Ride Commitment Statement</span>
+                </div>
+                <div id="driver-bid-conclusive-statement" style="font-size:13.5px; font-weight:600; color:#1e293b; line-height:1.55; padding:6px 0;">
+                    "I will take and do this ride from <span id="writeup-from" style="color:#0284c7;">Pickup</span> to <span id="writeup-to" style="color:#16a34a;">Drop</span> (<span id="writeup-km" style="font-family:monospace;">0 km</span>) at this price: <span id="writeup-price" style="color:#b45309; font-weight:800; font-size:15px;">₹0</span>. I accept this."
+                </div>
+                <div style="margin-top:10px; display:flex; align-items:flex-start; gap:8px; border-top:1px dashed #fcd34d; padding-top:8px;">
+                    <input type="checkbox" id="driver-bid-accept-checkbox" checked style="width:17px; height:17px; margin-top:2px; accent-color:#d97706; cursor:pointer;" onchange="toggleBidSubmitButton(this.checked)">
+                    <label for="driver-bid-accept-checkbox" style="font-size:11.5px; color:#475569; font-weight:600; cursor:pointer; line-height:1.4;">
+                        I accept this trip and agree to report on schedule with my verified vehicle at the agreed fare.
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer" style="background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('driver-bid-modal')">Cancel</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-submit-conclusive-bid" onclick="submitConclusiveDriverBid()">
+                <span>✓ I Accept & Confirm This Bid (<span id="btn-bid-amount-preview">₹0</span>)</span>
+            </button>
         </div>
     </div>
 </div>
@@ -3132,6 +3952,445 @@
                 <span>Edit User</span>
             </button>
             <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('admin-view-user-modal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: ADD / EDIT SERVICE LOCATION (Admin)               -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="admin-location-modal">
+    <div class="modal-dialog" style="max-width: 520px;">
+        <div class="modal-header">
+            <h3 class="modal-title" style="display:flex; align-items:center; gap:8px;">
+                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">pin_drop</span>
+                <span id="admin-location-modal-title">Service Location Setup</span>
+            </h3>
+            <button type="button" class="modal-close-btn" onclick="closeModal('admin-location-modal')">×</button>
+        </div>
+        <div class="modal-body" style="padding:16px 20px;">
+            <form id="admin-location-form" onsubmit="saveAdminLocation(event)">
+                <input type="hidden" id="admin-loc-id" value="">
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-loc-name">City / Hub Name *</label>
+                        <input type="text" id="admin-loc-name" class="form-control" placeholder="e.g. Pune, Goa, Mumbai" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-loc-state">State / Region *</label>
+                        <input type="text" id="admin-loc-state" class="form-control" placeholder="e.g. Maharashtra" required>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-loc-lat">Latitude *</label>
+                        <input type="number" step="0.0000001" id="admin-loc-lat" class="form-control" placeholder="18.5204" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-loc-lng">Longitude *</label>
+                        <input type="number" step="0.0000001" id="admin-loc-lng" class="form-control" placeholder="73.8567" required>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label" for="admin-loc-airport">Airport Code (Optional)</label>
+                    <input type="text" id="admin-loc-airport" class="form-control" placeholder="e.g. PNQ, BOM, GOI" style="text-transform:uppercase;">
+                </div>
+
+                <div style="display:flex; gap:18px; margin-bottom:16px;">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;">
+                        <input type="checkbox" id="admin-loc-has-airport" checked>
+                        <span>Airport Taxi Drop Available</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;">
+                        <input type="checkbox" id="admin-loc-active" checked>
+                        <span>Active for Customer Booking</span>
+                    </label>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--outline); padding-top:12px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('admin-location-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <span class="material-symbols-outlined" style="font-size:15px;">save</span>
+                        <span>Save Location</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: ADD / EDIT BERTH ROUTE (Admin)                    -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="admin-berth-route-modal">
+    <div class="modal-dialog" style="max-width: 580px;">
+        <div class="modal-header">
+            <h3 class="modal-title" style="display:flex; align-items:center; gap:8px;">
+                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">directions_bus</span>
+                <span id="admin-broute-modal-title">Berth Route & Sleeper Schedule</span>
+            </h3>
+            <button type="button" class="modal-close-btn" onclick="closeModal('admin-berth-route-modal')">×</button>
+        </div>
+        <div class="modal-body" style="padding:16px 20px;">
+            <form id="admin-berth-route-form" onsubmit="saveAdminBerthRoute(event)">
+                <input type="hidden" id="admin-broute-id" value="">
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-broute-from">Origin City *</label>
+                        <input type="text" id="admin-broute-from" class="form-control" placeholder="e.g. Pune" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-broute-to">Destination City *</label>
+                        <input type="text" id="admin-broute-to" class="form-control" placeholder="e.g. Goa" required>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-broute-operator">Transit Operator *</label>
+                        <input type="text" id="admin-broute-operator" class="form-control" placeholder="e.g. Intercity Express" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-broute-coach">Coach / Car Code *</label>
+                        <input type="text" id="admin-broute-coach" class="form-control" placeholder="e.g. 8092, 5510" required>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" for="admin-broute-vehicle">Vehicle / Coach Model *</label>
+                    <input type="text" id="admin-broute-vehicle" class="form-control" placeholder="e.g. Volvo Multi-Axle AC Sleeper, Force Urbania 7-Berth Van" required>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-broute-dept">Departure Time *</label>
+                        <input type="text" id="admin-broute-dept" class="form-control" placeholder="e.g. 09:30 PM" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-broute-arr">Arrival Time *</label>
+                        <input type="text" id="admin-broute-arr" class="form-control" placeholder="e.g. 06:45 AM" required>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:14px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-broute-price">Base Berth Fare (₹) *</label>
+                        <input type="number" id="admin-broute-price" class="form-control" placeholder="850" required min="50">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-broute-total-berths">Total Berths *</label>
+                        <input type="number" id="admin-broute-total-berths" class="form-control" placeholder="30" required min="1">
+                    </div>
+                </div>
+
+                <div style="margin-bottom:16px;">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;">
+                        <input type="checkbox" id="admin-broute-active" checked>
+                        <span>Active for Passenger Booking</span>
+                    </label>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--outline); padding-top:12px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('admin-berth-route-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <span class="material-symbols-outlined" style="font-size:15px;">save</span>
+                        <span>Save Berth Route</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: ADD / EDIT VEHICLE BERTH (Admin)                  -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="admin-berth-modal">
+    <div class="modal-dialog" style="max-width: 520px;">
+        <div class="modal-header">
+            <h3 class="modal-title" style="display:flex; align-items:center; gap:8px;">
+                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">airline_seat_recline_extra</span>
+                <span id="admin-berth-modal-title">Customise Vehicle Berth</span>
+            </h3>
+            <button type="button" class="modal-close-btn" onclick="closeModal('admin-berth-modal')">×</button>
+        </div>
+        <div class="modal-body" style="padding:16px 20px;">
+            <form id="admin-berth-form" onsubmit="saveAdminBerth(event)">
+                <input type="hidden" id="admin-berth-id" value="">
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-berth-coach">Vehicle / Coach Code *</label>
+                        <input type="text" id="admin-berth-coach" class="form-control" placeholder="e.g. 8092, 5510, 9104" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-berth-operator">Operator Name *</label>
+                        <input type="text" id="admin-berth-operator" class="form-control" placeholder="e.g. Intercity Express" required>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-berth-num">Berth Number / Code *</label>
+                        <input type="text" id="admin-berth-num" class="form-control" placeholder="e.g. L1, U2, B3, S4" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-berth-deck">Deck Level *</label>
+                        <select id="admin-berth-deck" class="form-control">
+                            <option value="lower">Lower Deck</option>
+                            <option value="upper">Upper Deck</option>
+                            <option value="single">Single Cabin / Van</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-berth-type">Berth Type *</label>
+                        <select id="admin-berth-type" class="form-control">
+                            <option value="window">Window Berth</option>
+                            <option value="aisle">Aisle Berth</option>
+                            <option value="sleeper">Single Sleeper</option>
+                            <option value="double_sleeper">Double Sleeper</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-berth-price">Fare (₹) *</label>
+                        <input type="number" id="admin-berth-price" class="form-control" placeholder="850" required min="50">
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:18px; margin-bottom:16px;">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;">
+                        <input type="checkbox" id="admin-berth-ladies">
+                        <span>Ladies Reserved Quota</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;">
+                        <input type="checkbox" id="admin-berth-booked">
+                        <span>Marked as Booked</span>
+                    </label>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--outline); padding-top:12px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('admin-berth-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <span class="material-symbols-outlined" style="font-size:15px;">save</span>
+                        <span>Save Berth</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: EDIT DRIVER VEHICLE & APPROVAL STATUS (Admin)     -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="admin-vehicle-modal">
+    <div class="modal-dialog" style="max-width: 600px;">
+        <div class="modal-header">
+            <h3 class="modal-title" style="display:flex; align-items:center; gap:8px;">
+                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">no_crash</span>
+                <span>Edit Vehicle & Approval Status</span>
+            </h3>
+            <button type="button" class="modal-close-btn" onclick="closeModal('admin-vehicle-modal')">×</button>
+        </div>
+        <div class="modal-body" style="padding:16px 20px;">
+            <form id="admin-vehicle-form" onsubmit="saveAdminVehicle(event)">
+                <input type="hidden" id="admin-veh-id" value="">
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-veh-driver-name">Driver Partner Name *</label>
+                        <input type="text" id="admin-veh-driver-name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-veh-driver-phone">Driver Phone *</label>
+                        <input type="text" id="admin-veh-driver-phone" class="form-control" required>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-veh-model">Vehicle Make & Model *</label>
+                        <input type="text" id="admin-veh-model" class="form-control" placeholder="e.g. Toyota Innova Crysta" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-veh-plate">License Plate Number *</label>
+                        <input type="text" id="admin-veh-plate" class="form-control" placeholder="e.g. MH 12 QX 4920" style="text-transform:uppercase;" required>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-veh-category">Fleet Class *</label>
+                        <select id="admin-veh-category" class="form-control">
+                            <option value="sedan">Comfort Sedan</option>
+                            <option value="prime">Prime Sedan</option>
+                            <option value="suv">Executive SUV</option>
+                            <option value="luxury">Luxury Class</option>
+                            <option value="sleeper_van">Sleeper Berth Van</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-veh-seats">Seats *</label>
+                        <input type="number" id="admin-veh-seats" class="form-control" min="2" max="60" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-veh-berths">Berths Fitted</label>
+                        <input type="number" id="admin-veh-berths" class="form-control" min="0" max="40" value="0">
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-veh-coach">Coach Code (If Berth Fitted)</label>
+                        <input type="text" id="admin-veh-coach" class="form-control" placeholder="e.g. 5510">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-veh-year">Model Year</label>
+                        <input type="text" id="admin-veh-year" class="form-control" placeholder="2023">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-veh-fuel">Fuel Type</label>
+                        <select id="admin-veh-fuel" class="form-control">
+                            <option value="Diesel">Diesel</option>
+                            <option value="Petrol">Petrol</option>
+                            <option value="EV">Electric (EV)</option>
+                            <option value="CNG">CNG</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" for="admin-veh-rc">Registration Certificate (RC) Number</label>
+                    <input type="text" id="admin-veh-rc" class="form-control" placeholder="e.g. RC-MH12-984129">
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-veh-status">Admin Approval Status *</label>
+                        <select id="admin-veh-status" class="form-control" style="font-weight:700;">
+                            <option value="Pending">⏳ Pending Approval</option>
+                            <option value="Approved">✅ Approved & Active</option>
+                            <option value="Rejected">❌ Rejected</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="display:flex; align-items:flex-end; padding-bottom:10px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;">
+                            <input type="checkbox" id="admin-veh-active">
+                            <span>Active in Fleet System</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label" for="admin-veh-notes">Admin Verification Notes / Rejection Reason</label>
+                    <textarea id="admin-veh-notes" class="form-control" rows="2" placeholder="e.g. Verified commercial permit and insurance"></textarea>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--outline); padding-top:12px;">
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteVehicleFromModal()" style="color:#ef4444; border-color:#fca5a5;">
+                        <span class="material-symbols-outlined" style="font-size:14px;">delete</span>
+                        <span>Delete Vehicle</span>
+                    </button>
+                    <div style="display:flex; gap:8px;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('admin-vehicle-modal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <span class="material-symbols-outlined" style="font-size:15px;">save</span>
+                            <span>Save Changes</span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: DRIVER LIST / REGISTER NEW VEHICLE               -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="driver-list-vehicle-modal">
+    <div class="modal-dialog" style="max-width: 560px;">
+        <div class="modal-header">
+            <h3 class="modal-title" style="display:flex; align-items:center; gap:8px;">
+                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">garage</span>
+                <span>Register Vehicle for Outstation Service</span>
+            </h3>
+            <button type="button" class="modal-close-btn" onclick="closeModal('driver-list-vehicle-modal')">×</button>
+        </div>
+        <div class="modal-body" style="padding:16px 20px;">
+            <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:12px; color:#92400e; display:flex; align-items:center; gap:8px;">
+                <span class="material-symbols-outlined" style="font-size:18px;">info</span>
+                <span>New vehicle listings will be set to <strong>Pending Approval</strong> until verified by platform operations.</span>
+            </div>
+
+            <form id="driver-list-vehicle-form" onsubmit="submitDriverNewVehicle(event)">
+                <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="driver-new-veh-model">Vehicle Make & Model *</label>
+                        <input type="text" id="driver-new-veh-model" class="form-control" placeholder="e.g. Toyota Innova Crysta, Maruti Ertiga" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="driver-new-veh-plate">License Plate Number *</label>
+                        <input type="text" id="driver-new-veh-plate" class="form-control" placeholder="MH 12 AB 1234" style="text-transform:uppercase;" required>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="driver-new-veh-category">Fleet Class *</label>
+                        <select id="driver-new-veh-category" class="form-control">
+                            <option value="suv" selected>Executive SUV</option>
+                            <option value="sedan">Comfort Sedan</option>
+                            <option value="prime">Prime Sedan</option>
+                            <option value="luxury">Luxury Class</option>
+                            <option value="sleeper_van">Sleeper Berth Van</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="driver-new-veh-seats">Seats *</label>
+                        <input type="number" id="driver-new-veh-seats" class="form-control" value="6" min="2" max="60" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="driver-new-veh-berths">Berths (If Fitted)</label>
+                        <input type="number" id="driver-new-veh-berths" class="form-control" value="0" min="0" max="40">
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="driver-new-veh-fuel">Fuel Type *</label>
+                        <select id="driver-new-veh-fuel" class="form-control">
+                            <option value="Diesel" selected>Diesel</option>
+                            <option value="Petrol">Petrol</option>
+                            <option value="EV">Electric (EV)</option>
+                            <option value="CNG">CNG</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="driver-new-veh-year">Manufacturing Year *</label>
+                        <input type="text" id="driver-new-veh-year" class="form-control" value="2023" required>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label" for="driver-new-veh-rc">Registration Certificate (RC Number) *</label>
+                    <input type="text" id="driver-new-veh-rc" class="form-control" placeholder="e.g. RC-MH12-123456" required>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--outline); padding-top:12px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('driver-list-vehicle-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <span class="material-symbols-outlined" style="font-size:15px;">send</span>
+                        <span>Submit for Admin Approval</span>
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
