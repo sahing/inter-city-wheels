@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'fast2sms' => [
+        'api_key' => env('FAST2SMS_API_KEY'),
+        'route' => env('FAST2SMS_ROUTE', 'otp'),
+    ],
+
 ];

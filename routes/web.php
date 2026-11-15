@@ -22,8 +22,11 @@ use App\Http\Controllers\Api\RouteCalculationController;
 // Main Portal
 Route::get('/', [HomeController::class, 'index'])->name('home');
 
-// Authentication Routes (Role-based)
+// Authentication Routes (Role-based & OTP)
 Route::post('/login', [AuthController::class, 'login'])->name('login');
+Route::post('/register', [AuthController::class, 'register'])->name('register');
+Route::post('/auth/send-otp', [AuthController::class, 'sendMobileOtp'])->name('auth.sendOtp');
+Route::post('/auth/verify-otp', [AuthController::class, 'verifyMobileOtp'])->name('auth.verifyOtp');
 Route::post('/login/quick-demo', [AuthController::class, 'quickDemoLogin'])->name('login.demo');
 Route::match(['get', 'post'], '/logout', [AuthController::class, 'logout'])->name('logout');
 Route::get('/api/auth/user', [AuthController::class, 'current'])->name('api.auth.user');

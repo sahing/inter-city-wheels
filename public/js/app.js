@@ -2310,10 +2310,298 @@ function initCabsModule() {
     }
   };
 
-  window.openLoginModal = function (role = 'customer') {
+  window.openLoginModal = function (role = 'customer', mode = 'signin') {
     selectLoginRole(role);
+    if (typeof switchAuthMode === 'function') {
+      switchAuthMode(mode);
+    }
     const modal = document.getElementById('login-modal');
     if (modal) modal.classList.add('active');
+  };
+
+  window.switchAuthMode = function (mode) {
+    const isSignIn = (mode === 'signin');
+    const signinContainer = document.getElementById('auth-signin-container');
+    const signupContainer = document.getElementById('auth-signup-container');
+    const tabSignIn = document.getElementById('tab-btn-signin');
+    const tabSignUp = document.getElementById('tab-btn-signup');
+    const title = document.getElementById('auth-modal-title');
+    const subtitle = document.getElementById('auth-modal-subtitle');
+
+    if (signinContainer) signinContainer.style.display = isSignIn ? 'block' : 'none';
+    if (signupContainer) signupContainer.style.display = isSignIn ? 'none' : 'block';
+
+    if (tabSignIn) tabSignIn.classList.toggle('active', isSignIn);
+    if (tabSignUp) tabSignUp.classList.toggle('active', !isSignIn);
+
+    if (title) title.textContent = isSignIn ? 'Portal Sign In' : 'Create Account';
+    if (subtitle) subtitle.textContent = isSignIn ? 'Select role & authenticate securely' : 'Sign up for Intercity Wheels cabs & outstation services';
+  };
+
+  window.switchSignInMethod = function (method) {
+    const isOtp = (method === 'otp');
+    const otpView = document.getElementById('signin-view-otp');
+    const passView = document.getElementById('signin-view-password');
+    const btnOtp = document.getElementById('method-btn-otp');
+    const btnPass = document.getElementById('method-btn-password');
+
+    if (otpView) otpView.style.display = isOtp ? 'block' : 'none';
+    if (passView) passView.style.display = isOtp ? 'none' : 'block';
+
+    if (btnOtp) btnOtp.classList.toggle('active', isOtp);
+    if (btnPass) btnPass.classList.toggle('active', !isOtp);
+  };
+
+  window.lastReceivedOtp = '1234';
+
+  window.handleSendOtp = async function (event) {
+    if (event) event.preventDefault();
+    const phoneInput = document.getElementById('login-otp-phone');
+    const roleInput = document.getElementById('login-role-input');
+    const sendBtn = document.getElementById('btn-send-otp');
+    const sendBtnText = document.getElementById('btn-send-otp-text');
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+    const role = roleInput ? roleInput.value : 'customer';
+
+    if (!phone || phone.length < 10) {
+      showToast('Please enter a valid 10-digit mobile number.', 'warning');
+      return;
+    }
+
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      if (sendBtnText) sendBtnText.textContent = 'Sending OTP via Fast2SMS...';
+    }
+
+    try {
+      const res = await fetch('/auth/send-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': csrfToken
+        },
+        body: JSON.stringify({ phone, role })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        window.lastReceivedOtp = data.otp || '1234';
+        
+        // Update live preview OTP display on screen
+        const otpDisplay = document.getElementById('otp-display-number');
+        if (otpDisplay) otpDisplay.textContent = window.lastReceivedOtp;
+
+        const gatewayLabel = document.getElementById('otp-status-gateway-label');
+        if (gatewayLabel) {
+          gatewayLabel.textContent = data.sms_sent 
+            ? 'Fast2SMS Gateway Active (SMS Dispatched)' 
+            : 'Fast2SMS Gateway (Demo Mode - Live OTP Shown Below)';
+        }
+
+        // Show toast with OTP notice
+        showToast(data.message, 'info');
+
+        // Reveal step 2 (verify OTP form)
+        const reqForm = document.getElementById('otp-request-form');
+        const verForm = document.getElementById('otp-verify-form');
+        if (reqForm) reqForm.style.display = 'none';
+        if (verForm) verForm.style.display = 'block';
+
+        const otpInput = document.getElementById('login-otp-input');
+        if (otpInput) {
+          otpInput.value = '';
+          otpInput.focus();
+        }
+      } else {
+        showToast(data.message || 'Failed to send OTP.', 'warning');
+      }
+    } catch (err) {
+      console.error('Send OTP error:', err);
+      showToast('Network error while requesting OTP.', 'warning');
+    } finally {
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        if (sendBtnText) sendBtnText.textContent = 'Send Verification OTP';
+      }
+    }
+  };
+
+  window.autoFillReceivedOtp = function () {
+    const otpInput = document.getElementById('login-otp-input');
+    const otpDisplay = document.getElementById('otp-display-number');
+    const otpToUse = window.lastReceivedOtp || (otpDisplay ? otpDisplay.textContent.trim() : '1234');
+    if (otpInput) {
+      otpInput.value = otpToUse;
+      showToast(`Auto-filled OTP: ${otpToUse}`, 'success');
+      otpInput.focus();
+    }
+  };
+
+  window.resetOtpStep = function () {
+    const reqForm = document.getElementById('otp-request-form');
+    const verForm = document.getElementById('otp-verify-form');
+    if (reqForm) reqForm.style.display = 'block';
+    if (verForm) verForm.style.display = 'none';
+  };
+
+  window.resendOtp = function () {
+    showToast('Requesting fresh OTP...', 'info');
+    handleSendOtp();
+  };
+
+  window.handleVerifyOtp = async function (event) {
+    if (event) event.preventDefault();
+    const phoneInput = document.getElementById('login-otp-phone');
+    const otpInput = document.getElementById('login-otp-input');
+    const roleInput = document.getElementById('login-role-input');
+    const verifyBtn = document.getElementById('btn-verify-otp');
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+    const otp = otpInput ? otpInput.value.trim() : '';
+    const role = roleInput ? roleInput.value : 'customer';
+
+    if (!otp) {
+      showToast('Please enter the verification OTP.', 'warning');
+      return;
+    }
+
+    const origBtnHtml = verifyBtn ? verifyBtn.innerHTML : '';
+    if (verifyBtn) {
+      verifyBtn.disabled = true;
+      verifyBtn.innerHTML = `<span class="material-symbols-outlined" style="animation:spin 1s linear infinite; font-size:18px;">sync</span> <span>Verifying OTP...</span>`;
+    }
+
+    try {
+      const res = await fetch('/auth/verify-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': csrfToken
+        },
+        body: JSON.stringify({ phone, otp, role })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        showToast(data.message, 'success');
+        closeModal('login-modal');
+        const targetUrl = data.redirect_url || '/';
+        const sep = targetUrl.includes('?') ? '&' : '?';
+        window.location.replace(targetUrl + sep + 'auth=' + Date.now());
+      } else {
+        showToast(data.message || 'OTP verification failed.', 'danger');
+        if (verifyBtn) {
+          verifyBtn.disabled = false;
+          verifyBtn.innerHTML = origBtnHtml;
+        }
+      }
+    } catch (err) {
+      console.error('Verify OTP error:', err);
+      showToast('Network error during OTP verification.', 'warning');
+      if (verifyBtn) {
+        verifyBtn.disabled = false;
+        verifyBtn.innerHTML = origBtnHtml;
+      }
+    }
+  };
+
+  window.selectSignupRole = function (role) {
+    const isDriver = (role === 'driver');
+    const roleInput = document.getElementById('signup-role-input');
+    const btnCustomer = document.getElementById('signup-role-btn-customer');
+    const btnDriver = document.getElementById('signup-role-btn-driver');
+    const driverFields = document.getElementById('signup-driver-fields');
+    const submitLabel = document.getElementById('signup-submit-label');
+
+    if (roleInput) roleInput.value = role;
+    if (btnCustomer) btnCustomer.classList.toggle('active', !isDriver);
+    if (btnDriver) btnDriver.classList.toggle('active', isDriver);
+
+    if (driverFields) driverFields.style.display = isDriver ? 'block' : 'none';
+    if (submitLabel) submitLabel.textContent = isDriver ? 'Register as Driver Partner' : 'Create Customer Account';
+  };
+
+  window.handleFormRegister = async function (event) {
+    if (event) event.preventDefault();
+    const nameEl = document.getElementById('signup-name');
+    const phoneEl = document.getElementById('signup-phone');
+    const emailEl = document.getElementById('signup-email');
+    const passwordEl = document.getElementById('signup-password');
+    const roleEl = document.getElementById('signup-role-input');
+    const vehModelEl = document.getElementById('signup-veh-model');
+    const vehPlateEl = document.getElementById('signup-veh-plate');
+    const submitBtn = document.getElementById('signup-submit-btn');
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+    const name = nameEl ? nameEl.value.trim() : '';
+    const phone = phoneEl ? phoneEl.value.trim() : '';
+    const email = emailEl ? emailEl.value.trim() : '';
+    const password = passwordEl ? passwordEl.value : '';
+    const role = roleEl ? roleEl.value : 'customer';
+    const vehicle_model = vehModelEl ? vehModelEl.value.trim() : '';
+    const vehicle_plate = vehPlateEl ? vehPlateEl.value.trim() : '';
+
+    if (!name || !phone || !email || !password) {
+      showToast('Please fill in all required registration fields.', 'warning');
+      return;
+    }
+
+    const origBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `<span class="material-symbols-outlined" style="animation:spin 1s linear infinite; font-size:18px;">sync</span> <span>Registering Account...</span>`;
+    }
+
+    try {
+      const res = await fetch('/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': csrfToken
+        },
+        body: JSON.stringify({
+          name,
+          phone,
+          email,
+          password,
+          role,
+          vehicle_model,
+          vehicle_plate
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        showToast(data.message, 'success');
+        closeModal('login-modal');
+        const targetUrl = data.redirect_url || '/';
+        const sep = targetUrl.includes('?') ? '&' : '?';
+        window.location.replace(targetUrl + sep + 'auth=' + Date.now());
+      } else {
+        const errorMsg = data.errors ? Object.values(data.errors).flat().join(' ') : (data.message || 'Registration failed.');
+        showToast(errorMsg, 'warning');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = origBtnHtml;
+        }
+      }
+    } catch (err) {
+      console.error('Registration error:', err);
+      showToast('Network error during registration.', 'warning');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origBtnHtml;
+      }
+    }
   };
 
   window.selectLoginRole = function (role) {

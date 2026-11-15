@@ -2530,6 +2530,23 @@ h1, h2, h3, h4, .font-display {
   padding: 20px;
   background: #ffffff;
 }
+.auth-mode-btn {
+  transition: all var(--transition-fast);
+}
+.auth-mode-btn.active {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+.method-toggle-btn {
+  transition: all var(--transition-fast);
+}
+.method-toggle-btn.active {
+  background: #f0f9ff !important;
+  border-color: #0284c7 !important;
+  color: #0369a1 !important;
+  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.12) !important;
+}
 .role-selector-pills {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

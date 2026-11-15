@@ -192,11 +192,17 @@
                         </button>
                     @endif
                 @else
-                    <!-- Minimal MVP Distraction-Free Sign In for Customers -->
-                    <button type="button" class="btn-auth-trigger" onclick="openLoginModal('customer')">
-                        <span class="material-symbols-outlined" style="font-size:16px;">login</span>
-                        <span>Sign In</span>
-                    </button>
+                    <!-- Minimal MVP Distraction-Free Sign In & Sign Up for Customers -->
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <button type="button" class="btn-auth-trigger" onclick="openLoginModal('customer', 'signin')">
+                            <span class="material-symbols-outlined" style="font-size:16px;">login</span>
+                            <span>Sign In</span>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="openLoginModal('customer', 'signup')" style="font-size:12px; height:34px; padding:0 12px; font-weight:700;">
+                            <span class="material-symbols-outlined" style="font-size:15px;">person_add</span>
+                            <span>Sign Up</span>
+                        </button>
+                    </div>
                 @endauth
             </div>
         </div>
@@ -206,107 +212,259 @@
     @yield('content')
 
     <!-- ======================================================== -->
-    <!-- MODAL: ROLE-BASED LOGIN (CUSTOMER / DRIVER / ADMIN)      -->
+    <!-- MODAL: ROLE-BASED AUTHENTICATION (SIGN IN & SIGN UP)     -->
     <!-- ======================================================== -->
     <div class="modal-overlay" id="login-modal">
-        <div class="modal-dialog auth-modal-dialog">
+        <div class="modal-dialog auth-modal-dialog" style="max-width: 460px;">
             <div class="modal-header auth-modal-header">
                 <div class="auth-header-brand">
                     <img src="{{ asset('assets/logo.jpg') }}" alt="Intercity Wheels" class="auth-logo-img">
                     <div>
-                        <h3 class="modal-title" style="color:#ffffff;">Portal Sign In</h3>
-                        <p class="auth-header-subtitle">Select role & authenticate securely</p>
+                        <h3 class="modal-title" id="auth-modal-title" style="color:#ffffff;">Portal Sign In</h3>
+                        <p class="auth-header-subtitle" id="auth-modal-subtitle">Authenticate securely or register a new account</p>
                     </div>
                 </div>
                 <button type="button" class="modal-close-btn" style="color:#cbd5e1;" onclick="closeModal('login-modal')">×</button>
             </div>
 
             <div class="modal-body auth-modal-body">
-                <!-- Role Selector Tabs -->
-                <div class="role-selector-pills">
-                    <button type="button" class="role-pill active" data-role="customer" onclick="selectLoginRole('customer')">
-                        <span class="role-icon">👤</span>
-                        <span class="role-label">Customer</span>
+                <!-- Top Mode Switcher: Sign In vs Sign Up -->
+                <div class="auth-mode-nav" style="display:flex; background:#f1f5f9; border-radius:8px; padding:3px; margin-bottom:14px; gap:4px;">
+                    <button type="button" class="auth-mode-btn active" id="tab-btn-signin" onclick="switchAuthMode('signin')" style="flex:1; padding:8px 12px; border:none; border-radius:6px; font-weight:700; font-size:12.5px; cursor:pointer; background:#ffffff; color:#0f172a; box-shadow:0 1px 3px rgba(0,0,0,0.08); display:flex; align-items:center; justify-content:center; gap:6px;">
+                        <span class="material-symbols-outlined" style="font-size:16px;">login</span>
+                        <span>Sign In</span>
                     </button>
-                    <button type="button" class="role-pill" data-role="driver" onclick="selectLoginRole('driver')">
-                        <span class="role-icon">👨🏽‍✈️</span>
-                        <span class="role-label">Driver</span>
-                    </button>
-                    <button type="button" class="role-pill" data-role="admin" onclick="selectLoginRole('admin')">
-                        <span class="role-icon">🛡️</span>
-                        <span class="role-label">Admin</span>
+                    <button type="button" class="auth-mode-btn" id="tab-btn-signup" onclick="switchAuthMode('signup')" style="flex:1; padding:8px 12px; border:none; border-radius:6px; font-weight:700; font-size:12.5px; cursor:pointer; background:transparent; color:#64748b; display:flex; align-items:center; justify-content:center; gap:6px;">
+                        <span class="material-symbols-outlined" style="font-size:16px;">person_add</span>
+                        <span>Sign Up</span>
                     </button>
                 </div>
 
-                <!-- Scope Explanation Notice -->
-                <div class="role-scope-notice" id="role-scope-notice">
-                    <span class="material-symbols-outlined" id="role-scope-icon" style="color:#38bdf8;">directions_car</span>
-                    <span id="role-scope-text">Customer Portal: Book sanitised outstation cabs and luxury sleeper bus berths.</span>
+                <!-- ================= SECTION 1: SIGN IN ================= -->
+                <div id="auth-signin-container">
+                    <!-- Role Selector Tabs -->
+                    <div class="role-selector-pills">
+                        <button type="button" class="role-pill active" data-role="customer" onclick="selectLoginRole('customer')">
+                            <span class="role-icon">👤</span>
+                            <span class="role-label">Customer</span>
+                        </button>
+                        <button type="button" class="role-pill" data-role="driver" onclick="selectLoginRole('driver')">
+                            <span class="role-icon">👨🏽‍✈️</span>
+                            <span class="role-label">Driver</span>
+                        </button>
+                        <button type="button" class="role-pill" data-role="admin" onclick="selectLoginRole('admin')">
+                            <span class="role-icon">🛡️</span>
+                            <span class="role-label">Admin</span>
+                        </button>
+                    </div>
+
+                    <!-- Scope Explanation Notice -->
+                    <div class="role-scope-notice" id="role-scope-notice">
+                        <span class="material-symbols-outlined" id="role-scope-icon" style="color:#38bdf8;">directions_car</span>
+                        <span id="role-scope-text">Customer Portal: Book sanitised outstation cabs and luxury sleeper bus berths.</span>
+                    </div>
+
+                    <!-- Sign In Method Switcher (Mobile OTP vs Password) -->
+                    <div class="signin-method-toggle" style="display:flex; justify-content:center; gap:8px; margin-bottom:14px;">
+                        <button type="button" class="method-toggle-btn active" id="method-btn-otp" onclick="switchSignInMethod('otp')" style="border:1px solid #0284c7; background:#f0f9ff; color:#0369a1; padding:6px 14px; border-radius:20px; font-size:11.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                            <span class="material-symbols-outlined" style="font-size:15px; color:#0284c7;">smartphone</span>
+                            <span>Mobile OTP Login</span>
+                        </button>
+                        <button type="button" class="method-toggle-btn" id="method-btn-password" onclick="switchSignInMethod('password')" style="border:1px solid #cbd5e1; background:#ffffff; color:#64748b; padding:6px 14px; border-radius:20px; font-size:11.5px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                            <span class="material-symbols-outlined" style="font-size:15px; color:#64748b;">key</span>
+                            <span>Email & Password</span>
+                        </button>
+                    </div>
+
+                    <!-- METHOD A: MOBILE OTP SIGN IN -->
+                    <div id="signin-view-otp">
+                        <!-- Step 1: Send OTP -->
+                        <form id="otp-request-form" onsubmit="handleSendOtp(event)">
+                            <div class="form-group" style="margin-bottom:12px;">
+                                <label class="form-label" for="login-otp-phone">Enter Mobile Number</label>
+                                <div style="display:flex; align-items:stretch; gap:6px;">
+                                    <span style="display:flex; align-items:center; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; padding:0 10px; font-size:13px; font-weight:700; color:#334155;">🇮🇳 +91</span>
+                                    <input type="tel" id="login-otp-phone" class="form-control" placeholder="10-digit mobile number" maxlength="10" required pattern="[0-9]{10}" style="font-weight:700; font-size:14px; letter-spacing:0.5px;" value="9876543210">
+                                </div>
+                                <span style="font-size:11px; color:#64748b; margin-top:3px; display:block;">Instant OTP authentication via Fast2SMS SMS Gateway.</span>
+                            </div>
+
+                            <button type="submit" id="btn-send-otp" class="btn btn-primary btn-block" style="height:44px; font-size:13.5px;">
+                                <span class="material-symbols-outlined" style="font-size:18px;">send</span>
+                                <span id="btn-send-otp-text">Send Verification OTP</span>
+                            </button>
+                        </form>
+
+                        <!-- Step 2: Enter & Verify OTP (Revealed after OTP is sent) -->
+                        <form id="otp-verify-form" onsubmit="handleVerifyOtp(event)" style="display:none; margin-top:14px;">
+                            <!-- Live OTP Preview Callout -->
+                            <div id="otp-live-preview-box" style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px; margin-bottom:12px; text-align:center;">
+                                <div style="font-size:11.5px; color:#1e40af; font-weight:600;">
+                                    📱 <span id="otp-status-gateway-label">Fast2SMS Gateway Preview Mode</span>
+                                </div>
+                                <div style="font-size:12px; color:#1e3a8a; margin-top:4px;">
+                                    Your Verification OTP is: <strong id="otp-display-number" style="font-family:monospace; font-size:20px; font-weight:900; color:#1d4ed8; letter-spacing:3px; background:#ffffff; padding:2px 8px; border-radius:4px; border:1px dashed #60a5fa; margin-left:4px;">1234</strong>
+                                </div>
+                                <div style="margin-top:6px;">
+                                    <button type="button" class="btn btn-xs btn-outline" onclick="autoFillReceivedOtp()" style="font-size:10.5px; padding:2px 8px; color:#0284c7; border-color:#93c5fd; background:#ffffff;">
+                                        ⚡ Click to Auto-Fill OTP
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom:12px;">
+                                <label class="form-label" for="login-otp-input">Enter Verification OTP</label>
+                                <input type="text" id="login-otp-input" class="form-control" placeholder="••••" maxlength="6" required style="font-family:monospace; font-size:22px; font-weight:800; text-align:center; letter-spacing:6px; height:46px;">
+                            </div>
+
+                            <button type="submit" id="btn-verify-otp" class="btn btn-primary btn-block" style="height:44px; font-size:13.5px; margin-bottom:8px;">
+                                <span class="material-symbols-outlined" style="font-size:18px;">verified_user</span>
+                                <span>Verify & Sign In</span>
+                            </button>
+
+                            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11.5px; margin-top:10px;">
+                                <span style="color:#64748b; cursor:pointer; text-decoration:underline;" onclick="resetOtpStep()">
+                                    &larr; Change mobile number
+                                </span>
+                                <span id="resend-otp-btn" style="color:#0284c7; font-weight:700; cursor:pointer;" onclick="resendOtp()">
+                                    Resend OTP
+                                </span>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- METHOD B: EMAIL & PASSWORD SIGN IN -->
+                    <div id="signin-view-password" style="display:none;">
+                        <form id="role-login-form" action="{{ route('login') }}" method="POST" onsubmit="handleFormLogin(event)">
+                            @csrf
+                            <input type="hidden" name="role" id="login-role-input" value="customer">
+
+                            <div class="form-group">
+                                <label class="form-label" for="login-email">Account Email</label>
+                                <div class="input-with-icon">
+                                    <span class="material-symbols-outlined">mail</span>
+                                    <input type="email" name="email" id="login-email" class="form-control" placeholder="user@intercitywheels.com" required value="customer@intercitywheels.com">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="login-password">Password</label>
+                                <div class="input-with-icon">
+                                    <span class="material-symbols-outlined">lock</span>
+                                    <input type="password" name="password" id="login-password" class="form-control" placeholder="••••••••" required value="password123">
+                                </div>
+                            </div>
+
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; font-size:12px;">
+                                <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#475569;">
+                                    <input type="checkbox" name="remember" id="login-remember" value="1" checked>
+                                    <span>Remember session</span>
+                                </label>
+                                <span style="color:#0284c7; font-weight:600; cursor:pointer;" onclick="showToast('Password recovery token sent to your email.', 'info')">Forgot?</span>
+                            </div>
+
+                            <button type="submit" id="login-submit-btn" class="btn btn-primary btn-block" style="height:44px; font-size:13.5px;">
+                                <span class="material-symbols-outlined" style="font-size:18px;">lock_open</span>
+                                <span id="login-submit-label">Sign In as Customer</span>
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Toggle to Sign Up -->
+                    <div style="text-align:center; font-size:12px; color:#475569; margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;">
+                        Don't have an account yet? 
+                        <a href="javascript:void(0)" onclick="switchAuthMode('signup')" style="color:var(--primary); font-weight:700; text-decoration:none;">Create Account (Sign Up)</a>
+                    </div>
                 </div>
 
-                <!-- Role Login Form -->
-                <form id="role-login-form" action="{{ route('login') }}" method="POST" onsubmit="handleFormLogin(event)">
-                    @csrf
-                    <input type="hidden" name="role" id="login-role-input" value="customer">
+                <!-- ================= SECTION 2: SIGN UP ================= -->
+                <div id="auth-signup-container" style="display:none;">
+                    <!-- Role Switcher for Registration (Customer vs Driver Partner) -->
+                    <div class="role-selector-pills" style="grid-template-columns: 1fr 1fr; margin-bottom:12px;">
+                        <button type="button" class="role-pill active" id="signup-role-btn-customer" onclick="selectSignupRole('customer')">
+                            <span class="role-icon">👤</span>
+                            <span class="role-label">Passenger / Customer</span>
+                        </button>
+                        <button type="button" class="role-pill" id="signup-role-btn-driver" onclick="selectSignupRole('driver')">
+                            <span class="role-icon">👨🏽‍✈️</span>
+                            <span class="role-label">Driver / Fleet Partner</span>
+                        </button>
+                    </div>
 
-                    <div class="form-group">
-                        <label class="form-label" for="login-email">Account Email</label>
-                        <div class="input-with-icon">
-                            <span class="material-symbols-outlined">mail</span>
-                            <input type="email" name="email" id="login-email" class="form-control" placeholder="user@intercitywheels.com" required value="customer@intercitywheels.com">
+                    <form id="auth-signup-form" onsubmit="handleFormRegister(event)">
+                        <input type="hidden" id="signup-role-input" value="customer">
+
+                        <div class="form-group" style="margin-bottom:10px;">
+                            <label class="form-label" for="signup-name">Full Name *</label>
+                            <div class="input-with-icon">
+                                <span class="material-symbols-outlined">badge</span>
+                                <input type="text" id="signup-name" class="form-control" placeholder="e.g. Rahul Sharma" required>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="form-group">
-                        <label class="form-label" for="login-password">Password</label>
-                        <div class="input-with-icon">
-                            <span class="material-symbols-outlined">lock</span>
-                            <input type="password" name="password" id="login-password" class="form-control" placeholder="••••••••" required value="password123">
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px;">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label" for="signup-phone">Mobile Number *</label>
+                                <div class="input-with-icon">
+                                    <span class="material-symbols-outlined">call</span>
+                                    <input type="tel" id="signup-phone" class="form-control" placeholder="9876543210" maxlength="10" required pattern="[0-9]{10}">
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label" for="signup-email">Email Address *</label>
+                                <div class="input-with-icon">
+                                    <span class="material-symbols-outlined">mail</span>
+                                    <input type="email" id="signup-email" class="form-control" placeholder="rahul@example.com" required>
+                                </div>
+                            </div>
                         </div>
-                    </div>
 
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; font-size:12px;">
-                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#475569;">
-                            <input type="checkbox" name="remember" id="login-remember" value="1" checked>
-                            <span>Remember session</span>
-                        </label>
-                        <span style="color:#0284c7; font-weight:600; cursor:pointer;" onclick="showToast('Password recovery token sent to your email.', 'info')">Forgot?</span>
-                    </div>
+                        <div class="form-group" style="margin-bottom:10px;">
+                            <label class="form-label" for="signup-password">Choose Password *</label>
+                            <div class="input-with-icon">
+                                <span class="material-symbols-outlined">lock</span>
+                                <input type="password" id="signup-password" class="form-control" placeholder="At least 6 characters" minlength="6" required>
+                            </div>
+                        </div>
 
-                    <button type="submit" id="login-submit-btn" class="btn btn-primary btn-block" style="height:44px; font-size:13.5px;">
-                        <span class="material-symbols-outlined" style="font-size:18px;">lock_open</span>
-                        <span id="login-submit-label">Sign In as Customer</span>
-                    </button>
+                        <!-- Driver Extra Fields (Visible when Driver Partner selected) -->
+                        <div id="signup-driver-fields" style="display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:12px;">
+                            <div style="font-size:11.5px; font-weight:700; color:#0f172a; margin-bottom:8px; display:flex; align-items:center; gap:4px;">
+                                <span class="material-symbols-outlined" style="font-size:16px; color:var(--primary);">local_taxi</span>
+                                <span>Chauffeur Vehicle Details</span>
+                            </div>
+                            <div style="display:grid; grid-template-columns: 1.3fr 1fr; gap:8px;">
+                                <div>
+                                    <label class="form-label" style="font-size:10.5px;">Vehicle Model</label>
+                                    <input type="text" id="signup-veh-model" class="form-control" placeholder="e.g. Innova Crysta / Ertiga">
+                                </div>
+                                <div>
+                                    <label class="form-label" style="font-size:10.5px;">Plate Number</label>
+                                    <input type="text" id="signup-veh-plate" class="form-control" placeholder="WB 02 AB 1234" style="text-transform:uppercase;">
+                                </div>
+                            </div>
+                        </div>
 
-                    <!-- Terms & Privacy Policy Legal Agreement Notice -->
-                    <div class="login-terms-notice" style="text-align:center; font-size:11px; color:#64748b; margin-top:12px; line-height:1.4;">
-                        By proceeding, you agree to 
-                        <a href="{{ $platformSettings['privacy_policy_url'] ?? '/privacy-policy' }}" id="login-link-privacy" target="_blank" style="color:var(--primary); font-weight:600; text-decoration:underline;">Privacy Policy</a> 
-                        and 
-                        <a href="{{ $platformSettings['terms_conditions_url'] ?? '/terms-conditions' }}" id="login-link-terms" target="_blank" style="color:var(--primary); font-weight:600; text-decoration:underline;">T&Cs</a>.
-                    </div>
-                </form>
-
-                <!-- One-Click Quick Role Switchers -->
-                <!-- <div class="demo-login-drawer">
-                    <div class="demo-login-divider">
-                        <span>⚡ One-Click Instant Role Demo</span>
-                    </div>
-                    <div class="demo-role-buttons">
-                        <button type="button" class="btn-demo-role" onclick="quickDemoLogin('customer')">
-                            <span class="demo-avatar">👤</span>
-                            <span class="demo-label">Customer</span>
+                        <button type="submit" id="signup-submit-btn" class="btn btn-primary btn-block" style="height:44px; font-size:13.5px; margin-top:4px;">
+                            <span class="material-symbols-outlined" style="font-size:18px;">how_to_reg</span>
+                            <span id="signup-submit-label">Create Customer Account</span>
                         </button>
-                        <button type="button" class="btn-demo-role" onclick="quickDemoLogin('driver')">
-                            <span class="demo-avatar">👨🏽‍✈️</span>
-                            <span class="demo-label">Driver Partner</span>
-                        </button>
-                        <button type="button" class="btn-demo-role" onclick="quickDemoLogin('admin')">
-                            <span class="demo-avatar">🛡️</span>
-                            <span class="demo-label">Platform Admin</span>
-                        </button>
+                    </form>
+
+                    <!-- Toggle to Sign In -->
+                    <div style="text-align:center; font-size:12px; color:#475569; margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;">
+                        Already registered? 
+                        <a href="javascript:void(0)" onclick="switchAuthMode('signin')" style="color:var(--primary); font-weight:700; text-decoration:none;">Sign In to Your Account</a>
                     </div>
-                </div> -->
+                </div>
+
+                <!-- Terms & Privacy Policy Legal Agreement Notice -->
+                <div class="login-terms-notice" style="text-align:center; font-size:11px; color:#64748b; margin-top:12px; line-height:1.4;">
+                    By proceeding, you agree to 
+                    <a href="{{ $platformSettings['privacy_policy_url'] ?? '/privacy-policy' }}" id="login-link-privacy" target="_blank" style="color:var(--primary); font-weight:600; text-decoration:underline;">Privacy Policy</a> 
+                    and 
+                    <a href="{{ $platformSettings['terms_conditions_url'] ?? '/terms-conditions' }}" id="login-link-terms" target="_blank" style="color:var(--primary); font-weight:600; text-decoration:underline;">T&Cs</a>.
+                </div>
             </div>
         </div>
     </div>
