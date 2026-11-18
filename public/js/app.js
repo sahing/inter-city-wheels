@@ -813,13 +813,30 @@ function initCabsModule() {
     const fleetTitle = document.getElementById('recap-fleet-title');
     if (fleetTitle) fleetTitle.textContent = `${fData.name} (${fData.models.split(',')[0]})`;
 
-    // Sync pickup / drop into Step 3 inputs
-    const fromVal = document.getElementById('rental-from-city')?.value || 'Kolkata';
-    const toVal = document.getElementById('rental-to-city')?.value || 'Mayapur, West Bengal';
+    // Sync pickup / drop into Step 3 inputs based on trip type
+    let fromVal = 'Kolkata';
+    let toVal = 'Mayapur, West Bengal';
+    if (state.cab.tripType === 'roundtrip') {
+      fromVal = document.getElementById('rental-rt-from')?.value || 'Kolkata';
+      toVal = document.getElementById('rental-rt-to')?.value || 'Mayapur, West Bengal';
+    } else if (state.cab.tripType === 'local') {
+      fromVal = document.getElementById('rental-local-city')?.value || 'Kolkata';
+      toVal = `${fromVal} Local Sightseeing`;
+    } else if (state.cab.tripType === 'airport') {
+      const dir = document.querySelector('input[name="airport_direction"]:checked')?.value || 'pickup';
+      const apt = document.getElementById('rental-airport-name')?.value || 'Airport';
+      const city = document.getElementById('rental-airport-address')?.value || 'City Area';
+      fromVal = dir === 'pickup' ? apt : city;
+      toVal = dir === 'pickup' ? city : apt;
+    } else {
+      fromVal = document.getElementById('rental-from-city')?.value || 'Kolkata';
+      toVal = document.getElementById('rental-to-city')?.value || 'Mayapur, West Bengal';
+    }
+
     const pInput = document.getElementById('cab-pickup-address');
     const dInput = document.getElementById('cab-drop-address');
-    if (pInput && !pInput.value) pInput.value = `${fromVal} Central`;
-    if (dInput && !dInput.value) dInput.value = `${toVal} Landmark`;
+    if (pInput) pInput.value = fromVal.includes('Sector') || fromVal.includes('Bay') || fromVal.includes('Terminal') ? fromVal : `${fromVal} Area`;
+    if (dInput) dInput.value = toVal.includes('Sector') || toVal.includes('Bay') || toVal.includes('Terminal') ? toVal : `${toVal} Landmark`;
 
     updateTotalCabFare();
     goToCabStep(3);
@@ -1026,23 +1043,71 @@ function initCabsModule() {
 
     let fromCityName = 'Kolkata';
     let toCityName = 'Mayapur';
+    let pickupLoc = '';
+    let dropLoc = '';
 
     if (state.cab.tripType === 'oneway') {
       fromCityName = document.getElementById('rental-from-city')?.value.split(',')[0].trim() || 'Kolkata';
       toCityName = document.getElementById('rental-to-city')?.value.split(',')[0].trim() || 'Mayapur';
+      pickupLoc = (pickupInput && pickupInput.value.trim()) ? pickupInput.value.trim() : `${fromCityName} Central Area`;
+      dropLoc = (dropInput && dropInput.value.trim()) ? dropInput.value.trim() : `${toCityName} Center`;
     } else if (state.cab.tripType === 'roundtrip') {
       fromCityName = document.getElementById('rental-rt-from')?.value.split(',')[0].trim() || 'Kolkata';
       toCityName = document.getElementById('rental-rt-to')?.value.split(',')[0].trim() || 'Mayapur';
+      pickupLoc = (pickupInput && pickupInput.value.trim()) ? pickupInput.value.trim() : `${fromCityName} Central Area`;
+      dropLoc = (dropInput && dropInput.value.trim()) ? dropInput.value.trim() : `${toCityName} Center`;
     } else if (state.cab.tripType === 'local') {
       fromCityName = document.getElementById('rental-local-city')?.value.split(',')[0].trim() || 'Kolkata';
-      toCityName = fromCityName;
+      toCityName = `${fromCityName} Local`;
+      pickupLoc = (pickupInput && pickupInput.value.trim()) ? pickupInput.value.trim() : `${fromCityName} Central`;
+      dropLoc = (dropInput && dropInput.value.trim()) ? dropInput.value.trim() : `${fromCityName} Sightseeing`;
     } else if (state.cab.tripType === 'airport') {
-      fromCityName = 'Kolkata';
-      toCityName = 'Kolkata Airport';
+      const airportDirection = document.querySelector('input[name="airport_direction"]:checked')?.value || 'pickup';
+      const airportName = document.getElementById('rental-airport-name')?.value.trim() || 'Netaji Subhash Chandra Bose Intl (CCU), Kolkata';
+      const cityAddress = document.getElementById('rental-airport-address')?.value.trim() || 'Salt Lake Sector V, Kolkata';
+      const cityExtracted = airportName.split(',').pop()?.trim() || 'Kolkata';
+      fromCityName = cityExtracted;
+      toCityName = airportName.includes('(') ? airportName.split('(')[0].trim() : 'Airport Hub';
+      if (airportDirection === 'pickup') {
+        pickupLoc = (pickupInput && pickupInput.value.trim()) ? pickupInput.value.trim() : airportName;
+        dropLoc = (dropInput && dropInput.value.trim()) ? dropInput.value.trim() : cityAddress;
+      } else {
+        pickupLoc = (pickupInput && pickupInput.value.trim()) ? pickupInput.value.trim() : cityAddress;
+        dropLoc = (dropInput && dropInput.value.trim()) ? dropInput.value.trim() : airportName;
+      }
     }
 
-    const pickupLoc = (pickupInput && pickupInput.value.trim()) ? pickupInput.value.trim() : `${fromCityName} Central Area`;
-    const dropLoc = (dropInput && dropInput.value.trim()) ? dropInput.value.trim() : `${toCityName} Center`;
+    if (!pickupLoc) pickupLoc = (pickupInput && pickupInput.value.trim()) ? pickupInput.value.trim() : `${fromCityName} Central`;
+    if (!dropLoc) dropLoc = (dropInput && dropInput.value.trim()) ? dropInput.value.trim() : `${toCityName} Center`;
+
+    // Extract departure time
+    let departureTimeStr = '';
+    if (state.cab.tripType === 'oneway') {
+      const d = document.getElementById('rental-pickup-date')?.value || document.getElementById('cab-pickup-date')?.value;
+      const t = document.getElementById('rental-pickup-time')?.value || document.getElementById('cab-pickup-time')?.value || '12:15';
+      if (d) departureTimeStr = `${d} ${t}`;
+    } else if (state.cab.tripType === 'roundtrip') {
+      const d = document.getElementById('rental-rt-start-date')?.value;
+      const t = document.getElementById('rental-rt-start-time')?.value || '12:15';
+      if (d) departureTimeStr = `${d} ${t}`;
+    } else if (state.cab.tripType === 'local') {
+      const d = document.getElementById('rental-local-date')?.value;
+      const t = document.getElementById('rental-local-time')?.value || '10:00';
+      if (d) departureTimeStr = `${d} ${t}`;
+    } else if (state.cab.tripType === 'airport') {
+      const d = document.getElementById('rental-airport-date')?.value;
+      const t = document.getElementById('rental-airport-time')?.value || '11:30';
+      if (d) departureTimeStr = `${d} ${t}`;
+    }
+
+    // Dynamic fields extraction
+    const dynamicFieldsData = {};
+    document.querySelectorAll('.cab-dynamic-field').forEach(input => {
+      const key = input.dataset.key;
+      if (key && input.value.trim()) {
+        dynamicFieldsData[key] = input.value.trim();
+      }
+    });
 
     const csrfMeta = document.querySelector('meta[name="csrf-token"]');
     const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
@@ -1054,6 +1119,7 @@ function initCabsModule() {
       to_city: toCityName,
       pickup_location: pickupLoc,
       drop_location: dropLoc,
+      departure_time: departureTimeStr || undefined,
       customer_name: customerName,
       customer_phone: customerPhone,
       customer_email: customerEmail,
@@ -1064,7 +1130,9 @@ function initCabsModule() {
       include_tolls: state.cab.includeTolls !== false,
       pet_friendly: Boolean(state.cab.petFriendly),
       night_allowance: Boolean(state.cab.nightAllowance),
-      coupon_code: state.cab.appliedCoupon || ''
+      luggage_carrier: Boolean(state.cab.luggageCarrier),
+      coupon_code: state.cab.appliedCoupon || '',
+      dynamic_fields: dynamicFieldsData
     };
 
     const origBtnContent = btn ? btn.innerHTML : '';
@@ -2122,16 +2190,52 @@ function initCabsModule() {
     modal.classList.add('active');
   }
 
-  window.confirmMockPayment = function (method) {
+  window.confirmMockPayment = async function (method) {
     const modal = document.getElementById('payment-modal');
     modal.classList.remove('active');
 
     const source = modal.dataset.source;
     const amount = parseInt(modal.dataset.amount, 10);
-    const otp = Math.floor(1000 + Math.random() * 9000);
+    let otp = Math.floor(1000 + Math.random() * 9000);
+    let bookingRef = `ICW-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    if (source === 'bus') {
+      try {
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+        const busPayload = {
+          service_type: 'bus',
+          from_city: 'Pune',
+          to_city: 'Goa',
+          pickup_location: 'Swargate Bay 4, Pune',
+          drop_location: 'Panjim KTC, Goa',
+          customer_name: (state.schedules.passengers[0]?.name) || window.CURRENT_USER?.name || 'Passenger',
+          customer_phone: window.CURRENT_USER?.phone || '+91 98220 11920',
+          customer_email: window.CURRENT_USER?.email || 'traveller@intercitywheels.com',
+          selected_units: state.schedules.selectedSeats.map(s => s.id),
+          passengers: state.schedules.passengers
+        };
+        const res = await fetch('/api/bookings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': csrfToken
+          },
+          body: JSON.stringify(busPayload)
+        });
+        const data = await res.json();
+        if (data.success && data.booking) {
+          bookingRef = data.booking.booking_reference;
+          otp = data.booking.start_otp;
+        }
+      } catch (err) {
+        console.warn('Bus booking API sync:', err);
+      }
+    }
 
     const booking = {
-      id: `ICW-${Math.floor(10000 + Math.random() * 90000)}`,
+      id: bookingRef,
       type: source === 'bus' ? 'Volvo AC Sleeper' : 'Outstation Cab',
       route: source === 'bus' ? state.schedules.route : `${CITY_DATABASE[state.cab.fromCity].name} → ${CITY_DATABASE[state.cab.toCity].name}`,
       date: 'Today, Scheduled',

@@ -600,14 +600,14 @@
                                         <input type="checkbox" id="addon-pet" onchange="updateTotalCabFare()">
                                         <span>Pet Sanitized Cab</span>
                                     </div>
-                                    <span class="addon-price">+₹300</span>
+                                    <span class="addon-price">+₹350</span>
                                 </label>
                                 <label class="addon-item">
                                     <div class="addon-label">
                                         <input type="checkbox" id="addon-night" onchange="updateTotalCabFare()">
                                         <span>Chauffeur Night Stay</span>
                                     </div>
-                                    <span class="addon-price">+₹500</span>
+                                    <span class="addon-price">+₹400</span>
                                 </label>
                                 <label class="addon-item">
                                     <div class="addon-label">
@@ -626,7 +626,7 @@
                             @foreach($dynamicFields as $field)
                             <div class="form-group" style="margin-bottom:8px;">
                                 <label style="font-size:12px; font-weight:600; color:#475569;">{{ $field->label }}</label>
-                                <input type="{{ $field->field_type }}" class="form-control" placeholder="Enter {{ $field->label }}">
+                                <input type="{{ $field->field_type }}" class="form-control cab-dynamic-field" data-key="{{ $field->field_key }}" name="dynamic_{{ $field->field_key }}" placeholder="Enter {{ $field->label }}">
                             </div>
                             @endforeach
                         </div>

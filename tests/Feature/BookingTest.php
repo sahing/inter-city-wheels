@@ -309,4 +309,58 @@ class BookingTest extends TestCase
             'trip_type' => 'airport'
         ]);
     }
+
+    public function test_booking_persists_departure_time_and_addons(): void
+    {
+        $payload = [
+            'service_type' => 'cab',
+            'trip_type' => 'oneway',
+            'from_city' => 'Pune',
+            'to_city' => 'Goa',
+            'pickup_location' => 'Koregaon Park, Pune',
+            'drop_location' => 'Candolim Beach, Goa',
+            'departure_time' => '2026-12-01 07:30:00',
+            'customer_name' => 'Rohit Sharma',
+            'customer_phone' => '+91 98888 77777',
+            'fleet_category' => 'suv',
+            'include_tolls' => true,
+            'pet_friendly' => true,
+            'night_allowance' => true,
+            'luggage_carrier' => true,
+            'dynamic_fields' => [
+                'booster_seat' => 'Yes, 1 needed',
+                'luggage_count' => '4 suitcases'
+            ]
+        ];
+
+        $response = $this->postJson('/api/bookings', $payload);
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'booking' => [
+                'customer_name' => 'Rohit Sharma',
+                'addon_fare' => 950 // 350 (pet) + 400 (night) + 200 (luggage)
+            ]
+        ]);
+
+        $this->assertDatabaseHas('bookings', [
+            'customer_name' => 'Rohit Sharma',
+            'addon_fare' => 950
+        ]);
+
+        $booking = Booking::where('customer_name', 'Rohit Sharma')->first();
+        $this->assertNotNull($booking->departure_time);
+        $this->assertEquals('Yes, 1 needed', $booking->dynamic_fields_data['booster_seat']);
+    }
+
+    public function test_booking_validation_fails_on_missing_required_fields(): void
+    {
+        $response = $this->postJson('/api/bookings', [
+            'service_type' => 'cab'
+            // Missing customer_name, customer_phone, from_city, pickup_location
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['from_city', 'pickup_location', 'customer_name', 'customer_phone']);
+    }
 }

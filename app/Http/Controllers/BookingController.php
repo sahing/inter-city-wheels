@@ -34,6 +34,7 @@ class BookingController extends Controller
             'include_tolls' => 'nullable|boolean',
             'pet_friendly' => 'nullable|boolean',
             'night_allowance' => 'nullable|boolean',
+            'luggage_carrier' => 'nullable|boolean',
             'coupon_code' => 'nullable|string',
             'dynamic_fields' => 'nullable|array'
         ]);
@@ -96,6 +97,7 @@ class BookingController extends Controller
         $addonFare = 0;
         if ($request->boolean('pet_friendly')) $addonFare += 350;
         if ($request->boolean('night_allowance')) $addonFare += 400;
+        if ($request->boolean('luggage_carrier')) $addonFare += 200;
 
         // Coupon calculation
         $discountFare = 0;
@@ -122,6 +124,7 @@ class BookingController extends Controller
             'route_summary' => "{$validated['from_city']} → {$toCity}",
             'pickup_location' => $validated['pickup_location'],
             'drop_location' => $dropLocation,
+            'departure_time' => !empty($validated['departure_time']) ? date('Y-m-d H:i:s', strtotime($validated['departure_time'])) : null,
             'customer_name' => $validated['customer_name'],
             'customer_phone' => $validated['customer_phone'],
             'customer_email' => $validated['customer_email'] ?? null,
