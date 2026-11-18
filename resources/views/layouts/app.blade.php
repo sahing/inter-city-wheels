@@ -482,9 +482,17 @@
             'phone' => Auth::user()->phone,
             'avatar' => Auth::user()->avatar ?? '👤',
         ] : null;
+        $jsLocations = isset($serviceLocations) 
+            ? $serviceLocations 
+            : \App\Models\ServiceLocation::orderBy('name')->get();
+        $jsCabRoutes = isset($allCabRoutes) 
+            ? $allCabRoutes 
+            : \App\Models\RouteFare::where('is_active', true)->get();
     @endphp
     <script>
         window.CURRENT_USER = {!! json_encode($jsUser) !!};
+        window.INITIAL_SERVICE_LOCATIONS = {!! json_encode($jsLocations) !!};
+        window.INITIAL_CAB_ROUTES = {!! json_encode($jsCabRoutes) !!};
     </script>
 
     <!-- Leaflet JS -->

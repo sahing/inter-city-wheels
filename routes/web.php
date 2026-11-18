@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\VehicleAdminController;
 use App\Http\Controllers\Admin\CabRouteAdminController;
 use App\Http\Controllers\Admin\LocalPackageAdminController;
 use App\Http\Controllers\Admin\AirportHubAdminController;
+use App\Http\Controllers\Admin\CarTypeAdminController;
 use App\Http\Controllers\Admin\PlatformSettingAdminController;
 use App\Http\Controllers\Api\RouteCalculationController;
 
@@ -45,6 +46,12 @@ Route::get('/health', function () {
 Route::prefix('api')->group(function () {
     // Route & Fare Calculation
     Route::get('/routes/calculate', [RouteCalculationController::class, 'calculate'])->name('api.routes.calculate');
+    Route::get('/locations', function () {
+        return response()->json([
+            'success' => true,
+            'locations' => \App\Models\ServiceLocation::where('is_active', true)->orderBy('name')->get()
+        ]);
+    })->name('api.locations.active');
     Route::get('/local-packages', function () {
         return response()->json([
             'success' => true,
@@ -57,6 +64,12 @@ Route::prefix('api')->group(function () {
             'airports' => \App\Models\AirportHub::where('is_active', true)->orderBy('city')->get()
         ]);
     })->name('api.airportHubs.active');
+    Route::get('/car-types', function () {
+        return response()->json([
+            'success' => true,
+            'car_types' => \App\Models\CarType::where('is_active', true)->orderBy('order_index')->get()
+        ]);
+    })->name('api.carTypes.active');
 
     // Bookings
     Route::post('/bookings', [BookingController::class, 'store'])->name('api.bookings.store');
@@ -121,6 +134,14 @@ Route::prefix('api')->group(function () {
     Route::put('/admin/airport-hubs/{id}', [AirportHubAdminController::class, 'update'])->name('api.admin.airportHubs.update');
     Route::post('/admin/airport-hubs/{id}/toggle', [AirportHubAdminController::class, 'toggleStatus'])->name('api.admin.airportHubs.toggle');
     Route::delete('/admin/airport-hubs/{id}', [AirportHubAdminController::class, 'destroy'])->name('api.admin.airportHubs.destroy');
+
+    // Car Types & Fleet Categories Setup (Admin)
+    Route::get('/admin/car-types', [CarTypeAdminController::class, 'index'])->name('api.admin.carTypes.index');
+    Route::post('/admin/car-types', [CarTypeAdminController::class, 'store'])->name('api.admin.carTypes.store');
+    Route::get('/admin/car-types/{id}', [CarTypeAdminController::class, 'show'])->name('api.admin.carTypes.show');
+    Route::put('/admin/car-types/{id}', [CarTypeAdminController::class, 'update'])->name('api.admin.carTypes.update');
+    Route::post('/admin/car-types/{id}/toggle', [CarTypeAdminController::class, 'toggleStatus'])->name('api.admin.carTypes.toggle');
+    Route::delete('/admin/car-types/{id}', [CarTypeAdminController::class, 'destroy'])->name('api.admin.carTypes.destroy');
 
     // Service Locations Setup (Admin)
     Route::get('/admin/locations', [LocationAdminController::class, 'index'])->name('api.admin.locations.index');

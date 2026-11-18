@@ -499,5 +499,96 @@ class DatabaseSeeder extends Seeder
         foreach ($airportHubs as $ah) {
             \App\Models\AirportHub::firstOrCreate(['iata_code' => $ah['iata_code']], $ah);
         }
+
+        // 15. Seed Configured Car Types / Fleet Categories
+        $carTypes = [
+            [
+                'name' => 'Compact Hatchback',
+                'category_key' => 'hatchback',
+                'badge' => 'Budget Friendly',
+                'models' => 'WagonR, Swift, Tiago, Celerio',
+                'seats' => '4 Seats',
+                'luggage' => '2 Bags',
+                'rate_per_km' => 11.00,
+                'extra_km_rate' => 11.00,
+                'base_fare_min' => 750.00,
+                'image_url' => 'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&w=400&q=80',
+                'order_index' => 1,
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Comfort Sedan',
+                'category_key' => 'sedan',
+                'badge' => 'Most Popular',
+                'models' => 'Dzire, Etios, Aura, Tigor',
+                'seats' => '4 Seats',
+                'luggage' => '3 Bags',
+                'rate_per_km' => 12.50,
+                'extra_km_rate' => 12.50,
+                'base_fare_min' => 950.00,
+                'image_url' => 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80',
+                'order_index' => 2,
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Family SUV',
+                'category_key' => 'suv',
+                'badge' => 'Spacious Ride',
+                'models' => 'Ertiga, Carens, Triber, Scorpio',
+                'seats' => '6-7 Seats',
+                'luggage' => '4 Bags',
+                'rate_per_km' => 18.00,
+                'extra_km_rate' => 18.00,
+                'base_fare_min' => 1400.00,
+                'image_url' => 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=400&q=80',
+                'order_index' => 3,
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Innova Crysta',
+                'category_key' => 'innova',
+                'badge' => 'Executive Luxury',
+                'models' => 'Innova Crysta, Innova Hycross',
+                'seats' => '7 Seats',
+                'luggage' => '5 Bags',
+                'rate_per_km' => 22.00,
+                'extra_km_rate' => 22.00,
+                'base_fare_min' => 1800.00,
+                'image_url' => 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80',
+                'order_index' => 4,
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Tempo Traveller',
+                'category_key' => 'tempo',
+                'badge' => 'Group Tour',
+                'models' => 'Force Traveller 12-Seater, 17-Seater',
+                'seats' => '12+ Seats',
+                'luggage' => '10 Bags',
+                'rate_per_km' => 28.00,
+                'extra_km_rate' => 28.00,
+                'base_fare_min' => 2500.00,
+                'image_url' => 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=400&q=80',
+                'order_index' => 5,
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Luxury Limousine',
+                'category_key' => 'luxury',
+                'badge' => 'VIP Chauffeur',
+                'models' => 'BMW 5 Series, Mercedes E-Class, Audi A6',
+                'seats' => '4 Seats',
+                'luggage' => '3 Bags',
+                'rate_per_km' => 32.00,
+                'extra_km_rate' => 32.00,
+                'base_fare_min' => 3500.00,
+                'image_url' => 'https://images.unsplash.com/photo-1555353540-64580b51c258?auto=format&fit=crop&w=400&q=80',
+                'order_index' => 6,
+                'is_active' => true,
+            ],
+        ];
+        foreach ($carTypes as $ct) {
+            \App\Models\CarType::firstOrCreate(['category_key' => $ct['category_key']], $ct);
+        }
     }
 }

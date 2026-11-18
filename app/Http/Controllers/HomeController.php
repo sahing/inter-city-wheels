@@ -38,6 +38,7 @@ class HomeController extends Controller
         $driverVehicles = DriverVehicle::with('driver')->latest()->get();
         $localPackages = \App\Models\LocalPackage::orderBy('duration_hours')->get();
         $airportHubs = \App\Models\AirportHub::orderBy('city')->get();
+        $allCarTypes = \App\Models\CarType::orderBy('order_index')->get();
         $platformSettings = [
             'privacy_policy_url' => \App\Models\PlatformSetting::get('privacy_policy_url', '/privacy-policy'),
             'terms_conditions_url' => \App\Models\PlatformSetting::get('terms_conditions_url', '/terms-conditions'),
@@ -123,6 +124,7 @@ class HomeController extends Controller
             'driverMyVehicles',
             'localPackages',
             'airportHubs',
+            'allCarTypes',
             'platformSettings'
         ));
     }

@@ -44,8 +44,15 @@ class CabRouteAdminController extends Controller
             'distance_km' => 'required|numeric|min:1',
             'estimated_time' => 'required|string|max:50',
             'base_toll' => 'nullable|numeric|min:0',
+            'hatchback_fare' => 'nullable|numeric|min:0',
             'sedan_fare' => 'nullable|numeric|min:0',
             'suv_fare' => 'nullable|numeric|min:0',
+            'innova_fare' => 'nullable|numeric|min:0',
+            'tempo_fare' => 'nullable|numeric|min:0',
+            'luxury_fare' => 'nullable|numeric|min:0',
+            'car_fares' => 'nullable|array',
+            'departure_schedule' => 'nullable|string|max:255',
+            'schedule_frequency' => 'nullable|string|max:100',
             'roundtrip_discount_pct' => 'nullable|numeric|min:0|max:100',
             'from_lat' => 'nullable|numeric',
             'from_lng' => 'nullable|numeric',
@@ -64,8 +71,15 @@ class CabRouteAdminController extends Controller
             'distance_km' => round($validated['distance_km']),
             'estimated_time' => trim($validated['estimated_time']),
             'base_toll' => (float)($validated['base_toll'] ?? 0),
+            'hatchback_fare' => isset($validated['hatchback_fare']) && $validated['hatchback_fare'] !== '' ? (float)$validated['hatchback_fare'] : null,
             'sedan_fare' => isset($validated['sedan_fare']) && $validated['sedan_fare'] !== '' ? (float)$validated['sedan_fare'] : null,
             'suv_fare' => isset($validated['suv_fare']) && $validated['suv_fare'] !== '' ? (float)$validated['suv_fare'] : null,
+            'innova_fare' => isset($validated['innova_fare']) && $validated['innova_fare'] !== '' ? (float)$validated['innova_fare'] : null,
+            'tempo_fare' => isset($validated['tempo_fare']) && $validated['tempo_fare'] !== '' ? (float)$validated['tempo_fare'] : null,
+            'luxury_fare' => isset($validated['luxury_fare']) && $validated['luxury_fare'] !== '' ? (float)$validated['luxury_fare'] : null,
+            'car_fares' => $validated['car_fares'] ?? null,
+            'departure_schedule' => !empty($validated['departure_schedule']) ? trim($validated['departure_schedule']) : null,
+            'schedule_frequency' => !empty($validated['schedule_frequency']) ? trim($validated['schedule_frequency']) : 'Daily Express',
             'roundtrip_discount_pct' => (float)($validated['roundtrip_discount_pct'] ?? 0),
             'is_active' => $request->has('is_active') ? (bool)$request->is_active : true,
         ]);
@@ -103,8 +117,15 @@ class CabRouteAdminController extends Controller
             'distance_km' => 'sometimes|required|numeric|min:1',
             'estimated_time' => 'sometimes|required|string|max:50',
             'base_toll' => 'nullable|numeric|min:0',
+            'hatchback_fare' => 'nullable|numeric|min:0',
             'sedan_fare' => 'nullable|numeric|min:0',
             'suv_fare' => 'nullable|numeric|min:0',
+            'innova_fare' => 'nullable|numeric|min:0',
+            'tempo_fare' => 'nullable|numeric|min:0',
+            'luxury_fare' => 'nullable|numeric|min:0',
+            'car_fares' => 'nullable|array',
+            'departure_schedule' => 'nullable|string|max:255',
+            'schedule_frequency' => 'nullable|string|max:100',
             'roundtrip_discount_pct' => 'nullable|numeric|min:0|max:100',
             'from_lat' => 'nullable|numeric',
             'from_lng' => 'nullable|numeric',
@@ -117,11 +138,10 @@ class CabRouteAdminController extends Controller
             $validated['distance_km'] = round($validated['distance_km']);
         }
 
-        if (array_key_exists('sedan_fare', $validated) && $validated['sedan_fare'] === '') {
-            $validated['sedan_fare'] = null;
-        }
-        if (array_key_exists('suv_fare', $validated) && $validated['suv_fare'] === '') {
-            $validated['suv_fare'] = null;
+        foreach (['hatchback_fare', 'sedan_fare', 'suv_fare', 'innova_fare', 'tempo_fare', 'luxury_fare'] as $fareKey) {
+            if (array_key_exists($fareKey, $validated) && $validated[$fareKey] === '') {
+                $validated[$fareKey] = null;
+            }
         }
 
         $route->update($validated);

@@ -3853,6 +3853,84 @@ h1, h2, h3, h4, .font-display {
   user-select: none;
 }
 
+/* City Picker Dropdown for Search Inputs */
+.rental-dropdown-toggle-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.rental-dropdown-toggle-btn:hover {
+  background: #f1f5f9;
+  color: #20A9D2;
+}
+
+.city-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.22);
+  z-index: 1050;
+  padding: 6px 0;
+}
+.city-picker-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+.city-picker-dropdown::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.city-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 13.5px;
+}
+.city-picker-item:hover, .city-picker-item.highlighted {
+  background: #f1f5f9;
+}
+.city-picker-item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.city-picker-item-name {
+  font-weight: 700;
+  color: #0f172a;
+}
+.city-picker-item-state {
+  font-size: 12px;
+  color: #64748b;
+  margin-left: 2px;
+}
+.city-picker-item-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #e0f2fe;
+  color: #0284c7;
+  flex-shrink: 0;
+}
+
 /* CTA Explore Cabs Button */
 .rental-cta-container {
   display: flex;

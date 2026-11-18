@@ -61,7 +61,8 @@ class BookingController extends Controller
         ];
 
         $fleet = strtolower($validated['fleet_category'] ?? 'suv');
-        $ratePerKm = $rates[$fleet] ?? 18.0;
+        $carTypeModel = \App\Models\CarType::where('category_key', $fleet)->first();
+        $ratePerKm = $carTypeModel ? (float)$carTypeModel->rate_per_km : ($rates[$fleet] ?? 18.0);
 
         $baseFare = 0;
         if ($validated['service_type'] === 'cab') {
@@ -81,10 +82,18 @@ class BookingController extends Controller
                 $baseFare = round($airportDist * $ratePerKm);
                 $baseToll = $request->boolean('include_tolls') ? 120 : 0; // Airport toll & parking
             } else {
-                $baseFare = round($distance * $ratePerKm);
+                if ($route) {
+                    $routeCarFare = $route->getFareForCarType($fleet, $ratePerKm);
+                    $baseFare = max(0, round($routeCarFare - ($request->boolean('include_tolls') ? $route->base_toll : 0)));
+                } else {
+                    $baseFare = round($distance * $ratePerKm);
+                }
                 if ($tripType === 'roundtrip') {
                     $baseFare *= 2;
                     $baseToll *= 1.8;
+                    if ($route && $route->roundtrip_discount_pct > 0) {
+                        $baseFare = round($baseFare * (1 - ($route->roundtrip_discount_pct / 100)));
+                    }
                 }
             }
         } else {

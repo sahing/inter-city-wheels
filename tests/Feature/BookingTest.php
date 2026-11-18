@@ -363,4 +363,82 @@ class BookingTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['from_city', 'pickup_location', 'customer_name', 'customer_phone']);
     }
+
+    public function test_public_locations_api_returns_active_locations(): void
+    {
+        $response = $this->getJson('/api/locations');
+        $response->assertStatus(200);
+        $response->assertJson(['success' => true]);
+        $response->assertJsonStructure(['success', 'locations']);
+    }
+
+    public function test_portal_renders_admin_updated_locations_in_dropdown(): void
+    {
+        \App\Models\ServiceLocation::create([
+            'name' => 'Ahmedabad',
+            'state' => 'Gujarat',
+            'latitude' => 23.0225,
+            'longitude' => 72.5714,
+            'is_active' => true
+        ]);
+
+        $response = $this->get('/');
+        $response->assertStatus(200);
+        $response->assertSee('Ahmedabad, Gujarat', false);
+        $response->assertSee('Ahmedabad', false);
+    }
+
+    public function test_admin_updated_city_is_reflected_in_portal_and_api(): void
+    {
+        $loc = \App\Models\ServiceLocation::create([
+            'name' => 'Chandigarh',
+            'state' => 'Punjab',
+            'latitude' => 30.7333,
+            'longitude' => 76.7794,
+            'is_active' => true
+        ]);
+
+        // Admin updates the location
+        $updateResponse = $this->putJson("/api/admin/locations/{$loc->id}", [
+            'name' => 'Chandigarh City',
+            'state' => 'Punjab & Haryana',
+            'latitude' => 30.7333,
+            'longitude' => 76.7794,
+            'is_active' => true
+        ]);
+        $updateResponse->assertStatus(200);
+        $updateResponse->assertJson(['success' => true]);
+
+        // Portal reflects the updated location
+        $portalResponse = $this->get('/');
+        $portalResponse->assertStatus(200);
+        $portalResponse->assertSee('Chandigarh City', false);
+        $portalResponse->assertSee('Punjab &amp; Haryana', false);
+
+        // API reflects updated location
+        $apiResponse = $this->getJson('/api/locations');
+        $apiResponse->assertStatus(200);
+        $apiResponse->assertJsonFragment(['name' => 'Chandigarh City']);
+    }
+
+    public function test_admin_deactivated_city_is_excluded_from_active_dropdown(): void
+    {
+        $loc = \App\Models\ServiceLocation::create([
+            'name' => 'Bhopal',
+            'state' => 'Madhya Pradesh',
+            'latitude' => 23.2599,
+            'longitude' => 77.4126,
+            'is_active' => true
+        ]);
+
+        // Toggle to inactive
+        $toggleResponse = $this->postJson("/api/admin/locations/{$loc->id}/toggle");
+        $toggleResponse->assertStatus(200);
+        $this->assertFalse(\App\Models\ServiceLocation::find($loc->id)->is_active);
+
+        // API should exclude inactive location
+        $apiResponse = $this->getJson('/api/locations');
+        $apiResponse->assertStatus(200);
+        $apiResponse->assertJsonMissing(['name' => 'Bhopal']);
+    }
 }
