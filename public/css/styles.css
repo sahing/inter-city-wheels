@@ -75,6 +75,23 @@
   --transition-spring: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined' !important;
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-feature-settings: 'liga';
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
 /* ================= Base Reset & Typography ================= */
 * {
   box-sizing: border-box;
@@ -4083,64 +4100,63 @@ h1, h2, h3, h4, .font-display {
 }
 
 .rental-promo-card.card-zero-cost {
-  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 40%, #fde68a 100%),
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.90) 0%, rgba(30, 41, 59, 0.94) 100%),
               url('https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=600&q=80') center/cover;
-  background-blend-mode: overlay;
-  border: 1.5px solid #fcd34d;
+  border: 1.5px solid rgba(251, 191, 36, 0.4);
 }
 
 .rental-promo-card.card-chardham {
-  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 40%, #bbf7d0 100%),
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.90) 0%, rgba(20, 83, 45, 0.94) 100%),
               url('https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&w=600&q=80') center/cover;
-  background-blend-mode: overlay;
-  border: 1.5px solid #86efac;
+  border: 1.5px solid rgba(52, 211, 153, 0.4);
 }
 
 .rental-promo-card.card-free-cancel {
-  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 40%, #bae6fd 100%),
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.90) 0%, rgba(12, 74, 110, 0.94) 100%),
               url('https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?auto=format&fit=crop&w=600&q=80') center/cover;
-  background-blend-mode: overlay;
-  border: 1.5px solid #7dd3fc;
+  border: 1.5px solid rgba(56, 189, 248, 0.4);
 }
 
 .rental-promo-badge {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: #0f172a;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(4px);
   color: #ffffff;
   font-size: 9.5px;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
+  letter-spacing: 0.8px;
+  margin-bottom: 8px;
   align-self: flex-start;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .rental-promo-title {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 20px;
   font-weight: 800;
-  color: #0284c7;
-  margin: 0 0 4px 0;
-  line-height: 1.15;
+  margin: 0 0 6px 0;
+  line-height: 1.2;
 }
 .card-zero-cost .rental-promo-title {
-  color: #0284c7;
+  color: #fbbf24;
 }
 .card-chardham .rental-promo-title {
-  color: #047857;
+  color: #34d399;
 }
 .card-free-cancel .rental-promo-title {
-  color: #0284c7;
+  color: #38bdf8;
 }
 
 .rental-promo-sub {
   font-family: 'Inter', sans-serif;
   font-size: 13px;
-  font-weight: 600;
-  color: #475569;
+  font-weight: 500;
+  color: #e2e8f0;
   margin: 0;
+  line-height: 1.45;
 }
 
 /* Vehicle Search Results Section */

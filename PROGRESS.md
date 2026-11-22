@@ -89,3 +89,11 @@
   - [x] Full end-to-end verification of customer booking, driver bidding, and admin operations
   - [x] Zero lint, TypeScript, or PHP runtime errors
   - [x] All requirements verified against `INTERCITYWHEELS_PRD.md` and `.antigravity/rules.md`
+- [x] **Production Readiness & Visual Polish Audit:**
+  - [x] Corrected application branding from default "Laravel" to "Intercity Wheels" in `.env` and `config/app.php`
+  - [x] Overhauled promo cards with dark scrim overlays and WCAG AAA high-contrast typography
+  - [x] Fixed coupon application UX so discounts calculate accurately with no premature display badges
+  - [x] Implemented conditional visibility engine for dynamic fields (airport flight number, pet breed)
+  - [x] Fixed short route duration formatting (e.g. `35m` instead of `0h 0m`) in backend and frontend
+  - [x] Replaced fleet stock images with authentic executive sedans and passenger MPVs
+  - [x] 100% automated test pass (93 tests, 654 assertions, 0 failures) and clean Vite production build

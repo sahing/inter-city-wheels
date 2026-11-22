@@ -622,10 +622,10 @@
 
                         <!-- Dynamic Form Fields from Database -->
                         @if($dynamicFields->count() > 0)
-                        <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;">
+                        <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;" id="cab-dynamic-fields-wrapper">
                             <label class="rental-field-label">Custom Specifications</label>
                             @foreach($dynamicFields as $field)
-                            <div class="form-group" style="margin-bottom:8px;">
+                            <div class="form-group dynamic-field-item" id="dynamic-field-{{ $field->field_key }}" data-field-key="{{ $field->field_key }}" data-applies-to="{{ $field->applies_to }}" data-conditional="{{ $field->conditional_logic }}" style="margin-bottom:8px;">
                                 <label style="font-size:12px; font-weight:600; color:#475569;">{{ $field->label }}</label>
                                 <input type="{{ $field->field_type }}" class="form-control cab-dynamic-field" data-key="{{ $field->field_key }}" name="dynamic_{{ $field->field_key }}" placeholder="Enter {{ $field->label }}">
                             </div>
@@ -666,16 +666,16 @@
                             </div>
                             <div style="display:flex; justify-content:space-between; color:#16a34a; font-weight:600;">
                                 <span>Promo Discount</span>
-                                <span id="fare-discount" class="text-tabular">-₹420</span>
+                                <span id="fare-discount" class="text-tabular">-₹0</span>
                             </div>
 
                             <!-- Coupon Code Input -->
                             <div style="margin-top:6px; margin-bottom:6px;">
                                 <div style="display:flex; gap:6px;">
-                                    <input type="text" id="cab-coupon-input" class="form-control" placeholder="COUPON (e.g. FIRSTWHEELS)" style="text-transform:uppercase; font-size:12px; height:36px;" value="FIRSTWHEELS">
+                                    <input type="text" id="cab-coupon-input" class="form-control" placeholder="COUPON (e.g. FIRSTWHEELS)" style="text-transform:uppercase; font-size:12px; height:36px;" value="">
                                     <button type="button" id="apply-coupon-btn" class="btn btn-secondary" onclick="applyRentalCoupon()" style="height:36px; padding:0 12px; font-size:12px;">Apply</button>
                                 </div>
-                                <div id="coupon-msg" style="font-size:11px; font-weight:600; color:#16a34a; margin-top:3px;">🎉 FIRSTWHEELS applied (15% discount)</div>
+                                <div id="coupon-msg" style="font-size:11px; font-weight:600; color:#16a34a; margin-top:3px; display:none;"></div>
                             </div>
 
                             <div style="border-top:1px dashed #cbd5e1; padding-top:10px; margin-top:4px; display:flex; justify-content:space-between; align-items:baseline;">

@@ -289,7 +289,7 @@ const FLEET_TYPES = {
     ratePerKm: 15.0,
     badge: 'Executive Comfort',
     extraKm: 15,
-    image: 'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?auto=format&fit=crop&w=400&q=80'
+    image: 'https://images.unsplash.com/photo-1590362891988-f77804702088?auto=format&fit=crop&w=400&q=80'
   },
   suv: {
     category: 'suv',
@@ -311,7 +311,7 @@ const FLEET_TYPES = {
     ratePerKm: 21.0,
     badge: 'Highway Champion',
     extraKm: 21,
-    image: 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80'
+    image: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=400&q=80'
   },
   tempo: {
     category: 'tempo',
@@ -374,6 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initAdminModule();
   initMap();
   updateTotalCabFare();
+  if (typeof updateDynamicFieldsVisibility === 'function') updateDynamicFieldsVisibility();
   startBiddingCountdown();
 
   // Background refresh: keep dropdowns up-to-date with any admin changes
@@ -535,7 +536,11 @@ function initCabsModule() {
   const luggageCheck = document.getElementById('addon-luggage');
 
   if (tollCheck) tollCheck.addEventListener('change', (e) => { state.cab.includeTolls = e.target.checked; updateTotalCabFare(); });
-  if (petCheck) petCheck.addEventListener('change', (e) => { state.cab.petFriendly = e.target.checked; updateTotalCabFare(); });
+  if (petCheck) petCheck.addEventListener('change', (e) => { 
+    state.cab.petFriendly = e.target.checked; 
+    if (typeof updateDynamicFieldsVisibility === 'function') updateDynamicFieldsVisibility();
+    updateTotalCabFare(); 
+  });
   if (nightCheck) nightCheck.addEventListener('change', (e) => { state.cab.nightAllowance = e.target.checked; updateTotalCabFare(); });
   if (luggageCheck) luggageCheck.addEventListener('change', (e) => { state.cab.luggageCarrier = e.target.checked; updateTotalCabFare(); });
 
@@ -578,6 +583,10 @@ window.switchRentalTab = function (type) {
 
   if (type === 'roundtrip') {
     calculateTripDuration();
+  }
+
+  if (typeof updateDynamicFieldsVisibility === 'function') {
+    updateDynamicFieldsVisibility();
   }
 
   updateRentalRouteStats();
@@ -929,9 +938,12 @@ function updateRentalRouteStats() {
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const straightKm = Math.round(6371 * c);
       const roadKm = Math.round(straightKm * 1.25);
-      const hours = Math.floor(roadKm / 45);
-      const mins = Math.round((roadKm % 45) * 1.3);
-      route = { dist: Math.max(roadKm, 25), time: `${hours}h ${mins}m`, toll: Math.round(roadKm * 0.9) };
+      const roadDist = Math.max(roadKm, 25);
+      const totalMins = Math.max(20, Math.round((roadDist / 45) * 60));
+      const hours = Math.floor(totalMins / 60);
+      const mins = totalMins % 60;
+      const timeStr = hours > 0 ? (mins > 0 ? `${hours}h ${mins}m` : `${hours}h`) : `${mins}m`;
+      route = { dist: roadDist, time: timeStr, toll: Math.round(roadDist * 0.9) };
     } else {
       route = { dist: 132, time: "3h 30m", toll: 120 };
     }
@@ -1129,10 +1141,38 @@ window.selectRentalVehicle = function (fleetKey) {
   }
 };
 
+window.updateDynamicFieldsVisibility = function () {
+  const isAirport = state.cab.tripType === 'airport';
+  const isPetChecked = Boolean(document.getElementById('addon-pet')?.checked);
+
+  document.querySelectorAll('.dynamic-field-item').forEach(el => {
+    const key = el.dataset.fieldKey;
+    const appliesTo = el.dataset.appliesTo;
+    const cond = el.dataset.conditional;
+
+    let show = true;
+    if (key === 'flight_number' || appliesTo === 'airport' || cond === 'Airport Trips Only') {
+      show = isAirport;
+    } else if (key === 'pet_breed' || cond === 'Pet-friendly Selected') {
+      show = isPetChecked;
+    }
+
+    el.style.display = show ? 'block' : 'none';
+  });
+
+  const wrapper = document.getElementById('cab-dynamic-fields-wrapper');
+  if (wrapper) {
+    const items = Array.from(wrapper.querySelectorAll('.dynamic-field-item'));
+    const hasVisible = items.length === 0 || items.some(i => i.style.display !== 'none');
+    wrapper.style.display = hasVisible ? 'block' : 'none';
+  }
+};
+
 window.applyRentalCoupon = function () {
   const input = document.getElementById('cab-coupon-input');
   const val = input ? input.value.trim().toUpperCase() : '';
   const msg = document.getElementById('coupon-msg');
+  if (msg) msg.style.display = 'block';
 
   if (val === 'FIRSTWHEELS') {
     state.cab.appliedCoupon = 'FIRSTWHEELS';
@@ -1199,8 +1239,9 @@ window.goToCabStep = function (step) {
     renderRentalVehicles(activeRentalFilter, activeRentalSort);
   }
 
-  // On Step 3: sync contact details from input
+  // On Step 3: sync contact details from input & update dynamic fields
   if (step === 3) {
+    if (typeof updateDynamicFieldsVisibility === 'function') updateDynamicFieldsVisibility();
     const pickupInput = document.getElementById('cab-pickup-address');
     if (pickupInput && pickupInput.value) {
       state.cab.pickupAddress = pickupInput.value;

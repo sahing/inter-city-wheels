@@ -61,11 +61,12 @@ class RouteCalculationController extends Controller
                 $straightKm = 6371 * $c;
                 $roadKm = max(25, round($straightKm * 1.25));
 
-                $hours = floor($roadKm / 45);
-                $mins = round(($roadKm % 45) * 1.3);
+                $totalMins = max(20, (int)round(($roadKm / 45) * 60));
+                $hours = (int)floor($totalMins / 60);
+                $mins = $totalMins % 60;
+                $estimatedTime = $hours > 0 ? ($mins > 0 ? "{$hours}h {$mins}m" : "{$hours}h") : "{$mins}m";
 
                 $distanceKm = (int)$roadKm;
-                $estimatedTime = "{$hours}h {$mins}m";
                 $baseToll = round($roadKm * 0.9);
             }
         }
