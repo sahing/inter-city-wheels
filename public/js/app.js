@@ -13,18 +13,45 @@ let CITY_DATABASE = {
   "jaipur": { name: "Jaipur", state: "Rajasthan", lat: 26.9124, lng: 75.7873 },
   "chennai": { name: "Chennai", state: "Tamil Nadu", lat: 13.0827, lng: 80.2707 },
   "baharampur": { name: "Baharampur", state: "West Bengal (Murshidabad)", lat: 24.0988, lng: 88.2514 },
+  "berhampore": { name: "Berhampore", state: "West Bengal (Murshidabad)", lat: 24.0988, lng: 88.2514 },
+  "digha": { name: "Digha", state: "West Bengal (Purba Medinipur)", lat: 21.6266, lng: 87.5074 },
+  "newdigha": { name: "New Digha", state: "West Bengal (Purba Medinipur)", lat: 21.6200, lng: 87.5000 },
+  "olddigha": { name: "Old Digha", state: "West Bengal (Purba Medinipur)", lat: 21.6300, lng: 87.5150 },
+  "mandarmani": { name: "Mandarmani", state: "West Bengal (Purba Medinipur)", lat: 21.6667, lng: 87.7000 },
+  "tajpur": { name: "Tajpur", state: "West Bengal (Purba Medinipur)", lat: 21.6500, lng: 87.6500 },
+  "shankarpur": { name: "Shankarpur", state: "West Bengal (Purba Medinipur)", lat: 21.6360, lng: 87.5700 },
+  "contai": { name: "Contai (Kanthi)", state: "West Bengal (Purba Medinipur)", lat: 21.7780, lng: 87.7510 },
+  "haldia": { name: "Haldia", state: "West Bengal (Purba Medinipur)", lat: 22.0667, lng: 88.0667 },
+  "kharagpur": { name: "Kharagpur", state: "West Bengal (Paschim Medinipur)", lat: 22.3460, lng: 87.2320 },
+  "midnapore": { name: "Midnapore", state: "West Bengal (Paschim Medinipur)", lat: 22.4257, lng: 87.3199 },
   "murshidabad": { name: "Murshidabad", state: "West Bengal (Heritage City)", lat: 24.1750, lng: 88.2800 },
   "jangipur": { name: "Jangipur", state: "West Bengal (Murshidabad)", lat: 24.4686, lng: 88.0700 },
   "farakka": { name: "Farakka", state: "West Bengal (Murshidabad)", lat: 24.8167, lng: 87.9000 },
   "kandi": { name: "Kandi", state: "West Bengal (Murshidabad)", lat: 23.9556, lng: 88.0378 },
-  "kolkata": { name: "Kolkata", state: "West Bengal", lat: 22.6548, lng: 88.4467 },
+  "kolkata": { name: "Kolkata", state: "West Bengal", lat: 22.5726, lng: 88.3639 },
   "mayapur": { name: "Mayapur", state: "West Bengal (Nadia)", lat: 23.4232, lng: 88.3900 },
+  "krishnanagar": { name: "Krishnanagar", state: "West Bengal (Nadia)", lat: 23.4000, lng: 88.5000 },
   "siliguri": { name: "Siliguri", state: "West Bengal", lat: 26.7271, lng: 88.3953 },
-  "durgapur": { name: "Durgapur", state: "West Bengal", lat: 23.5204, lng: 87.3119 }
+  "darjeeling": { name: "Darjeeling", state: "West Bengal (Queen of Hills)", lat: 27.0410, lng: 88.2663 },
+  "durgapur": { name: "Durgapur", state: "West Bengal", lat: 23.5204, lng: 87.3119 },
+  "asansol": { name: "Asansol", state: "West Bengal", lat: 23.6889, lng: 86.9661 },
+  "bardhaman": { name: "Bardhaman (Burdwan)", state: "West Bengal", lat: 23.2324, lng: 87.8615 },
+  "bolpur": { name: "Bolpur (Santiniketan)", state: "West Bengal (Birbhum)", lat: 23.6700, lng: 87.7200 },
+  "tarapith": { name: "Tarapith", state: "West Bengal (Birbhum)", lat: 24.1167, lng: 87.8000 },
+  "bakkhali": { name: "Bakkhali", state: "West Bengal (South 24 Parganas)", lat: 21.5630, lng: 88.2580 },
+  "malda": { name: "Malda", state: "West Bengal", lat: 25.0108, lng: 88.1411 },
+  "puri": { name: "Puri", state: "Odisha", lat: 19.8135, lng: 85.8312 },
+  "bhubaneswar": { name: "Bhubaneswar", state: "Odisha", lat: 20.2961, lng: 85.8245 }
 };
 
 // Route Distances (km) and base highway times (mutable — synced from DB at runtime)
 let ROUTE_MATRIX = {
+  "berhampore-digha": { dist: 345, time: "7h 30m", toll: 320 },
+  "digha-berhampore": { dist: 345, time: "7h 30m", toll: 320 },
+  "baharampur-digha": { dist: 345, time: "7h 30m", toll: 320 },
+  "digha-baharampur": { dist: 345, time: "7h 30m", toll: 320 },
+  "kolkata-digha": { dist: 185, time: "4h 15m", toll: 180 },
+  "digha-kolkata": { dist: 185, time: "4h 15m", toll: 180 },
   "kolkata-mayapur": { dist: 132, time: "3h 30m", toll: 120 },
   "mayapur-kolkata": { dist: 132, time: "3h 30m", toll: 120 },
   "pune-goa": { dist: 450, time: "9h 15m", toll: 480 },
@@ -41,6 +68,8 @@ let ROUTE_MATRIX = {
   "jaipur-delhi": { dist: 280, time: "4h 45m", toll: 340 },
   "baharampur-kolkata": { dist: 205, time: "5h 15m", toll: 180 },
   "kolkata-baharampur": { dist: 205, time: "5h 15m", toll: 180 },
+  "berhampore-kolkata": { dist: 205, time: "5h 15m", toll: 180 },
+  "kolkata-berhampore": { dist: 205, time: "5h 15m", toll: 180 },
   "murshidabad-kolkata": { dist: 218, time: "5h 30m", toll: 180 },
   "kolkata-murshidabad": { dist: 218, time: "5h 30m", toll: 180 },
   "baharampur-farakka": { dist: 102, time: "2h 30m", toll: 90 },
@@ -634,6 +663,8 @@ window.syncRentalToCity = function (val) {
 // INTERACTIVE CITY PICKER & AUTOCOMPLETE ENGINE
 // ========================================================
 window.SERVICE_LOCATIONS = window.INITIAL_SERVICE_LOCATIONS || [];
+let citySearchDebounceTimer = null;
+let currentPickerInputId = null;
 
 function getActiveLocations() {
   if (window.SERVICE_LOCATIONS && window.SERVICE_LOCATIONS.length) {
@@ -650,54 +681,154 @@ function getActiveLocations() {
 
 window.openCityPicker = function (inputId) {
   closeAllCityDropdowns();
-  renderCityPickerDropdown(inputId, '');
+  currentPickerInputId = inputId;
+  const input = document.getElementById(inputId);
+  const currentVal = input ? input.value : '';
+  renderCityPickerDropdown(inputId, currentVal);
+
+  // Pre-fetch server suggestions for fast experience
+  fetchLocationsFromServer(inputId, currentVal);
 };
 
 window.handleCityPickerInput = function (inputId, val) {
+  currentPickerInputId = inputId;
   renderCityPickerDropdown(inputId, val);
+
+  // Debounced server search to retrieve both registered locations and desired regional destinations
+  clearTimeout(citySearchDebounceTimer);
+  citySearchDebounceTimer = setTimeout(() => {
+    fetchLocationsFromServer(inputId, val);
+  }, 120);
 };
 
+function fetchLocationsFromServer(inputId, val) {
+  const clean = (val || '').split(',')[0].trim();
+  fetch(`/api/locations/search?q=${encodeURIComponent(clean)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.success && Array.isArray(data.locations) && currentPickerInputId === inputId) {
+        renderCityPickerDropdownItems(inputId, val, data.locations);
+      }
+    })
+    .catch(err => {
+      console.warn('Live location search error:', err);
+    });
+}
+
 window.renderCityPickerDropdown = function (inputId, filterText = '') {
+  renderCityPickerDropdownItems(inputId, filterText, null);
+};
+
+function renderCityPickerDropdownItems(inputId, filterText = '', serverLocations = null) {
   const dropdown = document.getElementById(`dropdown-${inputId}`);
   if (!dropdown) return;
 
-  const locs = getActiveLocations().sort((a, b) => a.name.localeCompare(b.name));
   const cleanFilter = (filterText || '').split(',')[0].toLowerCase().trim();
-  const filtered = cleanFilter
-    ? locs.filter(l => (l.name && l.name.toLowerCase().includes(cleanFilter)) || (l.state && l.state.toLowerCase().includes(cleanFilter)))
-    : locs;
+  let list = [];
 
-  if (!filtered.length) {
-    dropdown.innerHTML = `<div style="padding:10px 12px; font-size:12px; color:#94a3b8; text-align:center;">No active locations matching "${filterText}"</div>`;
-    dropdown.style.display = 'block';
-    return;
+  if (serverLocations && Array.isArray(serverLocations) && serverLocations.length > 0) {
+    list = serverLocations;
+  } else {
+    const locs = getActiveLocations().sort((a, b) => a.name.localeCompare(b.name));
+    list = cleanFilter
+      ? locs.filter(l => (l.name && l.name.toLowerCase().includes(cleanFilter)) || (l.state && l.state.toLowerCase().includes(cleanFilter)))
+      : locs;
   }
 
-  dropdown.innerHTML = filtered.map(l => {
-    const safeName = (l.name || '').replace(/'/g, "\\'");
-    const safeState = (l.state || '').replace(/'/g, "\\'");
-    return `
-      <div class="city-picker-item" onmousedown="event.preventDefault(); selectCityFromPicker('${inputId}', '${safeName}', '${safeState}')">
+  // Deduplicate items by lowercase name
+  const seen = new Set();
+  const uniqueList = [];
+  list.forEach(item => {
+    const key = (item.name || '').toLowerCase().trim();
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueList.push(item);
+    }
+  });
+
+  let html = '';
+
+  // Render locations list
+  if (uniqueList.length > 0) {
+    html += uniqueList.map(l => {
+      const safeName = (l.name || '').replace(/'/g, "\\'");
+      const safeState = (l.state || '').replace(/'/g, "\\'");
+      const lat = l.latitude || 22.5726;
+      const lng = l.longitude || 88.3639;
+
+      let badgeHtml = '';
+      if (l.airport_code) {
+        badgeHtml = `<span class="city-picker-item-badge" style="background:#e0f2fe; color:#0284c7;">${l.airport_code}</span>`;
+      } else if (l.is_registered || l.badge === 'Registered Hub') {
+        badgeHtml = `<span class="city-picker-item-badge" style="background:#dcfce7; color:#15803d; font-size:10px;">Registered Hub</span>`;
+      } else if (l.is_custom || l.badge === 'Desired Location') {
+        badgeHtml = `<span class="city-picker-item-badge" style="background:#fef3c7; color:#b45309; font-size:10px;">Desired Location</span>`;
+      } else {
+        badgeHtml = `<span class="city-picker-item-badge" style="background:#f1f5f9; color:#475569; font-size:10px;">Regional Route</span>`;
+      }
+
+      const icon = l.airport_code ? 'flight' : (l.is_custom ? 'pin_drop' : 'location_city');
+
+      return `
+        <div class="city-picker-item" onmousedown="event.preventDefault(); selectCityFromPicker('${inputId}', '${safeName}', '${safeState}', ${lat}, ${lng})">
+          <div class="city-picker-item-main">
+            <span class="material-symbols-outlined" style="font-size:16px; color:${l.is_custom ? '#f59e0b' : '#64748b'};">${icon}</span>
+            <div>
+              <span class="city-picker-item-name">${l.name}</span>
+              <span class="city-picker-item-state">${l.state ? `(${l.state})` : ''}</span>
+            </div>
+          </div>
+          ${badgeHtml}
+        </div>
+      `;
+    }).join('');
+  }
+
+  // If user typed custom text that is not exact match, add explicit "Use desired location" option
+  if (cleanFilter.length >= 2 && !seen.has(cleanFilter)) {
+    const safeCustom = (filterText || '').replace(/'/g, "\\'").trim();
+    html += `
+      <div class="city-picker-item" style="border-top:1px dashed #cbd5e1; background:#f8fafc; margin-top:4px;" onmousedown="event.preventDefault(); selectCityFromPicker('${inputId}', '${safeCustom}', 'Desired Regional Location', 22.5726, 88.3639)">
         <div class="city-picker-item-main">
-          <span class="material-symbols-outlined" style="font-size:16px; color:#64748b;">${l.airport_code ? 'flight' : 'location_city'}</span>
+          <span class="material-symbols-outlined" style="font-size:16px; color:#f59e0b;">add_location_alt</span>
           <div>
-            <span class="city-picker-item-name">${l.name}</span>
-            <span class="city-picker-item-state">${l.state ? `(${l.state})` : ''}</span>
+            <span class="city-picker-item-name">Select "${safeCustom}"</span>
+            <span class="city-picker-item-state">(Use this desired regional location)</span>
           </div>
         </div>
-        ${l.airport_code ? `<span class="city-picker-item-badge">${l.airport_code}</span>` : ''}
+        <span class="city-picker-item-badge" style="background:#fef3c7; color:#b45309; font-size:10px;">Desired Location</span>
       </div>
     `;
-  }).join('');
-  dropdown.style.display = 'block';
-};
+  }
 
-window.selectCityFromPicker = function (inputId, cityName, stateName) {
+  if (!html) {
+    html = `<div style="padding:10px 12px; font-size:12px; color:#94a3b8; text-align:center;">No locations found for "${filterText}"</div>`;
+  }
+
+  dropdown.innerHTML = html;
+  dropdown.style.display = 'block';
+}
+
+window.selectCityFromPicker = function (inputId, cityName, stateName, lat, lng) {
   const input = document.getElementById(inputId);
   if (!input) return;
 
-  const formatted = stateName ? `${cityName}, ${stateName}` : cityName;
+  const formatted = stateName && !stateName.includes('Desired') ? `${cityName}, ${stateName}` : cityName;
   input.value = formatted;
+
+  // Cache coordinates in client CITY_DATABASE
+  const cleanKey = cityName.toLowerCase().trim();
+  const slugKey = cityName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (lat && lng) {
+    const entry = {
+      name: cityName,
+      state: stateName || '',
+      lat: parseFloat(lat),
+      lng: parseFloat(lng)
+    };
+    CITY_DATABASE[cleanKey] = entry;
+    CITY_DATABASE[slugKey] = entry;
+  }
 
   const dropdown = document.getElementById(`dropdown-${inputId}`);
   if (dropdown) dropdown.style.display = 'none';
@@ -722,7 +853,7 @@ window.toggleCityDropdown = function (inputId, e) {
     dropdown.style.display = 'none';
   } else {
     closeAllCityDropdowns();
-    renderCityPickerDropdown(inputId, '');
+    openCityPicker(inputId);
   }
 };
 
@@ -924,12 +1055,34 @@ function updateRentalRouteStats() {
     to = 'kolkata';
   }
 
+  const ALIAS_MAP = {
+    'berhampore': 'baharampur',
+    'berhampur': 'baharampur',
+    'baharampur': 'berhampore',
+    'calcutta': 'kolkata',
+    'dighabeach': 'digha',
+    'newdigha': 'digha',
+    'olddigha': 'digha',
+    'burdwan': 'bardhaman',
+    'santiniketan': 'bolpur',
+    'bangalore': 'bengaluru',
+    'bombay': 'mumbai',
+    'madras': 'chennai',
+    'panaji': 'goa',
+    'panjim': 'goa'
+  };
+
   const routeKey = `${from}-${to}`;
-  let route = ROUTE_MATRIX[routeKey];
+  const aliasKey = `${ALIAS_MAP[from] || from}-${ALIAS_MAP[to] || to}`;
+  const reverseKey = `${to}-${from}`;
+  const reverseAliasKey = `${ALIAS_MAP[to] || to}-${ALIAS_MAP[from] || from}`;
+
+  let route = ROUTE_MATRIX[routeKey] || ROUTE_MATRIX[aliasKey] || ROUTE_MATRIX[reverseKey] || ROUTE_MATRIX[reverseAliasKey];
+
   if (!route) {
     // Dynamic distance calculation based on coordinates if available
-    const c1 = CITY_DATABASE[from];
-    const c2 = CITY_DATABASE[to];
+    const c1 = CITY_DATABASE[from] || CITY_DATABASE[ALIAS_MAP[from]];
+    const c2 = CITY_DATABASE[to] || CITY_DATABASE[ALIAS_MAP[to]];
     if (c1 && c2) {
       const rad = Math.PI / 180;
       const dLat = (c2.lat - c1.lat) * rad;
@@ -945,7 +1098,7 @@ function updateRentalRouteStats() {
       const timeStr = hours > 0 ? (mins > 0 ? `${hours}h ${mins}m` : `${hours}h`) : `${mins}m`;
       route = { dist: roadDist, time: timeStr, toll: Math.round(roadDist * 0.9) };
     } else {
-      route = { dist: 132, time: "3h 30m", toll: 120 };
+      route = { dist: 345, time: "7h 30m", toll: 320 };
     }
   }
 
@@ -955,6 +1108,28 @@ function updateRentalRouteStats() {
 
   updateRouteRecapTexts();
   updateTotalCabFare();
+
+  // Async server-side route calculation sync
+  const queryFrom = document.getElementById('rental-from-city')?.value || from;
+  const queryTo = document.getElementById('rental-to-city')?.value || to;
+  if (queryFrom && queryTo && queryFrom.trim().toLowerCase() !== queryTo.trim().toLowerCase()) {
+    fetch(`/api/routes/calculate?from=${encodeURIComponent(queryFrom.trim())}&to=${encodeURIComponent(queryTo.trim())}&trip_type=${state.cab.tripType || 'oneway'}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.success && data.route) {
+          state.cab.distance = data.route.distance_km;
+          state.cab.travelTime = data.route.estimated_time;
+          state.cab.tollEstimate = data.route.base_toll;
+          updateRouteRecapTexts();
+          if (state.cab.currentStep === 2) {
+            renderRentalVehicles(activeRentalFilter, activeRentalSort);
+          } else if (state.cab.currentStep === 3) {
+            updateTotalCabFare();
+          }
+        }
+      })
+      .catch(() => {});
+  }
 }
 
 // Explore Cabs Validation & Results Navigation
@@ -978,6 +1153,8 @@ window.exploreCabs = function () {
       showToast('Pickup and Destination cannot be identical for One Way trips.', 'warning');
       return;
     }
+    syncRentalFromCity(fromVal);
+    syncRentalToCity(toVal);
   } else if (tripType === 'roundtrip') {
     const rtFrom = document.getElementById('rental-rt-from')?.value.trim();
     const rtTo = document.getElementById('rental-rt-to')?.value.trim();

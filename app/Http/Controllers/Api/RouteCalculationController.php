@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\RouteFare;
 use App\Models\ServiceLocation;
 use App\Models\CarType;
+use App\Services\RegionalLocationService;
 
 class RouteCalculationController extends Controller
 {
@@ -15,22 +16,31 @@ class RouteCalculationController extends Controller
      */
     public function calculate(Request $request)
     {
-        $from = trim($request->query('from', 'Pune'));
-        $to = trim($request->query('to', 'Goa'));
+        $from = trim($request->query('from', 'Kolkata'));
+        $to = trim($request->query('to', 'Digha'));
         $tripType = $request->query('trip_type', 'oneway');
         $couponCode = $request->query('coupon');
 
-        // Clean city names (extract city if state/airport appended, e.g. "Pune, Maharashtra")
+        // Clean city names (extract city if state/airport appended, e.g. "Berhampore, West Bengal")
         $cleanFrom = trim(explode(',', $from)[0]);
         $cleanTo = trim(explode(',', $to)[0]);
 
-        // 1. Look up static RouteFare
-        $route = RouteFare::where(function ($q) use ($cleanFrom, $cleanTo) {
-            $q->whereRaw('LOWER(from_city) = ?', [strtolower($cleanFrom)])
-              ->whereRaw('LOWER(to_city) = ?', [strtolower($cleanTo)]);
-        })->orWhere(function ($q) use ($cleanFrom, $cleanTo) {
-            $q->whereRaw('LOWER(from_city) = ?', [strtolower($cleanTo)])
-              ->whereRaw('LOWER(to_city) = ?', [strtolower($cleanFrom)]);
+        $fromAliases = RegionalLocationService::normalizeAliases($cleanFrom);
+        $toAliases = RegionalLocationService::normalizeAliases($cleanTo);
+
+        // 1. Look up static RouteFare with alias and bidirectional support
+        $route = RouteFare::where(function ($q) use ($fromAliases, $toAliases) {
+            foreach ($fromAliases as $fa) {
+                foreach ($toAliases as $ta) {
+                    $q->orWhere(function ($sub) use ($fa, $ta) {
+                        $sub->whereRaw('LOWER(from_city) = ?', [strtolower($fa)])
+                            ->whereRaw('LOWER(to_city) = ?', [strtolower($ta)]);
+                    })->orWhere(function ($sub) use ($fa, $ta) {
+                        $sub->whereRaw('LOWER(from_city) = ?', [strtolower($ta)])
+                            ->whereRaw('LOWER(to_city) = ?', [strtolower($fa)]);
+                    });
+                }
+            }
         })->first();
 
         $distanceKm = 450;
@@ -44,30 +54,33 @@ class RouteCalculationController extends Controller
             $baseToll = (float)$route->base_toll;
             $roundtripDiscount = (float)($route->roundtrip_discount_pct ?? 0);
         } else {
-            // 2. Haversine GPS calculation from ServiceLocation coordinates
-            $locFrom = ServiceLocation::whereRaw('LOWER(name) = ?', [strtolower($cleanFrom)])->first();
-            $locTo = ServiceLocation::whereRaw('LOWER(name) = ?', [strtolower($cleanTo)])->first();
+            // 2. Dynamic GPS calculation from ServiceLocation, Regional Catalog, or Request Lat/Lng
+            $fromLat = $request->filled('from_lat') ? (float)$request->query('from_lat') : null;
+            $fromLng = $request->filled('from_lng') ? (float)$request->query('from_lng') : null;
+            $toLat = $request->filled('to_lat') ? (float)$request->query('to_lat') : null;
+            $toLng = $request->filled('to_lng') ? (float)$request->query('to_lng') : null;
 
-            if ($locFrom && $locTo) {
-                $lat1 = deg2rad((float)$locFrom->latitude);
-                $lng1 = deg2rad((float)$locFrom->longitude);
-                $lat2 = deg2rad((float)$locTo->latitude);
-                $lng2 = deg2rad((float)$locTo->longitude);
+            if ($fromLat === null || $fromLng === null) {
+                $c1 = RegionalLocationService::findCoordinates($cleanFrom);
+                if ($c1) {
+                    $fromLat = $c1['lat'];
+                    $fromLng = $c1['lng'];
+                }
+            }
 
-                $dLat = $lat2 - $lat1;
-                $dLng = $lng2 - $lng1;
-                $a = sin($dLat / 2) * sin($dLat / 2) + cos($lat1) * cos($lat2) * sin($dLng / 2) * sin($dLng / 2);
-                $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
-                $straightKm = 6371 * $c;
-                $roadKm = max(25, round($straightKm * 1.25));
+            if ($toLat === null || $toLng === null) {
+                $c2 = RegionalLocationService::findCoordinates($cleanTo);
+                if ($c2) {
+                    $toLat = $c2['lat'];
+                    $toLng = $c2['lng'];
+                }
+            }
 
-                $totalMins = max(20, (int)round(($roadKm / 45) * 60));
-                $hours = (int)floor($totalMins / 60);
-                $mins = $totalMins % 60;
-                $estimatedTime = $hours > 0 ? ($mins > 0 ? "{$hours}h {$mins}m" : "{$hours}h") : "{$mins}m";
-
-                $distanceKm = (int)$roadKm;
-                $baseToll = round($roadKm * 0.9);
+            if ($fromLat !== null && $fromLng !== null && $toLat !== null && $toLng !== null) {
+                $metrics = RegionalLocationService::computeRouteMetrics($fromLat, $fromLng, $toLat, $toLng);
+                $distanceKm = $metrics['distance_km'];
+                $estimatedTime = $metrics['estimated_time'];
+                $baseToll = $metrics['base_toll'];
             }
         }
 

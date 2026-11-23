@@ -38,6 +38,13 @@ class DatabaseSeeder extends Seeder
             ['from_city' => 'Kandi', 'to_city' => 'Baharampur', 'from_lat' => 23.9556, 'from_lng' => 88.0378, 'to_lat' => 24.0988, 'to_lng' => 88.2514, 'distance_km' => 32, 'estimated_time' => '55m', 'base_toll' => 0],
             ['from_city' => 'Kolkata', 'to_city' => 'Mayapur', 'from_lat' => 22.6548, 'from_lng' => 88.4467, 'to_lat' => 23.4232, 'to_lng' => 88.3900, 'distance_km' => 132, 'estimated_time' => '3h 30m', 'base_toll' => 120],
             ['from_city' => 'Mayapur', 'to_city' => 'Kolkata', 'from_lat' => 23.4232, 'from_lng' => 88.3900, 'to_lat' => 22.6548, 'to_lng' => 88.4467, 'distance_km' => 132, 'estimated_time' => '3h 30m', 'base_toll' => 120],
+            // Digha & Berhampore Routes
+            ['from_city' => 'Berhampore', 'to_city' => 'Digha', 'from_lat' => 24.0988, 'from_lng' => 88.2514, 'to_lat' => 21.6266, 'to_lng' => 87.5074, 'distance_km' => 345, 'estimated_time' => '7h 30m', 'base_toll' => 320],
+            ['from_city' => 'Digha', 'to_city' => 'Berhampore', 'from_lat' => 21.6266, 'from_lng' => 87.5074, 'to_lat' => 24.0988, 'to_lng' => 88.2514, 'distance_km' => 345, 'estimated_time' => '7h 30m', 'base_toll' => 320],
+            ['from_city' => 'Baharampur', 'to_city' => 'Digha', 'from_lat' => 24.0988, 'from_lng' => 88.2514, 'to_lat' => 21.6266, 'to_lng' => 87.5074, 'distance_km' => 345, 'estimated_time' => '7h 30m', 'base_toll' => 320],
+            ['from_city' => 'Digha', 'to_city' => 'Baharampur', 'from_lat' => 21.6266, 'from_lng' => 87.5074, 'to_lat' => 24.0988, 'to_lng' => 88.2514, 'distance_km' => 345, 'estimated_time' => '7h 30m', 'base_toll' => 320],
+            ['from_city' => 'Kolkata', 'to_city' => 'Digha', 'from_lat' => 22.5726, 'from_lng' => 88.3639, 'to_lat' => 21.6266, 'to_lng' => 87.5074, 'distance_km' => 185, 'estimated_time' => '4h 15m', 'base_toll' => 180],
+            ['from_city' => 'Digha', 'to_city' => 'Kolkata', 'from_lat' => 21.6266, 'from_lng' => 87.5074, 'to_lat' => 22.5726, 'to_lng' => 88.3639, 'distance_km' => 185, 'estimated_time' => '4h 15m', 'base_toll' => 180],
         ];
         foreach ($routes as $r) {
             RouteFare::firstOrCreate(['from_city' => $r['from_city'], 'to_city' => $r['to_city']], $r);
@@ -180,6 +187,14 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Chennai', 'state' => 'Tamil Nadu', 'latitude' => 13.0827, 'longitude' => 80.2707, 'airport_code' => 'MAA', 'has_airport_service' => true, 'is_active' => true],
             // West Bengal - Murshidabad Centric Network Hubs
             ['name' => 'Baharampur', 'state' => 'West Bengal (Murshidabad)', 'latitude' => 24.0988, 'longitude' => 88.2514, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Berhampore', 'state' => 'West Bengal (Murshidabad)', 'latitude' => 24.0988, 'longitude' => 88.2514, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Digha', 'state' => 'West Bengal (Purba Medinipur)', 'latitude' => 21.6266, 'longitude' => 87.5074, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Mandarmani', 'state' => 'West Bengal (Purba Medinipur)', 'latitude' => 21.6667, 'longitude' => 87.7000, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Siliguri', 'state' => 'West Bengal', 'latitude' => 26.7271, 'longitude' => 88.3953, 'airport_code' => 'IXB', 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Darjeeling', 'state' => 'West Bengal (Queen of Hills)', 'latitude' => 27.0410, 'longitude' => 88.2663, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Durgapur', 'state' => 'West Bengal', 'latitude' => 23.5204, 'longitude' => 87.3119, 'airport_code' => 'RDP', 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Asansol', 'state' => 'West Bengal', 'latitude' => 23.6889, 'longitude' => 86.9661, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Bolpur', 'state' => 'West Bengal (Santiniketan)', 'latitude' => 23.6700, 'longitude' => 87.7200, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
             ['name' => 'Murshidabad', 'state' => 'West Bengal (Heritage City)', 'latitude' => 24.1750, 'longitude' => 88.2800, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
             ['name' => 'Jangipur', 'state' => 'West Bengal (Murshidabad)', 'latitude' => 24.4686, 'longitude' => 88.0700, 'airport_code' => null, 'has_airport_service' => false, 'is_active' => true],
             ['name' => 'Farakka', 'state' => 'West Bengal (Murshidabad)', 'latitude' => 24.8167, 'longitude' => 87.9000, 'airport_code' => null, 'has_airport_service' => false, 'is_active' => true],

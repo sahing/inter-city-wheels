@@ -19,6 +19,7 @@ use App\Http\Controllers\Admin\AirportHubAdminController;
 use App\Http\Controllers\Admin\CarTypeAdminController;
 use App\Http\Controllers\Admin\PlatformSettingAdminController;
 use App\Http\Controllers\Api\RouteCalculationController;
+use App\Http\Controllers\Api\LocationSearchController;
 
 // Main Portal
 Route::get('/', [HomeController::class, 'index'])->name('home');
@@ -46,6 +47,7 @@ Route::get('/health', function () {
 Route::prefix('api')->group(function () {
     // Route & Fare Calculation
     Route::get('/routes/calculate', [RouteCalculationController::class, 'calculate'])->name('api.routes.calculate');
+    Route::get('/locations/search', [LocationSearchController::class, 'search'])->name('api.locations.search');
     Route::get('/locations', function () {
         return response()->json([
             'success' => true,

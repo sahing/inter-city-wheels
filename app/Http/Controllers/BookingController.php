@@ -7,6 +7,7 @@ use App\Models\Booking;
 use App\Models\Coupon;
 use App\Models\RouteFare;
 use App\Models\SeatLayout;
+use App\Services\RegionalLocationService;
 use Illuminate\Support\Str;
 
 class BookingController extends Controller
@@ -43,12 +44,41 @@ class BookingController extends Controller
         $toCity = $validated['to_city'] ?? ($tripType === 'local' ? ($validated['from_city'] . ' Local') : 'Destination');
         $dropLocation = $validated['drop_location'] ?? ($tripType === 'local' ? 'Local City Sightseeing & Transit' : 'Drop Address');
 
-        $route = RouteFare::where('from_city', $validated['from_city'])
-            ->where('to_city', $toCity)
-            ->first();
+        $cleanFrom = trim(explode(',', $validated['from_city'])[0]);
+        $cleanTo = trim(explode(',', $toCity)[0]);
 
-        $distance = $route ? $route->distance_km : 450;
-        $baseToll = ($request->boolean('include_tolls') && $route) ? $route->base_toll : 0;
+        $fromAliases = RegionalLocationService::normalizeAliases($cleanFrom);
+        $toAliases = RegionalLocationService::normalizeAliases($cleanTo);
+
+        $route = RouteFare::where(function ($q) use ($fromAliases, $toAliases) {
+            foreach ($fromAliases as $fa) {
+                foreach ($toAliases as $ta) {
+                    $q->orWhere(function ($sub) use ($fa, $ta) {
+                        $sub->whereRaw('LOWER(from_city) = ?', [strtolower($fa)])
+                            ->whereRaw('LOWER(to_city) = ?', [strtolower($ta)]);
+                    })->orWhere(function ($sub) use ($fa, $ta) {
+                        $sub->whereRaw('LOWER(from_city) = ?', [strtolower($ta)])
+                            ->whereRaw('LOWER(to_city) = ?', [strtolower($fa)]);
+                    });
+                }
+            }
+        })->first();
+
+        if ($route) {
+            $distance = (int)$route->distance_km;
+            $baseToll = ($request->boolean('include_tolls') && $route) ? (float)$route->base_toll : 0;
+        } else {
+            $c1 = RegionalLocationService::findCoordinates($cleanFrom);
+            $c2 = RegionalLocationService::findCoordinates($cleanTo);
+            if ($c1 && $c2) {
+                $metrics = RegionalLocationService::computeRouteMetrics($c1['lat'], $c1['lng'], $c2['lat'], $c2['lng']);
+                $distance = $metrics['distance_km'];
+                $baseToll = $request->boolean('include_tolls') ? $metrics['base_toll'] : 0;
+            } else {
+                $distance = 345;
+                $baseToll = $request->boolean('include_tolls') ? 320 : 0;
+            }
+        }
 
         $rates = [
             'hatchback' => 11.0,
