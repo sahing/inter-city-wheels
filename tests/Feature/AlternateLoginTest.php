@@ -198,6 +198,54 @@ class AlternateLoginTest extends TestCase
         $response->assertStatus(422);
     }
 
+    public function test_firebase_login_with_direct_firebase_id_authenticates_or_provisions_user(): void
+    {
+        $firebaseId = 'fb_custom_uid_884422';
+
+        $payload = [
+            'provider' => 'firebase',
+            'firebase_id' => $firebaseId,
+            'email' => 'firebase.id.user@example.com',
+            'name' => 'Firebase ID User',
+            'role' => 'customer',
+        ];
+
+        $response = $this->postJson('/auth/firebase-login', $payload);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'provider' => 'firebase',
+            ]);
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'firebase.id.user@example.com',
+            'firebase_id' => $firebaseId,
+            'auth_provider' => 'firebase',
+            'auth_provider_id' => $firebaseId,
+        ]);
+
+        // Finding by Firebase ID helper
+        $foundUser = User::findByFirebaseId($firebaseId);
+        $this->assertNotNull($foundUser);
+        $this->assertEquals('firebase.id.user@example.com', $foundUser->email);
+
+        // Subsequent login using solely Firebase ID
+        $reLoginResponse = $this->postJson('/auth/firebase-login', [
+            'provider' => 'firebase',
+            'firebase_id' => $firebaseId,
+        ]);
+
+        $reLoginResponse->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'user' => [
+                    'id' => $foundUser->id,
+                    'firebase_id' => $firebaseId,
+                ],
+            ]);
+    }
+
     public function test_modal_renders_firebase_and_clerk_buttons_and_alternate_modal(): void
     {
         $response = $this->get('/');
@@ -208,12 +256,13 @@ class AlternateLoginTest extends TestCase
         $response->assertSee('id="btn-auth-clerk"', false);
         $response->assertSee('id="btn-signup-firebase-google"', false);
         $response->assertSee('id="btn-signup-clerk"', false);
-        $response->assertSee('Google / Firebase', false);
+        $response->assertSee('Firebase ID / Google', false);
         $response->assertSee('Clerk Auth', false);
 
         // Assert Alternate Auth modal dialog
         $response->assertSee('id="alternate-auth-modal"', false);
         $response->assertSee('id="alt-auth-form"', false);
+        $response->assertSee('id="alt-input-firebase-id"', false);
         $response->assertSee('id="alt-input-email"', false);
         $response->assertSee('id="alt-input-name"', false);
 

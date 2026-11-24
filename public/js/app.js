@@ -3415,14 +3415,17 @@ window.openAlternateAuthModal = function (provider = 'firebase', role = 'custome
   if (roleName) roleName.textContent = role.toUpperCase();
 
   const roleTitle = role.charAt(0).toUpperCase() + role.slice(1);
+  const fbGroup = document.getElementById('alt-group-firebase-id');
+  const fbIdInput = document.getElementById('alt-input-firebase-id');
 
   if (provider === 'firebase') {
     if (brandIcon) brandIcon.textContent = '🔥';
-    if (title) title.textContent = 'Google Sign-In (Firebase)';
-    if (subtitle) subtitle.textContent = 'Authenticate with your Google profile via Firebase';
-    if (providerName) providerName.textContent = 'Firebase (Google)';
-    if (submitLabel) submitLabel.textContent = `Sign In as ${roleTitle} with Firebase`;
+    if (title) title.textContent = 'Firebase ID & Google Sign-In';
+    if (subtitle) subtitle.textContent = 'Authenticate with your Firebase User ID or Google account';
+    if (providerName) providerName.textContent = 'Firebase ID / Google';
+    if (submitLabel) submitLabel.textContent = `Sign In as ${roleTitle} via Firebase ID`;
     if (envTip) envTip.innerHTML = '💡 <strong>Live Firebase Setup:</strong> Set <code>FIREBASE_API_KEY</code> & <code>FIREBASE_PROJECT_ID</code> in <code>.env</code> to activate native Google popup.';
+    if (fbGroup) fbGroup.style.display = 'block';
   } else {
     if (brandIcon) brandIcon.textContent = '⚡';
     if (title) title.textContent = 'Clerk Authentication';
@@ -3430,6 +3433,7 @@ window.openAlternateAuthModal = function (provider = 'firebase', role = 'custome
     if (providerName) providerName.textContent = 'Clerk Auth';
     if (submitLabel) submitLabel.textContent = `Sign In as ${roleTitle} with Clerk`;
     if (envTip) envTip.innerHTML = '💡 <strong>Live Clerk Setup:</strong> Set <code>CLERK_PUBLISHABLE_KEY</code> & <code>CLERK_SECRET_KEY</code> in <code>.env</code> to activate live Clerk SSO.';
+    if (fbGroup) fbGroup.style.display = 'none';
   }
 
   const nameInput = document.getElementById('alt-input-name');
@@ -3437,12 +3441,15 @@ window.openAlternateAuthModal = function (provider = 'firebase', role = 'custome
   if (role === 'driver') {
     if (nameInput) nameInput.value = 'Rajesh Chauffeur';
     if (emailInput) emailInput.value = 'rajesh.driver@gmail.com';
+    if (fbIdInput) fbIdInput.value = 'fb_driver_rajesh_9922';
   } else if (role === 'admin') {
     if (nameInput) nameInput.value = 'Admin Supervisor';
     if (emailInput) emailInput.value = 'admin@intercitywheels.com';
+    if (fbIdInput) fbIdInput.value = 'fb_admin_supervisor_1001';
   } else {
     if (nameInput) nameInput.value = 'Priya Sharma';
     if (emailInput) emailInput.value = 'priya.customer@gmail.com';
+    if (fbIdInput) fbIdInput.value = 'fb_cust_priya_sharma_9876';
   }
 
   closeModal('login-modal');
@@ -3453,17 +3460,20 @@ window.openAlternateAuthModal = function (provider = 'firebase', role = 'custome
 window.selectAltDemoProfile = function (profileRole) {
   const nameInput = document.getElementById('alt-input-name');
   const emailInput = document.getElementById('alt-input-email');
+  const fbIdInput = document.getElementById('alt-input-firebase-id');
   const roleInput = document.getElementById('alt-input-role');
   const roleName = document.getElementById('alt-role-name');
 
   if (profileRole === 'driver') {
     if (nameInput) nameInput.value = 'Rajesh Chauffeur';
     if (emailInput) emailInput.value = 'rajesh.driver@gmail.com';
+    if (fbIdInput) fbIdInput.value = 'fb_driver_rajesh_9922';
     if (roleInput) roleInput.value = 'driver';
     if (roleName) roleName.textContent = 'DRIVER';
   } else {
     if (nameInput) nameInput.value = 'Priya Sharma';
     if (emailInput) emailInput.value = 'priya.customer@gmail.com';
+    if (fbIdInput) fbIdInput.value = 'fb_cust_priya_sharma_9876';
     if (roleInput) roleInput.value = 'customer';
     if (roleName) roleName.textContent = 'CUSTOMER';
   }
@@ -3478,9 +3488,10 @@ window.submitAlternateAuthForm = async function (event) {
   const role = document.getElementById('alt-input-role')?.value || 'customer';
   const name = document.getElementById('alt-input-name')?.value?.trim();
   const email = document.getElementById('alt-input-email')?.value?.trim();
+  const firebaseId = document.getElementById('alt-input-firebase-id')?.value?.trim();
 
-  if (!email) {
-    showToast('Please provide an email address.', 'warning');
+  if (!email && !firebaseId) {
+    showToast('Please provide an email address or Firebase ID.', 'warning');
     return;
   }
 
@@ -3489,6 +3500,7 @@ window.submitAlternateAuthForm = async function (event) {
     role,
     name,
     email,
+    firebase_id: firebaseId,
     avatar: role === 'driver' ? '👨🏽‍✈️' : '👤'
   });
 };

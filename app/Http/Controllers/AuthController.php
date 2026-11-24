@@ -435,7 +435,8 @@ class AuthController extends Controller
     public function firebaseLogin(Request $request, AlternateAuthService $authService)
     {
         $validated = $request->validate([
-            'email' => 'required|email',
+            'email' => 'nullable|email',
+            'firebase_id' => 'nullable|string',
             'id_token' => 'nullable|string',
             'uid' => 'nullable|string',
             'name' => 'nullable|string|max:100',
@@ -445,6 +446,13 @@ class AuthController extends Controller
             'vehicle_model' => 'nullable|string|max:100',
             'vehicle_plate' => 'nullable|string|max:30',
         ]);
+
+        if (empty($validated['email']) && empty($validated['firebase_id']) && empty($validated['uid']) && empty($validated['id_token'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please provide an email or Firebase ID.'
+            ], 422);
+        }
 
         $result = $authService->authenticateWithFirebase($validated);
 

@@ -27,6 +27,7 @@ class User extends Authenticatable
         'avatar',
         'auth_provider',
         'auth_provider_id',
+        'firebase_id',
     ];
 
     /**
@@ -65,5 +66,18 @@ class User extends Authenticatable
     public function isCustomer(): bool
     {
         return $this->role === 'customer';
+    }
+
+    public static function findByFirebaseId(?string $firebaseId): ?self
+    {
+        if (empty($firebaseId)) {
+            return null;
+        }
+
+        return static::where('firebase_id', $firebaseId)
+            ->orWhere(function ($query) use ($firebaseId) {
+                $query->where('auth_provider', 'firebase')
+                      ->where('auth_provider_id', $firebaseId);
+            })->first();
     }
 }

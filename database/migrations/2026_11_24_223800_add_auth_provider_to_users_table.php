@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             $table->string('auth_provider')->nullable()->after('avatar');
             $table->string('auth_provider_id')->nullable()->after('auth_provider')->index();
+            $table->string('firebase_id')->nullable()->after('auth_provider_id')->index();
         });
     }
 
@@ -23,8 +24,9 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
+            $table->dropIndex(['firebase_id']);
             $table->dropIndex(['auth_provider_id']);
-            $table->dropColumn(['auth_provider', 'auth_provider_id']);
+            $table->dropColumn(['auth_provider', 'auth_provider_id', 'firebase_id']);
         });
     }
 };

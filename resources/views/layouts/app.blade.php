@@ -431,7 +431,7 @@
                                     <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
                                     <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
                                 </svg>
-                                <span>Google / Firebase</span>
+                                <span>Firebase ID / Google</span>
                             </button>
                             <button type="button" class="btn-alternate-auth btn-clerk-auth" id="btn-auth-clerk" onclick="handleAlternateLogin('clerk')" title="Sign in with Clerk">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
@@ -537,7 +537,7 @@
                                     <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
                                     <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
                                 </svg>
-                                <span>Google / Firebase</span>
+                                <span>Firebase ID / Google</span>
                             </button>
                             <button type="button" class="btn-alternate-auth btn-clerk-auth" id="btn-signup-clerk" onclick="handleAlternateLogin('clerk')" title="Sign up with Clerk">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
@@ -628,6 +628,14 @@
                 <form id="alt-auth-form" onsubmit="submitAlternateAuthForm(event)">
                     <input type="hidden" id="alt-input-provider" value="firebase">
                     <input type="hidden" id="alt-input-role" value="customer">
+
+                    <div class="form-group" id="alt-group-firebase-id" style="margin-bottom:10px;">
+                        <label class="form-label" for="alt-input-firebase-id" style="font-size:11.5px; display:flex; justify-content:space-between; align-items:center;">
+                            <span>Firebase User ID (UID)</span>
+                            <span style="font-weight:normal; color:#64748b; font-size:10.5px;">Auto-generated or custom</span>
+                        </label>
+                        <input type="text" id="alt-input-firebase-id" class="form-control" placeholder="e.g. fb_usr_9876543210" value="fb_usr_priya_sharma_9876" style="font-family:monospace; font-size:12px;">
+                    </div>
 
                     <div class="form-group" style="margin-bottom:10px;">
                         <label class="form-label" for="alt-input-name" style="font-size:11.5px;">Full Name</label>

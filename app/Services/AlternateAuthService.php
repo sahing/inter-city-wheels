@@ -41,19 +41,31 @@ class AlternateAuthService
     }
 
     /**
-     * Authenticate or register a user using Firebase credentials / token.
+     * Authenticate or register a user using Firebase credentials / token / Firebase ID.
      */
     public function authenticateWithFirebase(array $payload): array
     {
+        $firebaseId = trim($payload['firebase_id'] ?? $payload['uid'] ?? '');
         $email = strtolower(trim($payload['email'] ?? ''));
+
+        // If email is missing, resolve by existing user having this Firebase ID
+        if (empty($email) && !empty($firebaseId)) {
+            $matchedUser = User::findByFirebaseId($firebaseId);
+            if ($matchedUser) {
+                $email = $matchedUser->email;
+            } else {
+                $email = "firebase_{$firebaseId}@intercitywheels.com";
+            }
+        }
+
         if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return [
                 'success' => false,
-                'message' => 'A valid email address is required from Firebase authentication.'
+                'message' => 'A valid email or Firebase ID is required for authentication.'
             ];
         }
 
-        $uid = trim($payload['uid'] ?? ($payload['id_token'] ? substr(md5($payload['id_token']), 0, 24) : 'fb_' . bin2hex(random_bytes(6))));
+        $uid = $firebaseId ?: ($payload['id_token'] ? substr(md5($payload['id_token']), 0, 24) : 'fb_' . bin2hex(random_bytes(6)));
         $name = trim($payload['name'] ?? '') ?: explode('@', $email)[0];
         $role = in_array($payload['role'] ?? '', ['customer', 'driver', 'admin']) ? $payload['role'] : 'customer';
         $phone = !empty($payload['phone']) ? trim($payload['phone']) : null;
@@ -84,6 +96,7 @@ class AlternateAuthService
         return $this->provisionAndLogin([
             'provider' => 'firebase',
             'provider_id' => $uid,
+            'firebase_id' => $uid,
             'email' => $email,
             'name' => $name,
             'role' => $role,
@@ -152,19 +165,30 @@ class AlternateAuthService
         $email = $userData['email'];
         $provider = $userData['provider'];
         $providerId = $userData['provider_id'];
+        $firebaseId = $userData['firebase_id'] ?? ($provider === 'firebase' ? $providerId : null);
 
-        // 1. Look up existing user by provider ID or email
-        $user = User::where('auth_provider', $provider)
-            ->where('auth_provider_id', $providerId)
-            ->first();
+        // 1. Look up existing user by Firebase ID, provider ID or email
+        $user = null;
+        if (!empty($firebaseId)) {
+            $user = User::findByFirebaseId($firebaseId);
+        }
 
         if (!$user) {
+            $user = User::where('auth_provider', $provider)
+                ->where('auth_provider_id', $providerId)
+                ->first();
+        }
+
+        if (!$user && !empty($email)) {
             $user = User::where('email', $email)->first();
         }
 
         if ($user) {
             // Update auth provider information if not linked
             $user->auth_provider = $provider;
+            if ($provider === 'firebase' && empty($user->firebase_id)) {
+                $user->firebase_id = $firebaseId;
+            }
             if (empty($user->auth_provider_id)) {
                 $user->auth_provider_id = $providerId;
             }
@@ -189,6 +213,7 @@ class AlternateAuthService
                 'avatar' => $userData['avatar'],
                 'auth_provider' => $provider,
                 'auth_provider_id' => $providerId,
+                'firebase_id' => $firebaseId,
             ]);
 
             // If registering as driver, ensure driver record exists
@@ -238,6 +263,7 @@ class AlternateAuthService
                 'phone' => $user->phone,
                 'avatar' => $user->avatar ?? '👤',
                 'auth_provider' => $user->auth_provider,
+                'firebase_id' => $user->firebase_id,
             ],
             'target_tab' => $targetTab,
         ];
