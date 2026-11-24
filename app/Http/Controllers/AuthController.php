@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Hash;
 use App\Models\User;
 use App\Models\Driver;
 use App\Services\Fast2SmsService;
+use App\Services\AlternateAuthService;
 
 class AuthController extends Controller
 {
@@ -415,5 +416,91 @@ class AuthController extends Controller
                 'avatar' => $user->avatar ?? '👤'
             ]
         ]);
+    }
+
+    /**
+     * Get alternate login client configuration (Firebase / Clerk).
+     */
+    public function alternateConfig(AlternateAuthService $authService)
+    {
+        return response()->json([
+            'success' => true,
+            'config' => $authService->getPublicConfig()
+        ]);
+    }
+
+    /**
+     * Authenticate or register using Firebase credentials.
+     */
+    public function firebaseLogin(Request $request, AlternateAuthService $authService)
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+            'id_token' => 'nullable|string',
+            'uid' => 'nullable|string',
+            'name' => 'nullable|string|max:100',
+            'photo_url' => 'nullable|string|max:500',
+            'phone' => 'nullable|string|max:20',
+            'role' => 'nullable|string|in:customer,driver,admin',
+            'vehicle_model' => 'nullable|string|max:100',
+            'vehicle_plate' => 'nullable|string|max:30',
+        ]);
+
+        $result = $authService->authenticateWithFirebase($validated);
+
+        if (!$result['success']) {
+            return response()->json($result, 422);
+        }
+
+        if (!$request->wantsJson() && !$request->ajax()) {
+            return redirect()->route('home')->with('success', $result['message']);
+        }
+
+        return response()->json($result);
+    }
+
+    /**
+     * Authenticate or register using Clerk credentials.
+     */
+    public function clerkLogin(Request $request, AlternateAuthService $authService)
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+            'token' => 'nullable|string',
+            'session_id' => 'nullable|string',
+            'clerk_user_id' => 'nullable|string',
+            'name' => 'nullable|string|max:100',
+            'avatar' => 'nullable|string|max:500',
+            'phone' => 'nullable|string|max:20',
+            'role' => 'nullable|string|in:customer,driver,admin',
+            'vehicle_model' => 'nullable|string|max:100',
+            'vehicle_plate' => 'nullable|string|max:30',
+        ]);
+
+        $result = $authService->authenticateWithClerk($validated);
+
+        if (!$result['success']) {
+            return response()->json($result, 422);
+        }
+
+        if (!$request->wantsJson() && !$request->ajax()) {
+            return redirect()->route('home')->with('success', $result['message']);
+        }
+
+        return response()->json($result);
+    }
+
+    /**
+     * Unified alternate login handler supporting both providers.
+     */
+    public function alternateLogin(Request $request, AlternateAuthService $authService)
+    {
+        $provider = strtolower(trim($request->input('provider', 'firebase')));
+
+        if ($provider === 'clerk') {
+            return $this->clerkLogin($request, $authService);
+        }
+
+        return $this->firebaseLogin($request, $authService);
     }
 }

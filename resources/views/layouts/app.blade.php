@@ -418,6 +418,31 @@
                         </form>
                     </div>
 
+                    <!-- Alternate Sign In Providers (Firebase & Clerk) -->
+                    <div class="alternate-auth-section" id="alternate-auth-signin">
+                        <div class="auth-divider">
+                            <span>Or continue with</span>
+                        </div>
+                        <div class="alternate-auth-buttons">
+                            <button type="button" class="btn-alternate-auth btn-firebase-google" id="btn-auth-firebase-google" onclick="handleAlternateLogin('firebase')" title="Sign in with Google via Firebase">
+                                <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">
+                                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.15z"/>
+                                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                                </svg>
+                                <span>Google / Firebase</span>
+                            </button>
+                            <button type="button" class="btn-alternate-auth btn-clerk-auth" id="btn-auth-clerk" onclick="handleAlternateLogin('clerk')" title="Sign in with Clerk">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
+                                    <rect width="24" height="24" rx="4" fill="#6C47FF"/>
+                                    <path d="M12 6.5C8.96 6.5 6.5 8.96 6.5 12C6.5 15.04 8.96 17.5 12 17.5C13.88 17.5 15.54 16.55 16.52 15.11L14.73 13.91C14.15 14.87 13.15 15.5 12 15.5C10.07 15.5 8.5 13.93 8.5 12C8.5 10.07 10.07 8.5 12 8.5C13.15 8.5 14.15 9.13 14.73 10.09L16.52 8.89C15.54 7.45 13.88 6.5 12 6.5Z" fill="white"/>
+                                </svg>
+                                <span>Clerk Auth</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Toggle to Sign Up -->
                     <div style="text-align:center; font-size:12px; color:#475569; margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;">
                         Don't have an account yet? 
@@ -499,6 +524,31 @@
                         </button>
                     </form>
 
+                    <!-- Alternate Registration Providers (Firebase & Clerk) -->
+                    <div class="alternate-auth-section" id="alternate-auth-signup">
+                        <div class="auth-divider">
+                            <span>Or register with</span>
+                        </div>
+                        <div class="alternate-auth-buttons">
+                            <button type="button" class="btn-alternate-auth btn-firebase-google" id="btn-signup-firebase-google" onclick="handleAlternateLogin('firebase')" title="Sign up with Google via Firebase">
+                                <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">
+                                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.15z"/>
+                                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                                </svg>
+                                <span>Google / Firebase</span>
+                            </button>
+                            <button type="button" class="btn-alternate-auth btn-clerk-auth" id="btn-signup-clerk" onclick="handleAlternateLogin('clerk')" title="Sign up with Clerk">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
+                                    <rect width="24" height="24" rx="4" fill="#6C47FF"/>
+                                    <path d="M12 6.5C8.96 6.5 6.5 8.96 6.5 12C6.5 15.04 8.96 17.5 12 17.5C13.88 17.5 15.54 16.55 16.52 15.11L14.73 13.91C14.15 14.87 13.15 15.5 12 15.5C10.07 15.5 8.5 13.93 8.5 12C8.5 10.07 10.07 8.5 12 8.5C13.15 8.5 14.15 9.13 14.73 10.09L16.52 8.89C15.54 7.45 13.88 6.5 12 6.5Z" fill="white"/>
+                                </svg>
+                                <span>Clerk Auth</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Toggle to Sign In -->
                     <div style="text-align:center; font-size:12px; color:#475569; margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;">
                         Already registered? 
@@ -512,6 +562,91 @@
                     <a href="{{ $platformSettings['privacy_policy_url'] ?? '/privacy-policy' }}" id="login-link-privacy" target="_blank" style="color:var(--primary); font-weight:600; text-decoration:underline;">Privacy Policy</a> 
                     and 
                     <a href="{{ $platformSettings['terms_conditions_url'] ?? '/terms-conditions' }}" id="login-link-terms" target="_blank" style="color:var(--primary); font-weight:600; text-decoration:underline;">T&Cs</a>.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- MODAL: ALTERNATE AUTHENTICATION (FIREBASE / CLERK)       -->
+    <!-- ======================================================== -->
+    <div class="modal-overlay" id="alternate-auth-modal">
+        <div class="modal-dialog auth-modal-dialog" style="max-width: 440px;">
+            <div class="modal-header auth-modal-header">
+                <div class="auth-header-brand">
+                    <span id="alt-modal-brand-icon" style="font-size:24px; display:flex; align-items:center;">🔥</span>
+                    <div>
+                        <h3 class="modal-title" id="alt-modal-title" style="color:#ffffff;">Alternate Sign In</h3>
+                        <p class="auth-header-subtitle" id="alt-modal-subtitle">Firebase & Clerk Authentication Portal</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close-btn" style="color:#cbd5e1;" onclick="closeModal('alternate-auth-modal')">×</button>
+            </div>
+
+            <div class="modal-body auth-modal-body">
+                <!-- Status Notice -->
+                <div id="alt-status-notice" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:12px; color:#475569; display:flex; align-items:center; gap:8px;">
+                    <span class="material-symbols-outlined" id="alt-status-icon" style="color:#0284c7; font-size:20px;">info</span>
+                    <span id="alt-status-text">Authenticate instantly with your account credentials.</span>
+                </div>
+
+                <!-- Provider Badge & Selected Role Info -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; background:#f1f5f9; padding:8px 12px; border-radius:6px; font-size:12px;">
+                    <span style="color:#64748b; font-weight:600;">Provider: <strong id="alt-provider-name" style="color:#0f172a;">Firebase (Google)</strong></span>
+                    <span style="color:#64748b; font-weight:600;">Target Role: <strong id="alt-role-name" style="color:var(--primary); text-transform:capitalize;">Customer</strong></span>
+                </div>
+
+                <!-- 1-Click Fast Profiles -->
+                <div style="margin-bottom:14px;">
+                    <label class="form-label" style="font-size:11.5px; font-weight:700; color:#475569; margin-bottom:6px; display:block;">Quick Simulated Accounts</label>
+                    <div style="display:grid; grid-template-columns: 1fr; gap:6px;">
+                        <button type="button" class="btn btn-outline" onclick="selectAltDemoProfile('customer')" style="text-align:left; justify-content:flex-start; padding:8px 10px; font-size:12px; background:#ffffff; border-color:#cbd5e1; gap:8px;">
+                            <span style="font-size:16px;">👤</span>
+                            <div style="flex:1;">
+                                <div style="font-weight:700; color:#0f172a;">Priya Sharma (Passenger)</div>
+                                <div style="font-size:11px; color:#64748b;">priya.customer@gmail.com</div>
+                            </div>
+                            <span style="font-size:11px; color:#0284c7; font-weight:700;">Select &rarr;</span>
+                        </button>
+                        <button type="button" class="btn btn-outline" onclick="selectAltDemoProfile('driver')" style="text-align:left; justify-content:flex-start; padding:8px 10px; font-size:12px; background:#ffffff; border-color:#cbd5e1; gap:8px;">
+                            <span style="font-size:16px;">👨🏽‍✈️</span>
+                            <div style="flex:1;">
+                                <div style="font-weight:700; color:#0f172a;">Rajesh Chauffeur (Driver)</div>
+                                <div style="font-size:11px; color:#64748b;">rajesh.driver@gmail.com</div>
+                            </div>
+                            <span style="font-size:11px; color:#0284c7; font-weight:700;">Select &rarr;</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Divider -->
+                <div class="auth-divider" style="margin:10px 0;">
+                    <span>Or specify account credentials</span>
+                </div>
+
+                <!-- Custom Account Input Form -->
+                <form id="alt-auth-form" onsubmit="submitAlternateAuthForm(event)">
+                    <input type="hidden" id="alt-input-provider" value="firebase">
+                    <input type="hidden" id="alt-input-role" value="customer">
+
+                    <div class="form-group" style="margin-bottom:10px;">
+                        <label class="form-label" for="alt-input-name" style="font-size:11.5px;">Full Name</label>
+                        <input type="text" id="alt-input-name" class="form-control" placeholder="e.g. Ananya Sen" value="Priya Sharma" required>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label" for="alt-input-email" style="font-size:11.5px;">Email Address</label>
+                        <input type="email" id="alt-input-email" class="form-control" placeholder="name@domain.com" value="priya.customer@gmail.com" required>
+                    </div>
+
+                    <button type="submit" id="alt-submit-btn" class="btn btn-primary btn-block" style="height:42px; font-size:13px;">
+                        <span class="material-symbols-outlined" style="font-size:17px;">verified_user</span>
+                        <span id="alt-submit-label">Sign In with Firebase</span>
+                    </button>
+                </form>
+
+                <div id="alt-env-tip" style="margin-top:12px; font-size:11px; color:#64748b; background:#f0f9ff; border:1px dashed #7dd3fc; border-radius:6px; padding:8px 10px; line-height:1.4;">
+                    💡 <strong>Live SDK Setup:</strong> Add <code>FIREBASE_API_KEY</code> or <code>CLERK_PUBLISHABLE_KEY</code> in <code>.env</code> to trigger the live popup window automatically.
                 </div>
             </div>
         </div>
@@ -536,11 +671,13 @@
         $jsCabRoutes = isset($allCabRoutes) 
             ? $allCabRoutes 
             : \App\Models\RouteFare::where('is_active', true)->get();
+        $alternateAuthConfig = app(\App\Services\AlternateAuthService::class)->getPublicConfig();
     @endphp
     <script>
         window.CURRENT_USER = {!! json_encode($jsUser) !!};
         window.INITIAL_SERVICE_LOCATIONS = {!! json_encode($jsLocations) !!};
         window.INITIAL_CAB_ROUTES = {!! json_encode($jsCabRoutes) !!};
+        window.ALTERNATE_AUTH_CONFIG = {!! json_encode($alternateAuthConfig) !!};
     </script>
 
     <!-- Leaflet JS -->

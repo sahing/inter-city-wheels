@@ -4436,3 +4436,85 @@ h1, h2, h3, h4, .font-display {
     width: 100%;
   }
 }
+
+
+/* ======================================================== */
+/* ALTERNATE AUTH PROVIDERS (FIREBASE & CLERK)              */
+/* ======================================================== */
+.alternate-auth-section {
+  margin-top: 14px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  margin: 14px 0 10px;
+  color: #94a3b8;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.auth-divider span {
+  padding: 0 10px;
+}
+
+.alternate-auth-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.btn-alternate-auth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #1e293b;
+  transition: all 0.18s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.btn-alternate-auth:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.07);
+  transform: translateY(-1px);
+}
+
+.btn-alternate-auth:active {
+  transform: translateY(0);
+}
+
+.btn-firebase-google {
+  color: #1e293b;
+}
+
+.btn-firebase-google:hover {
+  border-color: #4285f4;
+  background: #f8faff;
+}
+
+.btn-clerk-auth {
+  color: #1e293b;
+}
+
+.btn-clerk-auth:hover {
+  border-color: #6c47ff;
+  background: #faf8ff;
+}

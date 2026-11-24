@@ -3357,6 +3357,262 @@ window.quickDemoLogin = async function (role) {
   }
 };
 
+/* ======================================================== */
+/* ALTERNATE AUTHENTICATION: FIREBASE & CLERK               */
+/* ======================================================== */
+window.handleAlternateLogin = async function (provider = 'firebase') {
+  let role = 'customer';
+  const isSignIn = document.getElementById('auth-signin-container')?.style.display !== 'none';
+  if (isSignIn) {
+    const roleInput = document.getElementById('login-role-input');
+    if (roleInput && roleInput.value) role = roleInput.value;
+  } else {
+    const signupRoleInput = document.getElementById('signup-role-input');
+    if (signupRoleInput && signupRoleInput.value) role = signupRoleInput.value;
+  }
+
+  if (!window.ALTERNATE_AUTH_CONFIG) {
+    try {
+      const res = await fetch('/auth/alternate-config');
+      const data = await res.json();
+      if (data.success) {
+        window.ALTERNATE_AUTH_CONFIG = data.config;
+      }
+    } catch (e) {
+      console.warn('Could not load alternate auth config:', e);
+    }
+  }
+
+  const altConfig = window.ALTERNATE_AUTH_CONFIG || {};
+
+  if (provider === 'firebase') {
+    if (altConfig.firebase && altConfig.firebase.is_configured) {
+      return window.loginWithFirebaseLive(role);
+    }
+    return window.openAlternateAuthModal('firebase', role);
+  } else if (provider === 'clerk') {
+    if (altConfig.clerk && altConfig.clerk.is_configured) {
+      return window.loginWithClerkLive(role);
+    }
+    return window.openAlternateAuthModal('clerk', role);
+  }
+};
+
+window.openAlternateAuthModal = function (provider = 'firebase', role = 'customer') {
+  const modal = document.getElementById('alternate-auth-modal');
+  const title = document.getElementById('alt-modal-title');
+  const subtitle = document.getElementById('alt-modal-subtitle');
+  const brandIcon = document.getElementById('alt-modal-brand-icon');
+  const providerName = document.getElementById('alt-provider-name');
+  const roleName = document.getElementById('alt-role-name');
+  const submitLabel = document.getElementById('alt-submit-label');
+  const inputProvider = document.getElementById('alt-input-provider');
+  const inputRole = document.getElementById('alt-input-role');
+  const envTip = document.getElementById('alt-env-tip');
+
+  if (inputProvider) inputProvider.value = provider;
+  if (inputRole) inputRole.value = role;
+  if (roleName) roleName.textContent = role.toUpperCase();
+
+  const roleTitle = role.charAt(0).toUpperCase() + role.slice(1);
+
+  if (provider === 'firebase') {
+    if (brandIcon) brandIcon.textContent = '🔥';
+    if (title) title.textContent = 'Google Sign-In (Firebase)';
+    if (subtitle) subtitle.textContent = 'Authenticate with your Google profile via Firebase';
+    if (providerName) providerName.textContent = 'Firebase (Google)';
+    if (submitLabel) submitLabel.textContent = `Sign In as ${roleTitle} with Firebase`;
+    if (envTip) envTip.innerHTML = '💡 <strong>Live Firebase Setup:</strong> Set <code>FIREBASE_API_KEY</code> & <code>FIREBASE_PROJECT_ID</code> in <code>.env</code> to activate native Google popup.';
+  } else {
+    if (brandIcon) brandIcon.textContent = '⚡';
+    if (title) title.textContent = 'Clerk Authentication';
+    if (subtitle) subtitle.textContent = 'Fast Single Sign-On and multi-factor auth with Clerk';
+    if (providerName) providerName.textContent = 'Clerk Auth';
+    if (submitLabel) submitLabel.textContent = `Sign In as ${roleTitle} with Clerk`;
+    if (envTip) envTip.innerHTML = '💡 <strong>Live Clerk Setup:</strong> Set <code>CLERK_PUBLISHABLE_KEY</code> & <code>CLERK_SECRET_KEY</code> in <code>.env</code> to activate live Clerk SSO.';
+  }
+
+  const nameInput = document.getElementById('alt-input-name');
+  const emailInput = document.getElementById('alt-input-email');
+  if (role === 'driver') {
+    if (nameInput) nameInput.value = 'Rajesh Chauffeur';
+    if (emailInput) emailInput.value = 'rajesh.driver@gmail.com';
+  } else if (role === 'admin') {
+    if (nameInput) nameInput.value = 'Admin Supervisor';
+    if (emailInput) emailInput.value = 'admin@intercitywheels.com';
+  } else {
+    if (nameInput) nameInput.value = 'Priya Sharma';
+    if (emailInput) emailInput.value = 'priya.customer@gmail.com';
+  }
+
+  closeModal('login-modal');
+
+  if (modal) modal.classList.add('active');
+};
+
+window.selectAltDemoProfile = function (profileRole) {
+  const nameInput = document.getElementById('alt-input-name');
+  const emailInput = document.getElementById('alt-input-email');
+  const roleInput = document.getElementById('alt-input-role');
+  const roleName = document.getElementById('alt-role-name');
+
+  if (profileRole === 'driver') {
+    if (nameInput) nameInput.value = 'Rajesh Chauffeur';
+    if (emailInput) emailInput.value = 'rajesh.driver@gmail.com';
+    if (roleInput) roleInput.value = 'driver';
+    if (roleName) roleName.textContent = 'DRIVER';
+  } else {
+    if (nameInput) nameInput.value = 'Priya Sharma';
+    if (emailInput) emailInput.value = 'priya.customer@gmail.com';
+    if (roleInput) roleInput.value = 'customer';
+    if (roleName) roleName.textContent = 'CUSTOMER';
+  }
+
+  window.submitAlternateAuthForm();
+};
+
+window.submitAlternateAuthForm = async function (event) {
+  if (event) event.preventDefault();
+
+  const provider = document.getElementById('alt-input-provider')?.value || 'firebase';
+  const role = document.getElementById('alt-input-role')?.value || 'customer';
+  const name = document.getElementById('alt-input-name')?.value?.trim();
+  const email = document.getElementById('alt-input-email')?.value?.trim();
+
+  if (!email) {
+    showToast('Please provide an email address.', 'warning');
+    return;
+  }
+
+  await window.submitAlternateAuth({
+    provider,
+    role,
+    name,
+    email,
+    avatar: role === 'driver' ? '👨🏽‍✈️' : '👤'
+  });
+};
+
+window.submitAlternateAuth = async function (payload) {
+  const submitBtn = document.getElementById('alt-submit-btn');
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="material-symbols-outlined spin" style="font-size:18px;">autorenew</span> Authenticating...';
+  }
+
+  try {
+    const res = await fetch('/auth/alternate-login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': csrfToken
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      showToast(data.message || 'Signed in successfully!', 'success');
+      closeModal('alternate-auth-modal');
+      closeModal('login-modal');
+      const targetUrl = data.redirect_url || '/';
+      const sep = targetUrl.includes('?') ? '&' : '?';
+      window.location.replace(targetUrl + sep + 'auth=' + Date.now());
+    } else {
+      showToast(data.message || 'Alternate authentication failed.', 'warning');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:17px;">verified_user</span> Try Again';
+      }
+    }
+  } catch (err) {
+    console.error('Alternate login error:', err);
+    showToast('An error occurred during authentication. Please retry.', 'error');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:17px;">verified_user</span> Try Again';
+    }
+  }
+};
+
+window.loginWithFirebaseLive = async function (role = 'customer') {
+  showToast('Connecting with Google / Firebase...', 'info');
+  try {
+    if (typeof firebase === 'undefined') {
+      await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+      await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js');
+    }
+
+    const fbConfig = window.ALTERNATE_AUTH_CONFIG?.firebase || {};
+    if (!firebase.apps.length) {
+      firebase.initializeApp(fbConfig);
+    }
+
+    const provider = new firebase.auth.GoogleAuthProvider();
+    const result = await firebase.auth().signInWithPopup(provider);
+    const user = result.user;
+    const idToken = await user.getIdToken();
+
+    await window.submitAlternateAuth({
+      provider: 'firebase',
+      id_token: idToken,
+      uid: user.uid,
+      email: user.email,
+      name: user.displayName || user.email.split('@')[0],
+      photo_url: user.photoURL,
+      role: role
+    });
+  } catch (err) {
+    console.error('Firebase live login error:', err);
+    showToast(err.message || 'Firebase sign-in was cancelled or encountered an error.', 'warning');
+  }
+};
+
+window.loginWithClerkLive = async function (role = 'customer') {
+  showToast('Connecting with Clerk Auth...', 'info');
+  try {
+    const clerkConfig = window.ALTERNATE_AUTH_CONFIG?.clerk || {};
+    if (typeof Clerk === 'undefined') {
+      await loadScript('https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js');
+    }
+
+    const clerk = new window.Clerk(clerkConfig.publishableKey);
+    await clerk.load();
+
+    if (clerk.user) {
+      await window.submitAlternateAuth({
+        provider: 'clerk',
+        clerk_user_id: clerk.user.id,
+        email: clerk.user.primaryEmailAddress?.emailAddress,
+        name: clerk.user.fullName || clerk.user.firstName,
+        avatar: clerk.user.imageUrl,
+        role: role
+      });
+    } else {
+      clerk.openSignIn();
+    }
+  } catch (err) {
+    console.error('Clerk live login error:', err);
+    showToast(err.message || 'Clerk sign-in encountered an error.', 'warning');
+  }
+};
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) return resolve();
+    const script = document.createElement('script');
+    script.src = src;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
 window.performLogout = function () {
   // 1. Preferred Native Form Submission (100% reliable across all browsers & cache engines)
   const logoutForm = document.getElementById('logout-form');

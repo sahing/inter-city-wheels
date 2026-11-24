@@ -40,4 +40,19 @@ return [
         'route' => env('FAST2SMS_ROUTE', 'otp'),
     ],
 
+    'firebase' => [
+        'api_key' => env('FIREBASE_API_KEY'),
+        'auth_domain' => env('FIREBASE_AUTH_DOMAIN'),
+        'project_id' => env('FIREBASE_PROJECT_ID'),
+        'storage_bucket' => env('FIREBASE_STORAGE_BUCKET'),
+        'messaging_sender_id' => env('FIREBASE_MESSAGING_SENDER_ID'),
+        'app_id' => env('FIREBASE_APP_ID'),
+        'measurement_id' => env('FIREBASE_MEASUREMENT_ID'),
+    ],
+
+    'clerk' => [
+        'publishable_key' => env('CLERK_PUBLISHABLE_KEY'),
+        'secret_key' => env('CLERK_SECRET_KEY'),
+    ],
+
 ];
