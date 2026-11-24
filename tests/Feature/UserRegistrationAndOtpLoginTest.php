@@ -2,8 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Driver;
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -112,8 +110,8 @@ class UserRegistrationAndOtpLoginTest extends TestCase
             'https://www.fast2sms.com/dev/bulkV2' => Http::response([
                 'return' => true,
                 'request_id' => 'v2_req_9988',
-                'message' => ['SMS sent successfully.']
-            ], 200)
+                'message' => ['SMS sent successfully.'],
+            ], 200),
         ]);
 
         $response = $this->postJson('/auth/send-otp', [
@@ -147,7 +145,7 @@ class UserRegistrationAndOtpLoginTest extends TestCase
         $verifyResponse = $this->postJson('/auth/verify-otp', [
             'phone' => $phone,
             'otp' => $otp,
-            'role' => 'customer'
+            'role' => 'customer',
         ]);
 
         $verifyResponse->assertStatus(200)
@@ -157,7 +155,7 @@ class UserRegistrationAndOtpLoginTest extends TestCase
 
         $this->assertAuthenticated();
         $this->assertDatabaseHas('users', [
-            'phone' => '+91 ' . $phone,
+            'phone' => '+91 '.$phone,
         ]);
     }
 
@@ -175,8 +173,9 @@ class UserRegistrationAndOtpLoginTest extends TestCase
         $verifyResponse->assertStatus(422)
             ->assertJson([
                 'success' => false,
-                'message' => 'Invalid or expired OTP. Please enter the OTP displayed on screen or request a new OTP.'
-            ]);
+                'code' => 'otp_invalid',
+            ])
+            ->assertJsonPath('attempts_left', 4);
 
         $this->assertGuest();
     }
@@ -206,4 +205,3 @@ class UserRegistrationAndOtpLoginTest extends TestCase
         $response->assertSee('signup-password', false);
     }
 }
-

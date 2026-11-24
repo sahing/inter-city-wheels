@@ -31,29 +31,29 @@ class RouteFare extends Model
     {
         $key = strtolower($carType);
 
-        if ($key === 'sedan' && !empty($this->sedan_fare)) {
-            return (float)$this->sedan_fare;
+        if ($key === 'sedan' && ! empty($this->sedan_fare)) {
+            return (float) $this->sedan_fare;
         }
-        if ($key === 'suv' && !empty($this->suv_fare)) {
-            return (float)$this->suv_fare;
+        if ($key === 'suv' && ! empty($this->suv_fare)) {
+            return (float) $this->suv_fare;
         }
-        if ($key === 'hatchback' && !empty($this->hatchback_fare)) {
-            return (float)$this->hatchback_fare;
+        if ($key === 'hatchback' && ! empty($this->hatchback_fare)) {
+            return (float) $this->hatchback_fare;
         }
-        if ($key === 'innova' && !empty($this->innova_fare)) {
-            return (float)$this->innova_fare;
+        if ($key === 'innova' && ! empty($this->innova_fare)) {
+            return (float) $this->innova_fare;
         }
-        if ($key === 'tempo' && !empty($this->tempo_fare)) {
-            return (float)$this->tempo_fare;
+        if ($key === 'tempo' && ! empty($this->tempo_fare)) {
+            return (float) $this->tempo_fare;
         }
-        if ($key === 'luxury' && !empty($this->luxury_fare)) {
-            return (float)$this->luxury_fare;
+        if ($key === 'luxury' && ! empty($this->luxury_fare)) {
+            return (float) $this->luxury_fare;
         }
 
         if (is_array($this->car_fares) && isset($this->car_fares[$key])) {
-            return (float)$this->car_fares[$key];
+            return (float) $this->car_fares[$key];
         }
 
-        return round($this->distance_km * $defaultRatePerKm + (float)$this->base_toll);
+        return round($this->distance_km * $defaultRatePerKm + (float) $this->base_toll);
     }
 }

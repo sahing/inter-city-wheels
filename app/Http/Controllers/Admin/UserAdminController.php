@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use App\Models\User;
-use App\Models\Driver;
 use App\Models\Booking;
+use App\Models\Driver;
+use App\Models\User;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
 class UserAdminController extends Controller
@@ -26,15 +26,15 @@ class UserAdminController extends Controller
             $s = $request->search;
             $query->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
-                  ->orWhere('email', 'like', "%{$s}%")
-                  ->orWhere('phone', 'like', "%{$s}%");
+                    ->orWhere('email', 'like', "%{$s}%")
+                    ->orWhere('phone', 'like', "%{$s}%");
             });
         }
 
         $users = $query->get()->map(function ($u) {
             $driver = null;
             if ($u->role === 'driver') {
-                $driver = Driver::where('phone', $u->phone)->orWhere('name', 'like', '%' . explode(' ', $u->name)[0] . '%')->first();
+                $driver = Driver::where('phone', $u->phone)->orWhere('name', 'like', '%'.explode(' ', $u->name)[0].'%')->first();
             }
             $tripsCount = 0;
             if ($u->role === 'customer') {
@@ -58,15 +58,15 @@ class UserAdminController extends Controller
                     'fleet_category' => $driver->fleet_category,
                     'rating' => $driver->rating,
                     'wallet_balance' => $driver->wallet_balance,
-                    'is_online' => $driver->is_online
+                    'is_online' => $driver->is_online,
                 ] : null,
-                'trips_count' => $tripsCount
+                'trips_count' => $tripsCount,
             ];
         });
 
         return response()->json([
             'success' => true,
-            'users' => $users
+            'users' => $users,
         ]);
     }
 
@@ -83,7 +83,7 @@ class UserAdminController extends Controller
             'password' => 'nullable|string|min:6',
             'vehicle_model' => 'nullable|string',
             'vehicle_plate' => 'nullable|string',
-            'fleet_category' => 'nullable|string'
+            'fleet_category' => 'nullable|string',
         ]);
 
         $avatar = match ($validated['role']) {
@@ -98,11 +98,11 @@ class UserAdminController extends Controller
             'phone' => $validated['phone'],
             'role' => $validated['role'],
             'avatar' => $avatar,
-            'password' => Hash::make($validated['password'] ?? 'password123')
+            'password' => Hash::make($validated['password'] ?? 'password123'),
         ]);
 
         // If registered as driver, create corresponding driver record if plate given
-        if ($validated['role'] === 'driver' && !empty($validated['vehicle_plate'])) {
+        if ($validated['role'] === 'driver' && ! empty($validated['vehicle_plate'])) {
             Driver::firstOrCreate(
                 ['vehicle_plate' => strtoupper(trim($validated['vehicle_plate']))],
                 [
@@ -115,15 +115,15 @@ class UserAdminController extends Controller
                     'trips_count' => 0,
                     'wallet_balance' => 0,
                     'is_verified' => true,
-                    'is_online' => true
+                    'is_online' => true,
                 ]
             );
         }
 
         return response()->json([
             'success' => true,
-            'message' => "Registered new " . ucfirst($user->role) . " account successfully!",
-            'user' => $user
+            'message' => 'Registered new '.ucfirst($user->role).' account successfully!',
+            'user' => $user,
         ], 201);
     }
 
@@ -135,7 +135,7 @@ class UserAdminController extends Controller
         $user = User::findOrFail($id);
         $driver = null;
         if ($user->role === 'driver') {
-            $driver = Driver::where('phone', $user->phone)->orWhere('name', 'like', '%' . explode(' ', $user->name)[0] . '%')->first();
+            $driver = Driver::where('phone', $user->phone)->orWhere('name', 'like', '%'.explode(' ', $user->name)[0].'%')->first();
         }
 
         $bookings = Booking::where('customer_phone', $user->phone)
@@ -148,7 +148,7 @@ class UserAdminController extends Controller
             'success' => true,
             'user' => $user,
             'driver' => $driver,
-            'bookings' => $bookings
+            'bookings' => $bookings,
         ]);
     }
 
@@ -161,13 +161,13 @@ class UserAdminController extends Controller
 
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:120',
-            'email' => 'sometimes|required|email|unique:users,email,' . $user->id,
+            'email' => 'sometimes|required|email|unique:users,email,'.$user->id,
             'phone' => 'sometimes|required|string|max:20',
             'role' => 'sometimes|required|in:customer,driver,admin',
-            'password' => 'nullable|string|min:6'
+            'password' => 'nullable|string|min:6',
         ]);
 
-        if (!empty($validated['password'])) {
+        if (! empty($validated['password'])) {
             $validated['password'] = Hash::make($validated['password']);
         } else {
             unset($validated['password']);
@@ -178,7 +178,7 @@ class UserAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => "User account {$user->name} updated successfully!",
-            'user' => $user
+            'user' => $user,
         ]);
     }
 
@@ -193,7 +193,7 @@ class UserAdminController extends Controller
         if ($user->id === auth()->id() && $user->role === 'admin') {
             return response()->json([
                 'success' => false,
-                'message' => 'Cannot delete your own active administrator account.'
+                'message' => 'Cannot delete your own active administrator account.',
             ], 422);
         }
 
@@ -202,8 +202,7 @@ class UserAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "User {$userName} has been removed."
+            'message' => "User {$userName} has been removed.",
         ]);
     }
 }
-

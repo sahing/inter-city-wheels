@@ -2,20 +2,21 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use App\Models\User;
-use App\Models\Driver;
-use App\Models\ServiceLocation;
 use App\Models\BerthRoute;
-use App\Models\SeatLayout;
+use App\Models\Driver;
 use App\Models\DriverVehicle;
+use App\Models\SeatLayout;
+use App\Models\ServiceLocation;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class AdminFleetAndBerthManagementTest extends TestCase
 {
     use RefreshDatabase;
 
     protected User $adminUser;
+
     protected User $driverUser;
 
     protected function setUp(): void
@@ -210,7 +211,7 @@ class AdminFleetAndBerthManagementTest extends TestCase
                 'vehicle_plate' => 'MH 12 ZZ 9999',
                 'status' => 'Pending',
                 'is_active' => false,
-            ]
+            ],
         ]);
 
         $this->assertDatabaseHas('driver_vehicles', [
@@ -241,7 +242,7 @@ class AdminFleetAndBerthManagementTest extends TestCase
 
         // 1. Admin rejects vehicle
         $rejectRes = $this->actingAs($this->adminUser)->postJson("/api/admin/vehicles/{$veh->id}/reject", [
-            'admin_notes' => 'Commercial permit expired.'
+            'admin_notes' => 'Commercial permit expired.',
         ]);
         $rejectRes->assertStatus(200);
 
@@ -302,4 +303,3 @@ class AdminFleetAndBerthManagementTest extends TestCase
         $response->assertSee('id="driver-list-vehicle-modal"', false);
     }
 }
-

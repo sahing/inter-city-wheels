@@ -2,10 +2,10 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
+use Tests\TestCase;
 
 class AuthenticationTest extends TestCase
 {
@@ -22,7 +22,7 @@ class AuthenticationTest extends TestCase
         $response = $this->postJson('/login', [
             'email' => 'customer@intercitywheels.com',
             'password' => 'password123',
-            'role' => 'customer'
+            'role' => 'customer',
         ]);
 
         $response->assertStatus(200);
@@ -30,8 +30,8 @@ class AuthenticationTest extends TestCase
             'success' => true,
             'user' => [
                 'email' => 'customer@intercitywheels.com',
-                'role' => 'customer'
-            ]
+                'role' => 'customer',
+            ],
         ]);
         $response->assertJsonStructure(['success', 'message', 'redirect_url', 'user', 'target_tab']);
         $this->assertAuthenticated();
@@ -42,7 +42,7 @@ class AuthenticationTest extends TestCase
         $response = $this->post('/login', [
             'email' => 'customer@intercitywheels.com',
             'password' => 'password123',
-            'role' => 'customer'
+            'role' => 'customer',
         ]);
 
         $response->assertStatus(302);
@@ -55,13 +55,13 @@ class AuthenticationTest extends TestCase
         $response = $this->postJson('/login', [
             'email' => 'customer@intercitywheels.com',
             'password' => 'wrongpassword',
-            'role' => 'customer'
+            'role' => 'customer',
         ]);
 
         $response->assertStatus(422);
         $response->assertJson([
             'success' => false,
-            'message' => 'Invalid email or password. Please verify your credentials.'
+            'message' => 'Invalid email or password. Please verify your credentials.',
         ]);
         $this->assertGuest();
     }
@@ -69,16 +69,16 @@ class AuthenticationTest extends TestCase
     public function test_quick_demo_login_authenticates_requested_role(): void
     {
         $response = $this->postJson('/login/quick-demo', [
-            'role' => 'admin'
+            'role' => 'admin',
         ]);
 
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
             'user' => [
-                'role' => 'admin'
+                'role' => 'admin',
             ],
-            'target_tab' => 'admin'
+            'target_tab' => 'admin',
         ]);
         $this->assertAuthenticated();
         $this->assertEquals('admin', Auth::user()->role);
@@ -106,7 +106,7 @@ class AuthenticationTest extends TestCase
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
-            'message' => 'Successfully logged out.'
+            'message' => 'Successfully logged out.',
         ]);
         $this->assertGuest();
     }
@@ -123,4 +123,3 @@ class AuthenticationTest extends TestCase
         $this->assertGuest();
     }
 }
-

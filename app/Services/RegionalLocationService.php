@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\ServiceLocation;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 
 class RegionalLocationService
 {
@@ -184,7 +183,7 @@ class RegionalLocationService
             $aliases = self::normalizeAliases($cleanQ);
             $registeredQuery->where(function ($sq) use ($cleanQ, $aliases) {
                 $sq->where('name', 'like', "%{$cleanQ}%")
-                   ->orWhere('state', 'like', "%{$cleanQ}%");
+                    ->orWhere('state', 'like', "%{$cleanQ}%");
                 foreach ($aliases as $alt) {
                     $sq->orWhere('name', 'like', "%{$alt}%");
                 }
@@ -200,8 +199,8 @@ class RegionalLocationService
             $results[] = [
                 'name' => $loc->name,
                 'state' => $loc->state,
-                'latitude' => (float)$loc->latitude,
-                'longitude' => (float)$loc->longitude,
+                'latitude' => (float) $loc->latitude,
+                'longitude' => (float) $loc->longitude,
                 'airport_code' => $loc->airport_code,
                 'is_registered' => true,
                 'badge' => 'Registered Hub',
@@ -244,8 +243,8 @@ class RegionalLocationService
                 $results[] = [
                     'name' => $item['name'],
                     'state' => $item['state'],
-                    'latitude' => (float)$item['lat'],
-                    'longitude' => (float)$item['lng'],
+                    'latitude' => (float) $item['lat'],
+                    'longitude' => (float) $item['lng'],
                     'airport_code' => null,
                     'is_registered' => false,
                     'badge' => 'Regional Route',
@@ -267,11 +266,11 @@ class RegionalLocationService
             }
 
             // Also attempt fast Nominatim lookup if no registered or regional results found
-            if (!$hasExact && count($results) < 3) {
+            if (! $hasExact && count($results) < 3) {
                 $geoResults = self::geocodeNominatim($cleanQ);
                 foreach ($geoResults as $geo) {
                     $lookupKey = preg_replace('/[^a-z0-9]/', '', strtolower($geo['name']));
-                    if (!isset($seenKeys[$lookupKey])) {
+                    if (! isset($seenKeys[$lookupKey])) {
                         $seenKeys[$lookupKey] = true;
                         $results[] = $geo;
                     }
@@ -298,12 +297,47 @@ class RegionalLocationService
 
     /**
      * Resolve latitude and longitude for a city name (checking DB, aliases, regional catalog, or geocoder).
+     *
+     * Lenient: unknown names are pinned to the regional centroid so free-text
+     * search still returns a suggestion. Never use this to price a trip — use
+     * resolveCoordinatesStrict() for that (P1-1).
      */
     public static function findCoordinates(string $cityName): ?array
+    {
+        $resolved = self::resolveCoordinatesStrict($cityName);
+
+        if ($resolved !== null) {
+            return $resolved;
+        }
+
+        $clean = trim(explode(',', $cityName)[0]);
+
+        return [
+            'name' => $clean,
+            'state' => 'West Bengal Region',
+            'lat' => 22.9868,
+            'lng' => 87.8550,
+        ];
+    }
+
+    /**
+     * Strict resolution used for pricing.
+     *
+     * Returns null when the name cannot be grounded in the registered
+     * locations table, the curated regional catalogue, or a known regional
+     * landmark. It deliberately never invents a position: a fabricated
+     * coordinate produces a fabricated distance and therefore a fabricated
+     * fare.
+     */
+    public static function resolveCoordinatesStrict(string $cityName): ?array
     {
         $clean = trim(explode(',', $cityName)[0]);
         $lower = strtolower($clean);
         $slug = preg_replace('/[^a-z0-9]/', '', $lower);
+
+        if ($clean === '') {
+            return null;
+        }
 
         // 1. Direct DB check with aliases
         $aliases = self::normalizeAliases($clean);
@@ -318,19 +352,20 @@ class RegionalLocationService
             return [
                 'name' => $loc->name,
                 'state' => $loc->state,
-                'lat' => (float)$loc->latitude,
-                'lng' => (float)$loc->longitude,
+                'lat' => (float) $loc->latitude,
+                'lng' => (float) $loc->longitude,
             ];
         }
 
         // 2. Check Regional Catalog
         if (isset(self::$regionalCatalog[$lower])) {
             $item = self::$regionalCatalog[$lower];
+
             return [
                 'name' => $item['name'],
                 'state' => $item['state'],
-                'lat' => (float)$item['lat'],
-                'lng' => (float)$item['lng'],
+                'lat' => (float) $item['lat'],
+                'lng' => (float) $item['lng'],
             ];
         }
 
@@ -339,20 +374,21 @@ class RegionalLocationService
                 return [
                     'name' => $item['name'],
                     'state' => $item['state'],
-                    'lat' => (float)$item['lat'],
-                    'lng' => (float)$item['lng'],
+                    'lat' => (float) $item['lat'],
+                    'lng' => (float) $item['lng'],
                 ];
             }
         }
 
-        // 3. Fallback coordinates guess based on region
+        // 3. Known regional landmarks (keyword match only, otherwise null)
         return self::guessRegionalCoordinates($clean);
     }
 
     /**
-     * Guess coordinates within West Bengal/Eastern India for unknown addresses/landmarks.
+     * Coordinates for a known regional landmark, or null when the name is not
+     * one of them.
      */
-    protected static function guessRegionalCoordinates(string $name): array
+    protected static function guessRegionalCoordinates(string $name): ?array
     {
         $lower = strtolower($name);
         if (str_contains($lower, 'digha')) {
@@ -371,8 +407,9 @@ class RegionalLocationService
             return ['name' => $name, 'state' => 'West Bengal', 'lat' => 26.7271, 'lng' => 88.3953];
         }
 
-        // Default to central West Bengal coordinates
-        return ['name' => $name, 'state' => 'West Bengal Region', 'lat' => 22.9868, 'lng' => 87.8550];
+        // Unknown to the dataset, the aliases and the landmark list: no
+        // position. Callers must decide what to do rather than inventing one.
+        return null;
     }
 
     /**
@@ -397,19 +434,20 @@ class RegionalLocationService
                     $displayName = $item['display_name'] ?? $query;
                     $parts = array_map('trim', explode(',', $displayName));
                     $shortName = $parts[0] ?? $query;
-                    $stateName = count($parts) > 2 ? $parts[count($parts) - 3] . ', ' . $parts[count($parts) - 2] : 'India';
+                    $stateName = count($parts) > 2 ? $parts[count($parts) - 3].', '.$parts[count($parts) - 2] : 'India';
 
                     $items[] = [
                         'name' => $shortName,
                         'state' => $stateName,
-                        'latitude' => (float)$item['lat'],
-                        'longitude' => (float)$item['lon'],
+                        'latitude' => (float) $item['lat'],
+                        'longitude' => (float) $item['lon'],
                         'airport_code' => null,
                         'is_registered' => false,
                         'badge' => 'Geocoded Location',
                         'type' => 'geocoded',
                     ];
                 }
+
                 return $items;
             }
         } catch (\Throwable $e) {
@@ -435,15 +473,15 @@ class RegionalLocationService
         $straightKm = 6371 * $c;
 
         // Realistic road curvature multiplier in India (1.20 - 1.25x)
-        $roadKm = max(25, (int)round($straightKm * 1.22));
+        $roadKm = max(25, (int) round($straightKm * 1.22));
 
         // Average outstation speed 45 km/h with highway transitions
-        $totalMins = max(25, (int)round(($roadKm / 45) * 60));
-        $hours = (int)floor($totalMins / 60);
+        $totalMins = max(25, (int) round(($roadKm / 45) * 60));
+        $hours = (int) floor($totalMins / 60);
         $mins = $totalMins % 60;
         $timeStr = $hours > 0 ? ($mins > 0 ? "{$hours}h {$mins}m" : "{$hours}h") : "{$mins}m";
 
-        $baseToll = (float)round($roadKm * 0.92);
+        $baseToll = (float) round($roadKm * 0.92);
 
         return [
             'straight_km' => round($straightKm, 1),

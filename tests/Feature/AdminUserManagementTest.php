@@ -2,10 +2,9 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Models\User;
-use App\Models\Driver;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class AdminUserManagementTest extends TestCase
 {
@@ -32,9 +31,9 @@ class AdminUserManagementTest extends TestCase
                     'name',
                     'email',
                     'role',
-                    'phone'
-                ]
-            ]
+                    'phone',
+                ],
+            ],
         ]);
     }
 
@@ -51,7 +50,7 @@ class AdminUserManagementTest extends TestCase
             'password' => 'secret123',
             'vehicle_model' => 'Toyota Fortuner',
             'vehicle_plate' => 'MH 14 CC 9999',
-            'fleet_category' => 'suv'
+            'fleet_category' => 'suv',
         ];
 
         $response = $this->actingAs($admin)->postJson('/api/admin/users', $payload);
@@ -61,18 +60,18 @@ class AdminUserManagementTest extends TestCase
             'user' => [
                 'name' => 'Sanjay Manjrekar',
                 'email' => 'sanjay.driver@intercitywheels.com',
-                'role' => 'driver'
-            ]
+                'role' => 'driver',
+            ],
         ]);
 
         $this->assertDatabaseHas('users', [
             'email' => 'sanjay.driver@intercitywheels.com',
-            'role' => 'driver'
+            'role' => 'driver',
         ]);
 
         $this->assertDatabaseHas('drivers', [
             'vehicle_plate' => 'MH 14 CC 9999',
-            'name' => 'Sanjay Manjrekar'
+            'name' => 'Sanjay Manjrekar',
         ]);
     }
 
@@ -90,8 +89,8 @@ class AdminUserManagementTest extends TestCase
             'success' => true,
             'user' => [
                 'id' => $customer->id,
-                'email' => $customer->email
-            ]
+                'email' => $customer->email,
+            ],
         ]);
 
         // Update user
@@ -99,20 +98,20 @@ class AdminUserManagementTest extends TestCase
             'name' => 'Rahul Sharma Updated',
             'email' => 'rahul.updated@intercitywheels.com',
             'phone' => '+91 98765 00000',
-            'role' => 'customer'
+            'role' => 'customer',
         ]);
         $updateRes->assertStatus(200);
         $updateRes->assertJson([
             'success' => true,
             'user' => [
                 'name' => 'Rahul Sharma Updated',
-                'email' => 'rahul.updated@intercitywheels.com'
-            ]
+                'email' => 'rahul.updated@intercitywheels.com',
+            ],
         ]);
 
         $this->assertDatabaseHas('users', [
             'id' => $customer->id,
-            'name' => 'Rahul Sharma Updated'
+            'name' => 'Rahul Sharma Updated',
         ]);
     }
 
@@ -126,14 +125,14 @@ class AdminUserManagementTest extends TestCase
             'email' => 'temp@example.com',
             'phone' => '+91 90000 00000',
             'role' => 'customer',
-            'password' => bcrypt('password')
+            'password' => bcrypt('password'),
         ]);
 
         $response = $this->actingAs($admin)->deleteJson("/api/admin/users/{$tempUser->id}");
         $response->assertStatus(200);
 
         $this->assertDatabaseMissing('users', [
-            'id' => $tempUser->id
+            'id' => $tempUser->id,
         ]);
     }
 
@@ -157,4 +156,3 @@ class AdminUserManagementTest extends TestCase
         $response->assertSee('admin-view-user-modal', false);
     }
 }
-

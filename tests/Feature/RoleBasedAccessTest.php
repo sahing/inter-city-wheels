@@ -2,11 +2,12 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use App\Models\User;
-use App\Models\Driver;
 use App\Models\Booking;
+use App\Models\Driver;
+use App\Models\PlatformSetting;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class RoleBasedAccessTest extends TestCase
 {
@@ -16,6 +17,7 @@ class RoleBasedAccessTest extends TestCase
     {
         parent::setUp();
         $this->seed();
+        PlatformSetting::set('enable_schedules_and_berths', '1');
     }
 
     public function test_customer_sees_only_customer_options(): void
@@ -133,25 +135,25 @@ class RoleBasedAccessTest extends TestCase
             'total_amount' => 3120,
             'status' => 'Driver Assigned',
             'start_otp' => '5566',
-            'assigned_driver_id' => $driverModel->id
+            'assigned_driver_id' => $driverModel->id,
         ]);
 
         // Wrong OTP fails
         $failRes = $this->actingAs($driverUser)->postJson("/api/driver/trips/{$booking->id}/verify-otp", [
-            'otp' => '0000'
+            'otp' => '0000',
         ]);
         $failRes->assertStatus(422);
 
         // Correct OTP succeeds
         $successRes = $this->actingAs($driverUser)->postJson("/api/driver/trips/{$booking->id}/verify-otp", [
-            'otp' => '5566'
+            'otp' => '5566',
         ]);
         $successRes->assertStatus(200);
         $successRes->assertJson([
             'success' => true,
             'booking' => [
-                'status' => 'Started'
-            ]
+                'status' => 'Started',
+            ],
         ]);
 
         // Complete trip
@@ -160,8 +162,8 @@ class RoleBasedAccessTest extends TestCase
         $completeRes->assertJson([
             'success' => true,
             'booking' => [
-                'status' => 'Completed'
-            ]
+                'status' => 'Completed',
+            ],
         ]);
     }
 

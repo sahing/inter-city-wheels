@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Services\RegionalLocationService;
+use Illuminate\Http\Request;
 
 class LocationSearchController extends Controller
 {
@@ -13,7 +13,7 @@ class LocationSearchController extends Controller
      */
     public function search(Request $request)
     {
-        $query = (string)$request->query('q', '');
+        $query = (string) $request->query('q', '');
         $locations = RegionalLocationService::search($query);
 
         return response()->json([

@@ -23,6 +23,9 @@
 </head>
 @php
     $userRole = Auth::check() ? Auth::user()->role : null;
+    $isSchedulesEnabled = isset($isSchedulesEnabled) 
+        ? $isSchedulesEnabled 
+        : (\App\Models\PlatformSetting::get('enable_schedules_and_berths', '0') === '1');
     $defaultTab = match($userRole) {
         'admin' => 'admin',
         'driver' => 'bidding',
@@ -70,10 +73,12 @@
                         <span class="material-symbols-outlined">directions_car</span>
                         <span>Outstation Cabs</span>
                     </button>
-                    <button class="nav-tab-btn {{ $defaultTab === 'schedules' ? 'active' : '' }}" data-target="schedules">
+                    @if($isSchedulesEnabled)
+                    <button class="nav-tab-btn {{ $defaultTab === 'schedules' ? 'active' : '' }}" data-target="schedules" id="nav-tab-btn-schedules">
                         <span class="material-symbols-outlined">directions_bus</span>
                         <span>Schedules & Berths</span>
                     </button>
+                    @endif
                     @auth
                         <button class="nav-tab-btn {{ $defaultTab === 'my-bookings' ? 'active' : '' }}" data-target="my-bookings">
                             <span class="material-symbols-outlined">confirmation_number</span>
@@ -113,6 +118,9 @@
                     <button class="nav-tab-btn {{ $defaultTab === 'schedules' ? 'active' : '' }}" data-target="schedules" title="Customer View: Schedules">
                         <span class="material-symbols-outlined">directions_bus</span>
                         <span>Berths (Preview)</span>
+                        <span id="admin-preview-berths-badge" class="badge {{ $isSchedulesEnabled ? 'badge-success' : 'badge-gold' }}" style="font-size:9px; padding:1px 5px; margin-left:4px;">
+                            {{ $isSchedulesEnabled ? 'LIVE' : 'OFF' }}
+                        </span>
                     </button>
                     <button class="nav-tab-btn {{ $defaultTab === 'bidding' ? 'active' : '' }}" data-target="bidding" title="Driver View: Auctions">
                         <span class="material-symbols-outlined">local_offer</span>
@@ -158,13 +166,15 @@
                                         <span class="dropdown-item-sub">One-way, round trip & airport</span>
                                     </div>
                                 </button>
-                                <button type="button" class="dropdown-item-btn" onclick="switchTab('schedules'); toggleUserMenu();">
+                                @if($isSchedulesEnabled)
+                                <button type="button" class="dropdown-item-btn" id="dropdown-item-schedules" onclick="switchTab('schedules'); toggleUserMenu();">
                                     <span class="material-symbols-outlined dropdown-item-icon" style="font-size:18px; color:#0d9488;">directions_bus</span>
                                     <div class="dropdown-item-text">
                                         <span class="dropdown-item-title">Luxury Sleeper Berths</span>
                                         <span class="dropdown-item-sub">Reserve AC sleeper coach</span>
                                     </div>
                                 </button>
+                                @endif
                             @elseif(Auth::user()->role === 'driver')
                                 <div class="dropdown-section-title">Chauffeur Console</div>
                                 <button type="button" class="dropdown-item-btn" onclick="switchTab('driver-trips'); toggleUserMenu();">
@@ -699,6 +709,11 @@
         window.INITIAL_SERVICE_LOCATIONS = {!! json_encode($jsLocations) !!};
         window.INITIAL_CAB_ROUTES = {!! json_encode($jsCabRoutes) !!};
         window.ALTERNATE_AUTH_CONFIG = {!! json_encode($alternateAuthConfig) !!};
+        window.PLATFORM_SETTINGS = {!! json_encode($platformSettings ?? [
+            'privacy_policy_url' => \App\Models\PlatformSetting::get('privacy_policy_url', '/privacy-policy'),
+            'terms_conditions_url' => \App\Models\PlatformSetting::get('terms_conditions_url', '/terms-conditions'),
+            'enable_schedules_and_berths' => \App\Models\PlatformSetting::get('enable_schedules_and_berths', '0'),
+        ]) !!};
     </script>
 
     <!-- Leaflet JS -->

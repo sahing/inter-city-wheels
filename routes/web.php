@@ -1,25 +1,32 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\HomeController;
+use App\Http\Controllers\Admin\AirportHubAdminController;
+use App\Http\Controllers\Admin\BerthRouteAdminController;
+use App\Http\Controllers\Admin\BiddingAdminController;
+use App\Http\Controllers\Admin\BookingAdminController;
+use App\Http\Controllers\Admin\CabRouteAdminController;
+use App\Http\Controllers\Admin\CarTypeAdminController;
+use App\Http\Controllers\Admin\DynamicFormController;
+use App\Http\Controllers\Admin\LocalPackageAdminController;
+use App\Http\Controllers\Admin\LocationAdminController;
+use App\Http\Controllers\Admin\PlatformSettingAdminController;
+use App\Http\Controllers\Admin\SeatLayoutAdminController;
+use App\Http\Controllers\Admin\UserAdminController;
+use App\Http\Controllers\Admin\VehicleAdminController;
+use App\Http\Controllers\Admin\WorkflowConfigController;
+use App\Http\Controllers\Api\BiddingController;
+use App\Http\Controllers\Api\LocationSearchController;
+use App\Http\Controllers\Api\RouteCalculationController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BiddingPageController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\DriverBiddingController;
-use App\Http\Controllers\Admin\DynamicFormController;
-use App\Http\Controllers\Admin\WorkflowConfigController;
-use App\Http\Controllers\Admin\BookingAdminController;
-use App\Http\Controllers\Admin\UserAdminController;
-use App\Http\Controllers\Admin\LocationAdminController;
-use App\Http\Controllers\Admin\BerthRouteAdminController;
-use App\Http\Controllers\Admin\SeatLayoutAdminController;
-use App\Http\Controllers\Admin\VehicleAdminController;
-use App\Http\Controllers\Admin\CabRouteAdminController;
-use App\Http\Controllers\Admin\LocalPackageAdminController;
-use App\Http\Controllers\Admin\AirportHubAdminController;
-use App\Http\Controllers\Admin\CarTypeAdminController;
-use App\Http\Controllers\Admin\PlatformSettingAdminController;
-use App\Http\Controllers\Api\RouteCalculationController;
-use App\Http\Controllers\Api\LocationSearchController;
+use App\Http\Controllers\HomeController;
+use App\Models\AirportHub;
+use App\Models\CarType;
+use App\Models\LocalPackage;
+use App\Models\ServiceLocation;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -56,9 +63,9 @@ Route::match(['get', 'post'], '/logout', [AuthController::class, 'logout'])->nam
 Route::get('/health', function () {
     return response()->json([
         'status' => 'healthy',
-        'framework' => 'Laravel 12 (PHP ' . PHP_VERSION . ')',
+        'framework' => 'Laravel 12 (PHP '.PHP_VERSION.')',
         'database' => 'connected',
-        'timestamp' => now()->toIso8601String()
+        'timestamp' => now()->toIso8601String(),
     ]);
 });
 
@@ -76,30 +83,36 @@ Route::prefix('api')->group(function () {
     Route::get('/locations', function () {
         return response()->json([
             'success' => true,
-            'locations' => \App\Models\ServiceLocation::where('is_active', true)->orderBy('name')->get()
+            'locations' => ServiceLocation::where('is_active', true)->orderBy('name')->get(),
         ]);
     })->name('api.locations.active');
     Route::get('/local-packages', function () {
         return response()->json([
             'success' => true,
-            'packages' => \App\Models\LocalPackage::where('is_active', true)->orderBy('duration_hours')->get()
+            'packages' => LocalPackage::where('is_active', true)->orderBy('duration_hours')->get(),
         ]);
     })->name('api.localPackages.active');
     Route::get('/airport-hubs', function () {
         return response()->json([
             'success' => true,
-            'airports' => \App\Models\AirportHub::where('is_active', true)->orderBy('city')->get()
+            'airports' => AirportHub::where('is_active', true)->orderBy('city')->get(),
         ]);
     })->name('api.airportHubs.active');
     Route::get('/car-types', function () {
         return response()->json([
             'success' => true,
-            'car_types' => \App\Models\CarType::where('is_active', true)->orderBy('order_index')->get()
+            'car_types' => CarType::where('is_active', true)->orderBy('order_index')->get(),
         ]);
     })->name('api.carTypes.active');
 
     // Bookings (guest + customer intake)
     Route::post('/bookings', [BookingController::class, 'store'])->name('api.bookings.store');
+
+    // Anonymous ticket retrieval: reference + the mobile number on the booking.
+    Route::post('/bookings/lookup', [BookingController::class, 'lookup'])->name('api.bookings.lookup');
+
+    // P0-8: private. Authorised by signed URL (handed out at booking time),
+    // account ownership, or the booking's mobile number — never by reference alone.
     Route::get('/bookings/{reference}', [BookingController::class, 'show'])->name('api.bookings.show');
 });
 
@@ -111,7 +124,44 @@ Route::prefix('api')->group(function () {
 
 Route::prefix('api')->middleware(['auth'])->group(function () {
     Route::get('/auth/user', [AuthController::class, 'current'])->name('api.auth.user');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Customer API (customer + admin)
+|--------------------------------------------------------------------------
+| Accepting a bid locks a fare and allots a driver, so it belongs to the
+| customer who owns the request — not to a driver.
+*/
+
+Route::prefix('api')->middleware(['auth', 'role:customer,admin'])->group(function () {
     Route::post('/bids/accept', [DriverBiddingController::class, 'acceptBid'])->name('api.bids.accept');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Driver Bidding Marketplace
+|--------------------------------------------------------------------------
+| Drivers arrive from a WhatsApp link. Reading the masked auction is public so
+| the page can say what the trip is before asking anybody to sign in; placing a
+| bid requires an authenticated, verified driver. The payload from
+| GET /api/bidding/{token} is built from the auction row only — no customer
+| name, contact, addresses or fare.
+*/
+
+Route::get('/bid/{token}', [BiddingPageController::class, 'show'])
+    ->name('bidding.page');
+
+Route::prefix('api')->group(function () {
+    Route::get('/bidding/{token}', [BiddingController::class, 'show'])
+        ->name('api.bidding.show');
+});
+
+Route::prefix('api')->middleware(['auth', 'role:driver'])->group(function () {
+    Route::post('/bidding/{token}/bids', [BiddingController::class, 'placeBid'])
+        ->name('api.bidding.bids.store');
+    Route::get('/bidding/{token}/mine', [BiddingController::class, 'mine'])
+        ->name('api.bidding.mine');
 });
 
 /*
@@ -232,6 +282,15 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     // Platform Settings & Legal URLs
     Route::get('/admin/settings', [PlatformSettingAdminController::class, 'getSettings'])->name('api.admin.settings.get');
     Route::post('/admin/settings/policy-urls', [PlatformSettingAdminController::class, 'updatePolicyUrls'])->name('api.admin.settings.updatePolicyUrls');
+    Route::post('/admin/settings/toggle-feature', [PlatformSettingAdminController::class, 'toggleFeature'])->name('api.admin.settings.toggleFeature');
+
+    // Driver Bidding Marketplace
+    Route::get('/admin/biddings', [BiddingAdminController::class, 'index'])->name('api.admin.biddings.index');
+    Route::post('/admin/bookings/{bookingId}/bidding', [BiddingAdminController::class, 'store'])->name('api.admin.bidding.store');
+    Route::get('/admin/biddings/{id}', [BiddingAdminController::class, 'show'])->name('api.admin.biddings.show');
+    Route::post('/admin/biddings/{id}/close', [BiddingAdminController::class, 'close'])->name('api.admin.biddings.close');
+    Route::post('/admin/biddings/{id}/award', [BiddingAdminController::class, 'award'])->name('api.admin.biddings.award');
+    Route::post('/admin/biddings/{id}/cancel', [BiddingAdminController::class, 'cancel'])->name('api.admin.biddings.cancel');
 });
 
 /*
@@ -245,7 +304,7 @@ Route::get('/privacy-policy', function () {
         'pageTitle' => 'Privacy Policy',
         'contentTitle' => 'IntercityWheels Privacy Policy',
         'updatedAt' => 'November 2026',
-        'body' => 'IntercityWheels Mobility Services Pvt. Ltd. is committed to protecting your personal information. When you book outstation cabs or sleeper berths through our platform, we collect minimal operational data including name, contact phone, pickup/drop GPS coordinates, and payment receipts solely to deliver and coordinate transport services.'
+        'body' => 'IntercityWheels Mobility Services Pvt. Ltd. is committed to protecting your personal information. When you book outstation cabs or sleeper berths through our platform, we collect minimal operational data including name, contact phone, pickup/drop GPS coordinates, and payment receipts solely to deliver and coordinate transport services.',
     ]);
 })->name('privacy.policy');
 
@@ -254,6 +313,6 @@ Route::get('/terms-conditions', function () {
         'pageTitle' => 'Terms & Conditions (T&Cs)',
         'contentTitle' => 'IntercityWheels Rider & Chauffeur Terms & Conditions',
         'updatedAt' => 'November 2026',
-        'body' => 'By accessing or using IntercityWheels.com, customers and driver partners agree to be bound by these Terms of Service. All outstation trips include transparent per-km billing, toll charges, night allowance rules, and real-time OTP validation for verified chauffeur departure.'
+        'body' => 'By accessing or using IntercityWheels.com, customers and driver partners agree to be bound by these Terms of Service. All outstation trips include transparent per-km billing, toll charges, night allowance rules, and real-time OTP validation for verified chauffeur departure.',
     ]);
 })->name('terms.conditions');

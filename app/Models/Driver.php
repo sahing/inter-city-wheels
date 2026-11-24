@@ -11,6 +11,13 @@ class Driver extends Model
 
     protected $guarded = [];
 
+    protected $casts = [
+        'wallet_balance' => 'float',
+        'rating' => 'float',
+        'is_verified' => 'boolean',
+        'is_online' => 'boolean',
+    ];
+
     public function bids()
     {
         return $this->hasMany(DriverBid::class);
@@ -19,5 +26,10 @@ class Driver extends Model
     public function bookings()
     {
         return $this->hasMany(Booking::class, 'assigned_driver_id');
+    }
+
+    public function walletTransactions()
+    {
+        return $this->hasMany(WalletTransaction::class)->latest('id');
     }
 }

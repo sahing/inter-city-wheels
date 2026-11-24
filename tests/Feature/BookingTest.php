@@ -2,13 +2,13 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use App\Models\RouteFare;
-use App\Models\SeatLayout;
-use App\Models\Coupon;
-use App\Models\Driver;
 use App\Models\Booking;
+use App\Models\Driver;
+use App\Models\PlatformSetting;
+use App\Models\ServiceLocation;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class BookingTest extends TestCase
 {
@@ -32,7 +32,7 @@ class BookingTest extends TestCase
 
     public function test_admin_user_gets_desktop_full_admin_panel_by_default(): void
     {
-        $admin = \App\Models\User::where('role', 'admin')->first();
+        $admin = User::where('role', 'admin')->first();
         $response = $this->actingAs($admin)->get('/');
         $response->assertStatus(200);
         $response->assertSee('role-admin-mode', false);
@@ -66,8 +66,8 @@ class BookingTest extends TestCase
             'route' => [
                 'from_city' => 'Pune',
                 'to_city' => 'Goa',
-                'distance_km' => 450
-            ]
+                'distance_km' => 450,
+            ],
         ]);
     }
 
@@ -85,7 +85,7 @@ class BookingTest extends TestCase
             'fleet_category' => 'suv',
             'include_tolls' => true,
             'pet_friendly' => true,
-            'coupon_code' => 'FIRSTWHEELS'
+            'coupon_code' => 'FIRSTWHEELS',
         ];
 
         $response = $this->postJson('/api/bookings', $payload);
@@ -94,13 +94,13 @@ class BookingTest extends TestCase
             'success' => true,
             'booking' => [
                 'service_type' => 'cab',
-                'status' => 'Confirmed'
-            ]
+                'status' => 'Requested',
+            ],
         ]);
 
         $this->assertDatabaseHas('bookings', [
             'customer_name' => 'Amitabh Bachchan',
-            'service_type' => 'cab'
+            'service_type' => 'cab',
         ]);
     }
 
@@ -128,6 +128,8 @@ class BookingTest extends TestCase
 
     public function test_store_bus_sleeper_berth_booking(): void
     {
+        PlatformSetting::set('enable_schedules_and_berths', '1');
+
         $payload = [
             'service_type' => 'bus',
             'from_city' => 'Pune',
@@ -139,8 +141,8 @@ class BookingTest extends TestCase
             'selected_units' => ['L1', 'L4'],
             'passengers' => [
                 ['name' => 'Pooja Hegde', 'age' => 28, 'gender' => 'female'],
-                ['name' => 'Friend', 'age' => 27, 'gender' => 'female']
-            ]
+                ['name' => 'Friend', 'age' => 27, 'gender' => 'female'],
+            ],
         ];
 
         $response = $this->postJson('/api/bookings', $payload);
@@ -149,30 +151,30 @@ class BookingTest extends TestCase
 
         $this->assertDatabaseHas('bookings', [
             'customer_name' => 'Pooja Hegde',
-            'service_type' => 'bus'
+            'service_type' => 'bus',
         ]);
     }
 
     public function test_driver_bidding_counter_offer(): void
     {
         $driver = Driver::first();
-        $this->actingAs(\App\Models\User::where('role', 'driver')->firstOrFail());
+        $this->actingAs(User::where('role', 'driver')->firstOrFail());
         $response = $this->postJson('/api/bids/counter', [
             'driver_id' => $driver->id,
-            'counter_amount' => 4600
+            'counter_amount' => 4600,
         ]);
 
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
-            'counter_amount' => 4600
+            'counter_amount' => 4600,
         ]);
     }
 
     public function test_driver_conclusive_ride_bid_submission(): void
     {
         $driver = Driver::first();
-        $this->actingAs(\App\Models\User::where('role', 'driver')->firstOrFail());
+        $this->actingAs(User::where('role', 'driver')->firstOrFail());
         $response = $this->postJson('/api/bids/submit', [
             'trip_id' => 'trip-wb-101',
             'from_location' => 'Baharampur (Mohona Central Bus Stand)',
@@ -191,25 +193,25 @@ class BookingTest extends TestCase
                 'to_location' => 'Kolkata (Netaji Subhash Chandra Bose Intl Airport, CCU)',
                 'distance_km' => 205,
                 'bid_amount' => 3800,
-                'conclusive_statement' => "I will take and do this ride from Baharampur (Mohona Central Bus Stand) to Kolkata (Netaji Subhash Chandra Bose Intl Airport, CCU) (205 km) at this price: ₹3,800. I accept this."
-            ]
+                'conclusive_statement' => 'I will take and do this ride from Baharampur (Mohona Central Bus Stand) to Kolkata (Netaji Subhash Chandra Bose Intl Airport, CCU) (205 km) at this price: ₹3,800. I accept this.',
+            ],
         ]);
     }
 
     public function test_admin_dynamic_form_field_creation(): void
     {
-        $this->actingAs(\App\Models\User::where('role', 'admin')->firstOrFail());
+        $this->actingAs(User::where('role', 'admin')->firstOrFail());
         $response = $this->postJson('/api/admin/dynamic-fields', [
             'label' => 'Child Booster Seat Needed',
             'field_type' => 'checkbox',
             'applies_to' => 'cab',
-            'conditional_logic' => 'Family Trips'
+            'conditional_logic' => 'Family Trips',
         ]);
 
         $response->assertStatus(200);
         $this->assertDatabaseHas('dynamic_form_fields', [
             'label' => 'Child Booster Seat Needed',
-            'field_type' => 'checkbox'
+            'field_type' => 'checkbox',
         ]);
     }
 
@@ -260,7 +262,7 @@ class BookingTest extends TestCase
             'customer_email' => 'sourav@cricket.in',
             'fleet_category' => 'innova',
             'local_package' => '8_80',
-            'coupon_code' => 'FIRSTWHEELS'
+            'coupon_code' => 'FIRSTWHEELS',
         ];
 
         $response = $this->postJson('/api/bookings', $payload);
@@ -270,13 +272,13 @@ class BookingTest extends TestCase
             'booking' => [
                 'service_type' => 'cab',
                 'trip_type' => 'local',
-                'customer_name' => 'Sourav Ganguly'
-            ]
+                'customer_name' => 'Sourav Ganguly',
+            ],
         ]);
 
         $this->assertDatabaseHas('bookings', [
             'customer_name' => 'Sourav Ganguly',
-            'trip_type' => 'local'
+            'trip_type' => 'local',
         ]);
     }
 
@@ -294,7 +296,7 @@ class BookingTest extends TestCase
             'customer_email' => 'jhulan@sports.in',
             'fleet_category' => 'sedan',
             'airport_type' => 'drop',
-            'flight_number' => '6E-204'
+            'flight_number' => '6E-204',
         ];
 
         $response = $this->postJson('/api/bookings', $payload);
@@ -304,13 +306,13 @@ class BookingTest extends TestCase
             'booking' => [
                 'service_type' => 'cab',
                 'trip_type' => 'airport',
-                'customer_name' => 'Jhulan Goswami'
-            ]
+                'customer_name' => 'Jhulan Goswami',
+            ],
         ]);
 
         $this->assertDatabaseHas('bookings', [
             'customer_name' => 'Jhulan Goswami',
-            'trip_type' => 'airport'
+            'trip_type' => 'airport',
         ]);
     }
 
@@ -333,8 +335,8 @@ class BookingTest extends TestCase
             'luggage_carrier' => true,
             'dynamic_fields' => [
                 'booster_seat' => 'Yes, 1 needed',
-                'luggage_count' => '4 suitcases'
-            ]
+                'luggage_count' => '4 suitcases',
+            ],
         ];
 
         $response = $this->postJson('/api/bookings', $payload);
@@ -343,13 +345,13 @@ class BookingTest extends TestCase
             'success' => true,
             'booking' => [
                 'customer_name' => 'Rohit Sharma',
-                'addon_fare' => 950 // 350 (pet) + 400 (night) + 200 (luggage)
-            ]
+                'addon_fare' => 950, // 350 (pet) + 400 (night) + 200 (luggage)
+            ],
         ]);
 
         $this->assertDatabaseHas('bookings', [
             'customer_name' => 'Rohit Sharma',
-            'addon_fare' => 950
+            'addon_fare' => 950,
         ]);
 
         $booking = Booking::where('customer_name', 'Rohit Sharma')->first();
@@ -360,7 +362,7 @@ class BookingTest extends TestCase
     public function test_booking_validation_fails_on_missing_required_fields(): void
     {
         $response = $this->postJson('/api/bookings', [
-            'service_type' => 'cab'
+            'service_type' => 'cab',
             // Missing customer_name, customer_phone, from_city, pickup_location
         ]);
 
@@ -378,12 +380,12 @@ class BookingTest extends TestCase
 
     public function test_portal_renders_admin_updated_locations_in_dropdown(): void
     {
-        \App\Models\ServiceLocation::create([
+        ServiceLocation::create([
             'name' => 'Ahmedabad',
             'state' => 'Gujarat',
             'latitude' => 23.0225,
             'longitude' => 72.5714,
-            'is_active' => true
+            'is_active' => true,
         ]);
 
         $response = $this->get('/');
@@ -394,22 +396,22 @@ class BookingTest extends TestCase
 
     public function test_admin_updated_city_is_reflected_in_portal_and_api(): void
     {
-        $loc = \App\Models\ServiceLocation::create([
+        $loc = ServiceLocation::create([
             'name' => 'Chandigarh',
             'state' => 'Punjab',
             'latitude' => 30.7333,
             'longitude' => 76.7794,
-            'is_active' => true
+            'is_active' => true,
         ]);
 
         // Admin updates the location
-        $this->actingAs(\App\Models\User::where('role', 'admin')->firstOrFail());
+        $this->actingAs(User::where('role', 'admin')->firstOrFail());
         $updateResponse = $this->putJson("/api/admin/locations/{$loc->id}", [
             'name' => 'Chandigarh City',
             'state' => 'Punjab & Haryana',
             'latitude' => 30.7333,
             'longitude' => 76.7794,
-            'is_active' => true
+            'is_active' => true,
         ]);
         $updateResponse->assertStatus(200);
         $updateResponse->assertJson(['success' => true]);
@@ -428,19 +430,19 @@ class BookingTest extends TestCase
 
     public function test_admin_deactivated_city_is_excluded_from_active_dropdown(): void
     {
-        $loc = \App\Models\ServiceLocation::create([
+        $loc = ServiceLocation::create([
             'name' => 'Bhopal',
             'state' => 'Madhya Pradesh',
             'latitude' => 23.2599,
             'longitude' => 77.4126,
-            'is_active' => true
+            'is_active' => true,
         ]);
 
         // Toggle to inactive
-        $this->actingAs(\App\Models\User::where('role', 'admin')->firstOrFail());
+        $this->actingAs(User::where('role', 'admin')->firstOrFail());
         $toggleResponse = $this->postJson("/api/admin/locations/{$loc->id}/toggle");
         $toggleResponse->assertStatus(200);
-        $this->assertFalse(\App\Models\ServiceLocation::find($loc->id)->is_active);
+        $this->assertFalse(ServiceLocation::find($loc->id)->is_active);
 
         // API should exclude inactive location
         $apiResponse = $this->getJson('/api/locations');

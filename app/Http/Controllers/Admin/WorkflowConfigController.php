@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\WorkflowStage;
+use Illuminate\Http\Request;
 
 class WorkflowConfigController extends Controller
 {
@@ -20,7 +20,7 @@ class WorkflowConfigController extends Controller
 
         return response()->json([
             'success' => true,
-            'stage' => $stage
+            'stage' => $stage,
         ]);
     }
 }

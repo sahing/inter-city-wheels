@@ -728,8 +728,39 @@
         <!-- TAB 2: SCHEDULED BUS & BERTH SELECTOR (From Design)      -->
         <!-- ======================================================== -->
         <section id="tab-schedules" class="tab-pane {{ $defaultTab === 'schedules' ? 'active' : '' }}">
-            <!-- Route Card -->
-            <div class="bus-route-header-card animate-load stagger-1">
+            @if(!$isSchedulesEnabled && (!$userRole || $userRole === 'customer'))
+                <div class="card" id="schedules-disabled-notice-card" style="max-width:600px; margin:40px auto; text-align:center; padding:32px 24px;">
+                    <div style="width:56px; height:56px; border-radius:50%; background:#fff7ed; color:#ea580c; display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
+                        <span class="material-symbols-outlined" style="font-size:32px;">directions_bus</span>
+                    </div>
+                    <h3 style="font-size:18px; font-weight:700; color:#1e293b; margin-bottom:8px;">Schedules & Berths Offline</h3>
+                    <p style="font-size:14px; color:#64748b; line-height:1.5; margin-bottom:20px;">
+                        Scheduled sleeper coach and berth bookings are currently unavailable. Please book a comfortable chauffeur-driven cab for your trip!
+                    </p>
+                    <button type="button" class="btn btn-primary" onclick="switchTab('cabs')">
+                        <span class="material-symbols-outlined">directions_car</span>
+                        <span>Book Outstation Cab</span>
+                    </button>
+                </div>
+            @endif
+
+            <div id="schedules-booking-container" style="{{ (!$isSchedulesEnabled && (!$userRole || $userRole === 'customer')) ? 'display:none;' : '' }}">
+                @if(!$isSchedulesEnabled && $userRole === 'admin')
+                    <div style="background:#fffbeb; border:1px solid #fef3c7; border-left:4px solid #f59e0b; padding:12px 16px; border-radius:6px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span class="material-symbols-outlined" style="color:#d97706; font-size:22px;">visibility_off</span>
+                            <div>
+                                <strong style="color:#92400e; font-size:13px;">Preview Mode (Feature Disabled for Customers)</strong>
+                                <p style="color:#b45309; font-size:12px; margin:2px 0 0;">The Schedules & Berths option is currently turned OFF in Admin Settings. Only admins can see this preview.</p>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline" style="white-space:nowrap;" onclick="switchTab('admin'); switchAdminSection('system');">
+                            <span>Manage in Settings</span>
+                        </button>
+                    </div>
+                @endif
+                <!-- Route Card -->
+                <div class="bus-route-header-card animate-load stagger-1">
                 <div class="bus-tag-row">
                     <span class="bus-title-code">INTERCITY EXPRESS #8092</span>
                     <span style="color:#64748b; font-weight:600;">Volvo Multi-Axle AC Sleeper</span>
@@ -793,7 +824,7 @@
                     <!-- Lower Deck Grid -->
                     <div class="deck-grid-container" id="deck-lower-grid">
                         <div class="deck-grid-row">
-                            <button type="button" class="berth-cell" data-seat="L1" data-price="850">
+                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L1" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L1</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -801,14 +832,14 @@
                                 <span class="berth-price">₹850</span>
                             </button>
                             <div class="aisle-indicator"><span class="material-symbols-outlined">straight</span></div>
-                            <div class="berth-cell ladies-only" data-seat="L2" data-price="850">
+                            <div class="berth-cell ladies-only" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L2" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L2</span>
                                     <span class="material-symbols-outlined">female</span>
                                 </div>
                                 <span class="berth-price">₹850</span>
                             </div>
-                            <div class="berth-cell booked" data-seat="L3" data-price="850">
+                            <div class="berth-cell booked" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L3" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L3</span>
                                     <span class="material-symbols-outlined">lock</span>
@@ -818,7 +849,7 @@
                         </div>
 
                         <div class="deck-grid-row">
-                            <button type="button" class="berth-cell selected" data-seat="L4" data-price="850">
+                            <button type="button" class="berth-cell selected" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L4" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L4</span>
                                     <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">check_circle</span>
@@ -826,14 +857,14 @@
                                 <span class="berth-price">₹850</span>
                             </button>
                             <div class="aisle-indicator"><span class="material-symbols-outlined">straight</span></div>
-                            <button type="button" class="berth-cell selected" data-seat="L5" data-price="850">
+                            <button type="button" class="berth-cell selected" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L5" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L5</span>
                                     <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">check_circle</span>
                                 </div>
                                 <span class="berth-price">₹850</span>
                             </button>
-                            <button type="button" class="berth-cell" data-seat="L6" data-price="850">
+                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L6" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L6</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -843,7 +874,7 @@
                         </div>
 
                         <div class="deck-grid-row">
-                            <button type="button" class="berth-cell" data-seat="L7" data-price="850">
+                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L7" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L7</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -851,14 +882,14 @@
                                 <span class="berth-price">₹850</span>
                             </button>
                             <div class="aisle-indicator"><span class="material-symbols-outlined">straight</span></div>
-                            <button type="button" class="berth-cell" data-seat="L8" data-price="850">
+                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L8" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L8</span>
                                     <span class="material-symbols-outlined">bed</span>
                                 </div>
                                 <span class="berth-price">₹850</span>
                             </button>
-                            <button type="button" class="berth-cell" data-seat="L9" data-price="850">
+                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L9" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L9</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -871,7 +902,7 @@
                     <!-- Upper Deck Grid -->
                     <div class="deck-grid-container" id="deck-upper-grid" style="display:none;">
                         <div class="deck-grid-row">
-                            <button type="button" class="berth-cell" data-seat="U1" data-price="950">
+                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="U1" data-price="950">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">U1</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -879,14 +910,14 @@
                                 <span class="berth-price">₹950</span>
                             </button>
                             <div class="aisle-indicator"><span class="material-symbols-outlined">straight</span></div>
-                            <button type="button" class="berth-cell" data-seat="U2" data-price="950">
+                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="U2" data-price="950">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">U2</span>
                                     <span class="material-symbols-outlined">bed</span>
                                 </div>
                                 <span class="berth-price">₹950</span>
                             </button>
-                            <div class="berth-cell booked" data-seat="U3" data-price="950">
+                            <div class="berth-cell booked" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="U3" data-price="950">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">U3</span>
                                     <span class="material-symbols-outlined">lock</span>
@@ -896,7 +927,7 @@
                         </div>
 
                         <div class="deck-grid-row">
-                            <button type="button" class="berth-cell" data-seat="U4" data-price="950">
+                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="U4" data-price="950">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">U4</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -904,14 +935,14 @@
                                 <span class="berth-price">₹950</span>
                             </button>
                             <div class="aisle-indicator"><span class="material-symbols-outlined">straight</span></div>
-                            <button type="button" class="berth-cell" data-seat="U5" data-price="950">
+                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="U5" data-price="950">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">U5</span>
                                     <span class="material-symbols-outlined">bed</span>
                                 </div>
                                 <span class="berth-price">₹950</span>
                             </button>
-                            <button type="button" class="berth-cell" data-seat="U6" data-price="950">
+                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="U6" data-price="950">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">U6</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -986,6 +1017,7 @@
                     <span>Proceed to Pay</span>
                     <span class="material-symbols-outlined" style="font-size:18px;">arrow_forward</span>
                 </button>
+            </div>
             </div>
         </section>
 
@@ -1526,6 +1558,13 @@
                                 </a>
                             </li>
                             <li class="admin-nav-item">
+                                <a href="javascript:void(0)" class="admin-nav-link" data-section="bidding" onclick="switchAdminSection('bidding')">
+                                    <span class="material-symbols-outlined admin-nav-icon">gavel</span>
+                                    <span class="admin-nav-text">Driver Bidding</span>
+                                    <span class="admin-nav-badge badge-gold">Auction</span>
+                                </a>
+                            </li>
+                            <li class="admin-nav-item">
                                 <a href="javascript:void(0)" class="admin-nav-link" data-section="booking-types" onclick="switchAdminSection('booking-types')">
                                     <span class="material-symbols-outlined admin-nav-icon">category</span>
                                     <span class="admin-nav-text">Booking Types & Packages</span>
@@ -1845,7 +1884,74 @@
                             </div>
                         </div>
 
-                        <!-- 2. BOOKINGS MANAGEMENT (DIRECTLY AFTER DASHBOARD) -->
+                        <!-- 2. DRIVER BIDDING MARKETPLACE -->
+                        <div class="admin-section" id="admin-sec-bidding">
+                            <div class="card" style="margin-bottom:20px;">
+                                <div class="card-header" style="flex-wrap:wrap; gap:12px;">
+                                    <div>
+                                        <h3 class="card-title">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">gavel</span>
+                                            <span>Driver Bidding Marketplace</span>
+                                        </h3>
+                                        <p class="card-subtitle">
+                                            Publish a booking to verified drivers on WhatsApp. Drivers bid downwards; the lowest bid wins once you approve it.
+                                            Customer identity and exact addresses stay hidden until approval.
+                                        </p>
+                                    </div>
+                                    <div style="display:flex; gap:8px; align-items:center;">
+                                        <select id="admin-bidding-filter-status" class="form-control" style="height:36px; font-size:12.5px; width:150px;" onchange="renderAdminBiddings()">
+                                            <option value="all">All auctions</option>
+                                            <option value="open" selected>Open</option>
+                                            <option value="closed">Closed</option>
+                                            <option value="awarded">Awarded</option>
+                                            <option value="cancelled">Cancelled</option>
+                                        </select>
+                                        <button type="button" class="btn btn-outline" onclick="renderAdminBiddings()">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">refresh</span> Refresh
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="card-body" style="padding:0;">
+                                    <table class="admin-data-table admin-table-compact" id="admin-biddings-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Booking</th>
+                                                <th>Route</th>
+                                                <th>Status</th>
+                                                <th>Start price</th>
+                                                <th>Lowest bid</th>
+                                                <th>Admin profit</th>
+                                                <th>Bids</th>
+                                                <th>Closes</th>
+                                                <th style="text-align:right;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="admin-biddings-tbody">
+                                            <tr>
+                                                <td colspan="9" style="text-align:center; padding:30px; color:#94a3b8;">
+                                                    Loading auctions…
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="card" style="padding:16px 18px;">
+                                <div style="display:flex; gap:10px; align-items:flex-start;">
+                                    <span class="material-symbols-outlined" style="color:var(--primary);">info</span>
+                                    <div style="font-size:12.5px; color:#475569; line-height:1.7;">
+                                        <strong>How it works:</strong> open an auction from a booking's row (gavel icon in Bookings Management),
+                                        set the start price and the minimum admin margin, then send the generated WhatsApp link to your drivers.
+                                        Every new bid must undercut the current lowest bid by at least ₹1.
+                                        When you approve the winner, the booking becomes <em>Driver Assigned</em>, the driver receives the customer's
+                                        name, mobile and full addresses, and their payout is fixed at their winning bid.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. BOOKINGS MANAGEMENT (DIRECTLY AFTER DASHBOARD) -->
                         <div class="admin-section" id="admin-sec-bookings">
                             <div class="card" style="margin-bottom:20px;">
                                 <div class="card-header" style="flex-wrap:wrap; gap:12px;">
@@ -1879,6 +1985,8 @@
                                             <label>Status:</label>
                                             <select id="admin-booking-filter-status" onchange="handleBookingFilterChange()">
                                                 <option value="all">All Statuses</option>
+                                                <option value="Requested">Requested</option>
+                                                <option value="Bidding">Bidding</option>
                                                 <option value="Confirmed">Confirmed</option>
                                                 <option value="Driver Assigned">Driver Assigned</option>
                                                 <option value="Started">Trip Started</option>
@@ -1982,6 +2090,10 @@
                                                         </button>
                                                         <button type="button" class="btn-action-icon btn-action-invoice" onclick="openInvoiceModal({{ $b->id }})" title="Generate Tax Invoice">
                                                             <span class="material-symbols-outlined">receipt</span>
+                                                        </button>
+                                                        {{-- Driver marketplace: publish to verified drivers and collect descending bids. --}}
+                                                        <button type="button" class="btn-action-icon" style="background:#f0f7ff; color:#1d4ed8; border:1px solid #bfdbfe;" onclick="openBiddingForBooking({{ $b->id }})" title="Send to driver bidding (WhatsApp link)">
+                                                            <span class="material-symbols-outlined">gavel</span>
                                                         </button>
                                                     </div>
                                                 </td>
@@ -2964,6 +3076,55 @@
                                 </div>
                             </div>
 
+                            <!-- Platform Feature & Booking Module Controls -->
+                            <div class="card" style="margin-top:20px;">
+                                <div class="card-header" style="flex-wrap:wrap; gap:10px;">
+                                    <div>
+                                        <h3 class="card-title" style="display:flex; align-items:center; gap:8px;">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">tune</span>
+                                            <span>Platform Feature & Booking Module Controls</span>
+                                        </h3>
+                                        <p class="card-subtitle">Turn booking services ON or OFF across the public customer portal and mobile dock</p>
+                                    </div>
+                                    <span class="admin-badge badge-primary">Modules Toggle</span>
+                                </div>
+
+                                <div style="padding:16px 20px;">
+                                    <!-- Schedule & Berth Feature Switch Row -->
+                                    <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:16px 18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+                                        <div style="display:flex; align-items:flex-start; gap:14px; max-width:650px;">
+                                            <div style="width:42px; height:42px; border-radius:8px; background:rgba(217,119,6,0.1); color:#d97706; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                                <span class="material-symbols-outlined" style="font-size:24px;">directions_bus</span>
+                                            </div>
+                                            <div>
+                                                <div style="display:flex; align-items:center; gap:10px;">
+                                                    <span style="font-weight:700; font-size:15px; color:#1e293b;">Schedules & Sleeper Berths Booking Option</span>
+                                                    <span id="setting-schedules-berths-badge" class="badge {{ ($isSchedulesEnabled ?? false) ? 'badge-success' : 'badge-danger' }}" style="font-size:11px; padding:2px 8px;">
+                                                        {{ ($isSchedulesEnabled ?? false) ? 'ON (Active)' : 'OFF (Disabled)' }}
+                                                    </span>
+                                                </div>
+                                                <p style="font-size:12.5px; color:#64748b; margin:4px 0 0; line-height:1.45;">
+                                                    Enable or disable the <strong>Schedules & Berths</strong> booking channel for passengers. When kept <strong>OFF</strong>, the Schedules navigation tab, dropdown item, and mobile dock button remain hidden from customers, focusing the platform strictly on Outstation Cabs.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div style="display:flex; align-items:center; gap:12px;">
+                                            <label class="switch-toggle" style="position:relative; display:inline-block; width:52px; height:28px; margin:0; cursor:pointer;">
+                                                <input type="checkbox" id="setting-schedules-berths-toggle" {{ ($isSchedulesEnabled ?? false) ? 'checked' : '' }} onchange="toggleAdminSchedulesAndBerths(this.checked)" style="opacity:0; width:0; height:0;">
+                                                <span class="switch-slider" style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:{{ ($isSchedulesEnabled ?? false) ? '#10b981' : '#cbd5e1' }}; transition:.3s; border-radius:28px;">
+                                                    <span style="position:absolute; content:''; height:20px; width:20px; left:{{ ($isSchedulesEnabled ?? false) ? '28px' : '4px' }}; bottom:4px; background-color:white; transition:.3s; border-radius:50%; box-shadow:0 1px 3px rgba(0,0,0,0.2);"></span>
+                                                </span>
+                                            </label>
+                                            <button type="button" class="btn btn-sm {{ ($isSchedulesEnabled ?? false) ? 'btn-outline-danger' : 'btn-primary' }}" id="setting-schedules-berths-btn" onclick="toggleAdminSchedulesAndBerths(!document.getElementById('setting-schedules-berths-toggle').checked)">
+                                                <span class="material-symbols-outlined" style="font-size:15px;">{{ ($isSchedulesEnabled ?? false) ? 'power_settings_new' : 'check_circle' }}</span>
+                                                <span>{{ ($isSchedulesEnabled ?? false) ? 'Turn OFF' : 'Turn ON' }}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- Platform Legal & Policy URLs Settings -->
                             <div class="card" style="margin-top:20px;">
                                 <div class="card-header" style="flex-wrap:wrap; gap:10px;">
@@ -3243,6 +3404,19 @@
                                     <button type="button" class="btn btn-sm btn-primary" onclick="openAddBerthRouteModal()">
                                         <span class="material-symbols-outlined" style="font-size:16px;">add</span>
                                         <span>Add Berth Route</span>
+                                    </button>
+                                </div>
+
+                                <div id="berth-routes-feature-alert" style="background:#fffbeb; border:1px solid #fef3c7; border-left:4px solid #f59e0b; padding:12px 16px; border-radius:6px; margin:0 20px 14px; display:{{ ($isSchedulesEnabled ?? false) ? 'none' : 'flex' }}; align-items:center; justify-content:space-between; gap:12px;">
+                                    <div style="display:flex; align-items:center; gap:10px;">
+                                        <span class="material-symbols-outlined" style="color:#d97706; font-size:20px;">info</span>
+                                        <div>
+                                            <strong style="color:#92400e; font-size:12.5px;">Schedules & Berths Option is currently OFF</strong>
+                                            <p style="color:#b45309; font-size:11.5px; margin:1px 0 0;">Customer booking for this module is currently disabled. You can manage routes here and turn it ON from Admin Settings.</p>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline" style="font-size:11.5px; padding:3px 8px; white-space:nowrap;" onclick="switchAdminSection('system')">
+                                        <span>Admin Settings</span>
                                     </button>
                                 </div>
 
@@ -3653,10 +3827,12 @@
                     <span class="material-symbols-outlined">directions_car</span>
                     <span>Cabs</span>
                 </button>
-                <button type="button" class="mobile-dock-btn {{ $defaultTab === 'schedules' ? 'active' : '' }}" data-target="schedules">
+                @if($isSchedulesEnabled)
+                <button type="button" class="mobile-dock-btn {{ $defaultTab === 'schedules' ? 'active' : '' }}" data-target="schedules" id="mobile-dock-btn-schedules">
                     <span class="material-symbols-outlined">directions_bus</span>
                     <span>Schedules</span>
                 </button>
+                @endif
                 @auth
                     <button type="button" class="mobile-dock-btn {{ $defaultTab === 'my-bookings' ? 'active' : '' }}" data-target="my-bookings">
                         <span class="material-symbols-outlined">confirmation_number</span>
@@ -4014,6 +4190,134 @@
 <!-- ======================================================== -->
 <!-- MODAL: ALLOT CHAUFFEUR / DRIVER (AdminLTE 3)             -->
 <!-- ======================================================== -->
+<!-- ======================================================== -->
+<!-- MODAL: OPEN DRIVER BIDDING (reverse auction)             -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="admin-bidding-open-modal">
+    <div class="modal-dialog" style="max-width: 560px;">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">gavel</span>
+                <span>Send Booking to Driver Bidding</span>
+            </h3>
+            <button type="button" class="modal-close-btn" onclick="closeModal('admin-bidding-open-modal')">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="bidding-open-form">
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <span id="bidding-info-ref" style="font-family:monospace; font-weight:700; color:var(--primary); font-size:13px;">—</span>
+                        <span id="bidding-info-fare" style="font-weight:800; color:#0f172a;">₹0</span>
+                    </div>
+                    <div id="bidding-info-route" style="font-weight:600; color:#334155;">—</div>
+                    <div id="bidding-info-customer" style="color:#64748b; margin-top:2px;">—</div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="bidding-fee-pct">Minimum admin margin (%)</label>
+                        <input type="number" id="bidding-fee-pct" class="form-control" value="15" min="0" max="90" step="0.5" oninput="recalculateBiddingCeiling()">
+                        <small style="color:#64748b; font-size:11px;">Your guaranteed cut of the customer fare.</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="bidding-start-amount">Start price (max driver price)</label>
+                        <input type="number" id="bidding-start-amount" class="form-control" min="1" step="1">
+                        <small style="color:#64748b; font-size:11px;" id="bidding-ceiling-hint">Max allowed: ₹0</small>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="bidding-closes-at">Bidding deadline</label>
+                    <input type="datetime-local" id="bidding-closes-at" class="form-control">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="bidding-notes">Internal note (optional)</label>
+                    <input type="text" id="bidding-notes" class="form-control" placeholder="e.g. Airport pickup, toll included">
+                </div>
+
+                <div id="bidding-open-error" style="display:none; font-size:12px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:6px; padding:8px 10px; margin-bottom:10px;"></div>
+
+                <button type="button" class="btn btn-primary btn-block" id="bidding-open-submit" onclick="submitOpenBidding()">
+                    <span class="material-symbols-outlined" style="font-size:18px;">campaign</span>
+                    Open bidding &amp; generate WhatsApp link
+                </button>
+            </div>
+
+            <div id="bidding-share-panel" style="display:none;">
+                <div style="font-size:12.5px; background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; border-radius:6px; padding:8px 10px; margin-bottom:12px;">
+                    Bidding is live. Send this link to your verified drivers.
+                </div>
+                <label class="form-label" for="bidding-share-url">Driver bidding link</label>
+                <div style="display:flex; gap:8px; margin-bottom:12px;">
+                    <input type="text" id="bidding-share-url" class="form-control" readonly style="font-family:monospace; font-size:12px;">
+                    <button type="button" class="btn btn-outline" onclick="copyBiddingShare()" style="white-space:nowrap;">Copy</button>
+                </div>
+                <a id="bidding-whatsapp-link" class="btn btn-primary btn-block" target="_blank" rel="noopener" style="text-decoration:none;">
+                    <span class="material-symbols-outlined" style="font-size:18px;">chat</span>
+                    Share on WhatsApp
+                </a>
+                <label class="form-label" style="margin-top:14px;">Message preview</label>
+                <pre id="bidding-share-text" style="white-space:pre-wrap; background:#0f172a; color:#e2e8f0; border-radius:8px; padding:12px; font-size:11.5px; line-height:1.6;"></pre>
+                <button type="button" class="btn btn-outline btn-block" style="margin-top:10px;" onclick="closeModal('admin-bidding-open-modal'); switchAdminSection('bidding'); renderAdminBiddings();">
+                    View the auction board
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: BIDDING DETAIL / AWARD WINNER                     -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="admin-bidding-detail-modal">
+    <div class="modal-dialog" style="max-width: 720px;">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">format_list_numbered</span>
+                <span>Bids & Winner Approval</span>
+            </h3>
+            <button type="button" class="modal-close-btn" onclick="closeModal('admin-bidding-detail-modal')">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="bidding-detail-summary" style="margin-bottom:12px;"></div>
+
+            <table class="admin-data-table admin-table-compact">
+                <thead>
+                    <tr>
+                        <th>Driver</th>
+                        <th>Vehicle</th>
+                        <th>Bid</th>
+                        <th>Placed</th>
+                        <th>IP</th>
+                        <th style="text-align:right;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="bidding-detail-bids">
+                    <tr><td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">No bids yet.</td></tr>
+                </tbody>
+            </table>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;">
+                <button type="button" class="btn btn-primary" id="bidding-detail-award" onclick="awardWinningBid()">
+                    <span class="material-symbols-outlined" style="font-size:18px;">verified</span>
+                    Approve lowest bid &amp; assign
+                </button>
+                <button type="button" class="btn btn-outline" id="bidding-detail-close" onclick="closeBiddingSession()">
+                    Close bidding
+                </button>
+                <button type="button" class="btn btn-outline" style="color:#b91c1c; border-color:#fecaca;" onclick="cancelBiddingSession()">
+                    Cancel auction
+                </button>
+                <button type="button" class="btn btn-outline" onclick="copyBiddingDetailLink()">
+                    Copy driver link
+                </button>
+            </div>
+            <div id="bidding-detail-error" style="display:none; margin-top:10px; font-size:12px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:6px; padding:8px 10px;"></div>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="admin-allot-driver-modal">
     <div class="modal-dialog" style="max-width: 520px;">
         <div class="modal-header">
@@ -4315,6 +4619,8 @@
                     <div class="form-group">
                         <label class="form-label" for="edit-status">Booking Status</label>
                         <select id="edit-status" class="form-control">
+                            <option value="Requested">Requested</option>
+                            <option value="Bidding">Bidding</option>
                             <option value="Confirmed">Confirmed</option>
                             <option value="Driver Assigned">Driver Assigned</option>
                             <option value="Started">Trip Started</option>

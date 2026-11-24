@@ -2,11 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\CarType;
+use App\Models\RouteFare;
+use App\Models\ServiceLocation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
-use App\Models\ServiceLocation;
-use App\Models\RouteFare;
-use App\Models\CarType;
 
 class RegionalLocationAndDighaBookingTest extends TestCase
 {
@@ -158,7 +158,7 @@ class RegionalLocationAndDighaBookingTest extends TestCase
                 'message' => 'Trip booked successfully!',
                 'booking' => [
                     'route_summary' => 'Berhampore → Digha',
-                    'status' => 'Confirmed',
+                    'status' => 'Requested',
                     'base_fare' => 4313,
                     'toll_fare' => 320,
                     'total_amount' => 4633,
@@ -194,7 +194,7 @@ class RegionalLocationAndDighaBookingTest extends TestCase
                 'success' => true,
                 'booking' => [
                     'route_summary' => 'Berhampore → Mandarmani',
-                    'status' => 'Confirmed',
+                    'status' => 'Requested',
                 ],
             ]);
 

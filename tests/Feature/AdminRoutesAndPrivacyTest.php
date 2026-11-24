@@ -2,12 +2,11 @@
 
 namespace Tests\Feature;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
-use App\Models\User;
-use App\Models\RouteFare;
 use App\Models\Booking;
 use App\Models\Driver;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class AdminRoutesAndPrivacyTest extends TestCase
 {
@@ -78,20 +77,20 @@ class AdminRoutesAndPrivacyTest extends TestCase
         $showRes->assertStatus(200);
         $showRes->assertJson([
             'success' => true,
-            'route' => ['from_city' => 'Kolkata', 'to_city' => 'Murshidabad']
+            'route' => ['from_city' => 'Kolkata', 'to_city' => 'Murshidabad'],
         ]);
 
         // 4. Update route
         $updateRes = $this->actingAs($admin)->putJson("/api/admin/cab-routes/{$routeId}", [
             'distance_km' => 225,
             'estimated_time' => '5h 30m',
-            'base_toll' => 260
+            'base_toll' => 260,
         ]);
         $updateRes->assertStatus(200);
         $this->assertDatabaseHas('route_fares', [
             'id' => $routeId,
             'distance_km' => 225,
-            'base_toll' => 260
+            'base_toll' => 260,
         ]);
 
         // 5. Toggle status
@@ -99,7 +98,7 @@ class AdminRoutesAndPrivacyTest extends TestCase
         $toggleRes->assertStatus(200);
         $this->assertDatabaseHas('route_fares', [
             'id' => $routeId,
-            'is_active' => false
+            'is_active' => false,
         ]);
 
         // 6. Delete route
@@ -129,7 +128,7 @@ class AdminRoutesAndPrivacyTest extends TestCase
             'phone' => '9820012345',
             'vehicle_model' => 'Innova Crysta',
             'vehicle_plate' => 'MH 12 QX 4920',
-            'fleet_category' => 'suv'
+            'fleet_category' => 'suv',
         ]);
 
         $res = $this->actingAs($driverUser)->postJson('/api/bids/submit', [
@@ -138,7 +137,7 @@ class AdminRoutesAndPrivacyTest extends TestCase
             'to_location' => 'Murshidabad Heritage Gate',
             'distance_km' => 220,
             'bid_amount' => 3800,
-            'driver_id' => $driver->id
+            'driver_id' => $driver->id,
         ]);
 
         $res->assertStatus(200);
@@ -179,7 +178,7 @@ class AdminRoutesAndPrivacyTest extends TestCase
                 'pickup_location' => '12 Park Street, Flat 4B, Kolkata',
                 'drop_location' => 'Hazarduari Palace Hotel, Murshidabad',
                 'start_otp' => '4321',
-            ]
+            ],
         ]);
 
         // Admin page rendering includes full customer phone and route

@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\User;
 use App\Models\Driver;
+use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
@@ -19,8 +19,8 @@ class AlternateAuthService
         $firebaseConfig = config('services.firebase');
         $clerkConfig = config('services.clerk');
 
-        $isFirebaseConfigured = !empty($firebaseConfig['api_key']) && !empty($firebaseConfig['project_id']);
-        $isClerkConfigured = !empty($clerkConfig['publishable_key']);
+        $isFirebaseConfigured = ! empty($firebaseConfig['api_key']) && ! empty($firebaseConfig['project_id']);
+        $isClerkConfigured = ! empty($clerkConfig['publishable_key']);
 
         return [
             'firebase' => [
@@ -36,7 +36,7 @@ class AlternateAuthService
             'clerk' => [
                 'publishableKey' => $clerkConfig['publishable_key'] ?? '',
                 'is_configured' => $isClerkConfigured,
-            ]
+            ],
         ];
     }
 
@@ -49,7 +49,7 @@ class AlternateAuthService
         $email = strtolower(trim($payload['email'] ?? ''));
 
         // If email is missing, resolve by existing user having this Firebase ID
-        if (empty($email) && !empty($firebaseId)) {
+        if (empty($email) && ! empty($firebaseId)) {
             $matchedUser = User::findByFirebaseId($firebaseId);
             if ($matchedUser) {
                 $email = $matchedUser->email;
@@ -58,38 +58,38 @@ class AlternateAuthService
             }
         }
 
-        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        if (empty($email) || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return [
                 'success' => false,
-                'message' => 'A valid email or Firebase ID is required for authentication.'
+                'message' => 'A valid email or Firebase ID is required for authentication.',
             ];
         }
 
-        $uid = $firebaseId ?: ($payload['id_token'] ? substr(md5($payload['id_token']), 0, 24) : 'fb_' . bin2hex(random_bytes(6)));
+        $uid = $firebaseId ?: ($payload['id_token'] ? substr(md5($payload['id_token']), 0, 24) : 'fb_'.bin2hex(random_bytes(6)));
         $name = trim($payload['name'] ?? '') ?: explode('@', $email)[0];
         $role = in_array($payload['role'] ?? '', ['customer', 'driver', 'admin']) ? $payload['role'] : 'customer';
-        $phone = !empty($payload['phone']) ? trim($payload['phone']) : null;
-        $avatar = !empty($payload['photo_url']) ? $payload['photo_url'] : ($role === 'driver' ? '👨🏽‍✈️' : '👤');
+        $phone = ! empty($payload['phone']) ? trim($payload['phone']) : null;
+        $avatar = ! empty($payload['photo_url']) ? $payload['photo_url'] : ($role === 'driver' ? '👨🏽‍✈️' : '👤');
 
         // Optional token verification if Google / Firebase project is active & token provided
         $projectId = config('services.firebase.project_id');
-        if (!empty($payload['id_token']) && !empty($projectId) && !app()->environment('testing')) {
+        if (! empty($payload['id_token']) && ! empty($projectId) && ! app()->environment('testing')) {
             try {
-                $verifyRes = Http::timeout(4)->get("https://oauth2.googleapis.com/tokeninfo?id_token=" . urlencode($payload['id_token']));
+                $verifyRes = Http::timeout(4)->get('https://oauth2.googleapis.com/tokeninfo?id_token='.urlencode($payload['id_token']));
                 if ($verifyRes->successful()) {
                     $tokenData = $verifyRes->json();
-                    if (!empty($tokenData['email'])) {
+                    if (! empty($tokenData['email'])) {
                         $email = strtolower(trim($tokenData['email']));
                     }
-                    if (!empty($tokenData['sub'])) {
+                    if (! empty($tokenData['sub'])) {
                         $uid = $tokenData['sub'];
                     }
-                    if (!empty($tokenData['name']) && empty($payload['name'])) {
+                    if (! empty($tokenData['name']) && empty($payload['name'])) {
                         $name = $tokenData['name'];
                     }
                 }
             } catch (\Throwable $e) {
-                Log::warning('Firebase / Google token verification warning: ' . $e->getMessage());
+                Log::warning('Firebase / Google token verification warning: '.$e->getMessage());
             }
         }
 
@@ -114,34 +114,34 @@ class AlternateAuthService
     public function authenticateWithClerk(array $payload): array
     {
         $email = strtolower(trim($payload['email'] ?? ''));
-        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        if (empty($email) || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return [
                 'success' => false,
-                'message' => 'A valid email address is required from Clerk authentication.'
+                'message' => 'A valid email address is required from Clerk authentication.',
             ];
         }
 
-        $clerkUserId = trim($payload['clerk_user_id'] ?? ($payload['token'] ? 'user_' . substr(md5($payload['token']), 0, 20) : 'clerk_' . bin2hex(random_bytes(6))));
+        $clerkUserId = trim($payload['clerk_user_id'] ?? ($payload['token'] ? 'user_'.substr(md5($payload['token']), 0, 20) : 'clerk_'.bin2hex(random_bytes(6))));
         $name = trim($payload['name'] ?? '') ?: explode('@', $email)[0];
         $role = in_array($payload['role'] ?? '', ['customer', 'driver', 'admin']) ? $payload['role'] : 'customer';
-        $phone = !empty($payload['phone']) ? trim($payload['phone']) : null;
-        $avatar = !empty($payload['avatar']) ? $payload['avatar'] : ($role === 'driver' ? '👨🏽‍✈️' : '👤');
+        $phone = ! empty($payload['phone']) ? trim($payload['phone']) : null;
+        $avatar = ! empty($payload['avatar']) ? $payload['avatar'] : ($role === 'driver' ? '👨🏽‍✈️' : '👤');
 
         // Optional Clerk backend verification if secret key is configured
         $secretKey = config('services.clerk.secret_key');
-        if (!empty($payload['session_id']) && !empty($secretKey) && !app()->environment('testing')) {
+        if (! empty($payload['session_id']) && ! empty($secretKey) && ! app()->environment('testing')) {
             try {
                 $clerkRes = Http::withToken($secretKey)
                     ->timeout(4)
-                    ->get("https://api.clerk.com/v1/sessions/" . urlencode($payload['session_id']));
+                    ->get('https://api.clerk.com/v1/sessions/'.urlencode($payload['session_id']));
                 if ($clerkRes->successful()) {
                     $sessionData = $clerkRes->json();
-                    if (!empty($sessionData['user_id'])) {
+                    if (! empty($sessionData['user_id'])) {
                         $clerkUserId = $sessionData['user_id'];
                     }
                 }
             } catch (\Throwable $e) {
-                Log::warning('Clerk token verification warning: ' . $e->getMessage());
+                Log::warning('Clerk token verification warning: '.$e->getMessage());
             }
         }
 
@@ -170,17 +170,17 @@ class AlternateAuthService
 
         // 1. Look up existing user by Firebase ID, provider ID or email
         $user = null;
-        if (!empty($firebaseId)) {
+        if (! empty($firebaseId)) {
             $user = User::findByFirebaseId($firebaseId);
         }
 
-        if (!$user) {
+        if (! $user) {
             $user = User::where('auth_provider', $provider)
                 ->where('auth_provider_id', $providerId)
                 ->first();
         }
 
-        if (!$user && !empty($email)) {
+        if (! $user && ! empty($email)) {
             $user = User::where('email', $email)->first();
         }
 
@@ -193,21 +193,21 @@ class AlternateAuthService
             if (empty($user->auth_provider_id)) {
                 $user->auth_provider_id = $providerId;
             }
-            if (empty($user->phone) && !empty($userData['phone'])) {
+            if (empty($user->phone) && ! empty($userData['phone'])) {
                 $user->phone = $userData['phone'];
             }
-            if ((empty($user->avatar) || $user->avatar === '👤') && !empty($userData['avatar'])) {
+            if ((empty($user->avatar) || $user->avatar === '👤') && ! empty($userData['avatar'])) {
                 $user->avatar = $userData['avatar'];
             }
-            if (!empty($userData['password'])) {
+            if (! empty($userData['password'])) {
                 $user->password = Hash::make($userData['password']);
             }
             $user->save();
         } else {
             // Auto-provision new user in local database with usable credentials
             $role = $userData['role'];
-            $phone = $userData['phone'] ?? '+91 ' . rand(7000000000, 9999999999);
-            $rawPassword = !empty($userData['password']) ? trim($userData['password']) : 'password123';
+            $phone = $userData['phone'] ?? '+91 '.rand(7000000000, 9999999999);
+            $rawPassword = ! empty($userData['password']) ? trim($userData['password']) : 'password123';
 
             $user = User::create([
                 'name' => $userData['name'],
@@ -229,7 +229,7 @@ class AlternateAuthService
                         'name' => $user->name,
                         'avatar' => '👨🏽‍✈️',
                         'vehicle_model' => $userData['vehicle_model'] ?? 'Toyota Innova Crysta',
-                        'vehicle_plate' => $userData['vehicle_plate'] ?? ('WB 02 ' . rand(10, 99) . ' ' . rand(1000, 9999)),
+                        'vehicle_plate' => $userData['vehicle_plate'] ?? ('WB 02 '.rand(10, 99).' '.rand(1000, 9999)),
                         'fleet_category' => 'suv',
                         'rating' => 4.90,
                         'trips_count' => 0,

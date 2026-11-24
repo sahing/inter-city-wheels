@@ -30,4 +30,3 @@ class BerthRoute extends Model
         return $this->hasMany(SeatLayout::class, 'coach_code', 'coach_code');
     }
 }
-

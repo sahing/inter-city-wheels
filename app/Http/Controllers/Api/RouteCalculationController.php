@@ -2,152 +2,109 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\DistanceUnresolvable;
 use App\Http\Controllers\Controller;
+use App\Services\FareCalculatorService;
 use Illuminate\Http\Request;
-use App\Models\RouteFare;
-use App\Models\ServiceLocation;
-use App\Models\CarType;
-use App\Services\RegionalLocationService;
 
 class RouteCalculationController extends Controller
 {
+    public function __construct(private readonly FareCalculatorService $fares) {}
+
     /**
-     * Compute route distance, drive time, highway tolls, and itemized fleet estimates.
+     * Quote a trip.
+     *
+     * P1-2: this endpoint used to carry its own copy of the pricing formula
+     * while the booking endpoint carried another and the browser a third. It is
+     * now a thin projection of FareCalculatorService, which is also what the
+     * booking endpoint charges, so a quote can no longer disagree with the
+     * invoice.
      */
     public function calculate(Request $request)
     {
-        $from = trim($request->query('from', 'Kolkata'));
-        $to = trim($request->query('to', 'Digha'));
-        $tripType = $request->query('trip_type', 'oneway');
-        $couponCode = $request->query('coupon');
+        $from = trim((string) $request->query('from', 'Kolkata'));
+        $to = trim((string) $request->query('to', 'Digha'));
+        $tripType = (string) $request->query('trip_type', 'oneway');
 
-        // Clean city names (extract city if state/airport appended, e.g. "Berhampore, West Bengal")
-        $cleanFrom = trim(explode(',', $from)[0]);
-        $cleanTo = trim(explode(',', $to)[0]);
-
-        $fromAliases = RegionalLocationService::normalizeAliases($cleanFrom);
-        $toAliases = RegionalLocationService::normalizeAliases($cleanTo);
-
-        // 1. Look up static RouteFare with alias and bidirectional support
-        $route = RouteFare::where(function ($q) use ($fromAliases, $toAliases) {
-            foreach ($fromAliases as $fa) {
-                foreach ($toAliases as $ta) {
-                    $q->orWhere(function ($sub) use ($fa, $ta) {
-                        $sub->whereRaw('LOWER(from_city) = ?', [strtolower($fa)])
-                            ->whereRaw('LOWER(to_city) = ?', [strtolower($ta)]);
-                    })->orWhere(function ($sub) use ($fa, $ta) {
-                        $sub->whereRaw('LOWER(from_city) = ?', [strtolower($ta)])
-                            ->whereRaw('LOWER(to_city) = ?', [strtolower($fa)]);
-                    });
-                }
-            }
-        })->first();
-
-        $distanceKm = 450;
-        $estimatedTime = '9h 15m';
-        $baseToll = 480.00;
-        $roundtripDiscount = 0.0;
-
-        if ($route) {
-            $distanceKm = (int)$route->distance_km;
-            $estimatedTime = $route->estimated_time;
-            $baseToll = (float)$route->base_toll;
-            $roundtripDiscount = (float)($route->roundtrip_discount_pct ?? 0);
-        } else {
-            // 2. Dynamic GPS calculation from ServiceLocation, Regional Catalog, or Request Lat/Lng
-            $fromLat = $request->filled('from_lat') ? (float)$request->query('from_lat') : null;
-            $fromLng = $request->filled('from_lng') ? (float)$request->query('from_lng') : null;
-            $toLat = $request->filled('to_lat') ? (float)$request->query('to_lat') : null;
-            $toLng = $request->filled('to_lng') ? (float)$request->query('to_lng') : null;
-
-            if ($fromLat === null || $fromLng === null) {
-                $c1 = RegionalLocationService::findCoordinates($cleanFrom);
-                if ($c1) {
-                    $fromLat = $c1['lat'];
-                    $fromLng = $c1['lng'];
-                }
-            }
-
-            if ($toLat === null || $toLng === null) {
-                $c2 = RegionalLocationService::findCoordinates($cleanTo);
-                if ($c2) {
-                    $toLat = $c2['lat'];
-                    $toLng = $c2['lng'];
-                }
-            }
-
-            if ($fromLat !== null && $fromLng !== null && $toLat !== null && $toLng !== null) {
-                $metrics = RegionalLocationService::computeRouteMetrics($fromLat, $fromLng, $toLat, $toLng);
-                $distanceKm = $metrics['distance_km'];
-                $estimatedTime = $metrics['estimated_time'];
-                $baseToll = $metrics['base_toll'];
-            }
+        if (! in_array($tripType, ['oneway', 'roundtrip', 'local', 'airport'], true)) {
+            $tripType = 'oneway';
         }
 
-        // 3. Fleet Pricing
-        $carTypes = CarType::where('is_active', true)->orderBy('order_index')->get();
-        if ($carTypes->isEmpty()) {
-            $carTypes = collect([
-                (object)['category_key' => 'hatchback', 'name' => 'Compact Hatchback', 'rate_per_km' => 11.0, 'base_fare_min' => 750],
-                (object)['category_key' => 'sedan', 'name' => 'Comfort Sedan', 'rate_per_km' => 12.5, 'base_fare_min' => 950],
-                (object)['category_key' => 'prime', 'name' => 'Prime Sedan', 'rate_per_km' => 15.0, 'base_fare_min' => 1100],
-                (object)['category_key' => 'suv', 'name' => 'Family SUV', 'rate_per_km' => 18.0, 'base_fare_min' => 1400],
-                (object)['category_key' => 'innova', 'name' => 'Innova Crysta', 'rate_per_km' => 22.0, 'base_fare_min' => 1800],
-                (object)['category_key' => 'tempo', 'name' => 'Tempo Traveller', 'rate_per_km' => 28.0, 'base_fare_min' => 2500],
-                (object)['category_key' => 'luxury', 'name' => 'Luxury Limousine', 'rate_per_km' => 32.0, 'base_fare_min' => 3500],
+        $options = [
+            'include_tolls' => $request->boolean('include_tolls'),
+            'pet_friendly' => $request->boolean('pet_friendly'),
+            'night_allowance' => $request->boolean('night_allowance'),
+            'luggage_carrier' => $request->boolean('luggage_carrier'),
+            'coupon_code' => $request->query('coupon'),
+            'airport_type' => (string) $request->query('airport_type', 'pickup'),
+        ];
+
+        try {
+            $trip = $this->fares->resolveTrip([
+                'from_city' => $from,
+                'to_city' => $to,
+                'trip_type' => $tripType,
+                'local_package' => $request->query('local_package'),
+                'airport_type' => $options['airport_type'],
+                'from_lat' => $request->filled('from_lat') ? (float) $request->query('from_lat') : null,
+                'from_lng' => $request->filled('from_lng') ? (float) $request->query('from_lng') : null,
+                'to_lat' => $request->filled('to_lat') ? (float) $request->query('to_lat') : null,
+                'to_lng' => $request->filled('to_lng') ? (float) $request->query('to_lng') : null,
             ]);
+        } catch (DistanceUnresolvable $e) {
+            return response()->json([
+                'success' => false,
+                'code' => 'distance_unresolvable',
+                'message' => $e->getMessage(),
+            ] + $e->toArray(), 422);
         }
+
+        $fleets = $this->fares->fleetCatalogue();
 
         $fleetEstimates = [];
-        $itemizedBreakdown = [];
+        $itemized = [];
 
-        foreach ($carTypes as $ct) {
-            $rate = (float)$ct->rate_per_km;
-            $minBase = (float)($ct->base_fare_min ?? 800);
-            $catKey = $ct->category_key;
+        foreach ($fleets as $carType) {
+            $key = $carType->category_key;
+            $quote = $this->fares->quote($trip, $key, [
+                'include_tolls' => $options['include_tolls'],
+            ]);
 
-            if ($route) {
-                $oneWayFare = $route->getFareForCarType($catKey, $rate);
-            } else {
-                $oneWayFare = max($minBase, round($distanceKm * $rate + $baseToll));
-            }
+            $fleetEstimates[$key] = $quote['total_amount'];
 
-            $effectiveFare = $oneWayFare;
-            if ($tripType === 'roundtrip') {
-                $effectiveFare = round($oneWayFare * 2);
-                if ($roundtripDiscount > 0) {
-                    $effectiveFare = round($effectiveFare * (1 - ($roundtripDiscount / 100)));
-                }
-            }
-
-            $fleetEstimates[$catKey] = $effectiveFare;
-            $itemizedBreakdown[$catKey] = [
-                'name' => $ct->name ?? ucfirst($catKey),
-                'rate_per_km' => $rate,
-                'distance_km' => $distanceKm,
-                'base_fare' => max($minBase, round($distanceKm * $rate)),
-                'toll_fare' => $baseToll,
-                'total' => $effectiveFare,
+            $itemized[$key] = [
+                'name' => $carType->name ?? ucfirst($key),
+                'rate_per_km' => $quote['rate_per_km'],
+                'distance_km' => $quote['distance_km'],
+                'base_fare' => $quote['base_fare'],
+                'toll_fare' => $quote['toll_fare'],
+                'total' => $quote['total_amount'],
             ];
         }
 
-        return response()->json([
+        $payload = [
             'success' => true,
             'route' => [
-                'from_city' => $cleanFrom,
-                'to_city' => $cleanTo,
-                'distance_km' => $distanceKm,
-                'estimated_time' => $estimatedTime,
-                'base_toll' => $baseToll,
-                'roundtrip_discount_pct' => $roundtripDiscount
+                'from_city' => $trip['from_city'],
+                'to_city' => $trip['to_city'],
+                'distance_km' => $trip['distance_km'],
+                'estimated_time' => $trip['estimated_time'],
+                'base_toll' => $trip['base_toll'],
+                'roundtrip_discount_pct' => $trip['roundtrip_discount_pct'],
+                'distance_source' => $trip['source'],
             ],
             'fleet_estimates' => $fleetEstimates,
-            'itemized_breakdown' => $itemizedBreakdown,
-            'addons' => [
-                'pet_friendly' => 350.00,
-                'night_allowance' => 400.00,
-                'luggage_carrier' => 200.00
-            ]
-        ]);
+            'itemized_breakdown' => $itemized,
+            'addons' => $this->fares->addonRates(),
+        ];
+
+        // Optional full itemisation for one fleet, including add-ons and coupon.
+        $selectedFleet = $request->query('fleet');
+
+        if (is_string($selectedFleet) && $selectedFleet !== '') {
+            $payload['quote'] = $this->fares->quote($trip, $selectedFleet, $options);
+        }
+
+        return response()->json($payload);
     }
 }

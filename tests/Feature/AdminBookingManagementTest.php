@@ -2,11 +2,11 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Models\Booking;
 use App\Models\Driver;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class AdminBookingManagementTest extends TestCase
 {
@@ -34,9 +34,9 @@ class AdminBookingManagementTest extends TestCase
                     'customer_name',
                     'total_amount',
                     'status',
-                    'start_otp'
-                ]
-            ]
+                    'start_otp',
+                ],
+            ],
         ]);
     }
 
@@ -55,7 +55,7 @@ class AdminBookingManagementTest extends TestCase
             'base_fare' => 6500,
             'toll_fare' => 480,
             'addon_fare' => 350,
-            'discount_fare' => 500
+            'discount_fare' => 500,
         ];
 
         $response = $this->postJson('/api/admin/bookings', $payload);
@@ -65,13 +65,13 @@ class AdminBookingManagementTest extends TestCase
             'booking' => [
                 'customer_name' => 'Dr. A. P. J. Abdul Kalam',
                 'service_type' => 'cab',
-                'total_amount' => 6830
-            ]
+                'total_amount' => 6830,
+            ],
         ]);
 
         $this->assertDatabaseHas('bookings', [
             'customer_name' => 'Dr. A. P. J. Abdul Kalam',
-            'total_amount' => 6830
+            'total_amount' => 6830,
         ]);
     }
 
@@ -86,8 +86,8 @@ class AdminBookingManagementTest extends TestCase
             'success' => true,
             'booking' => [
                 'id' => $booking->id,
-                'booking_reference' => $booking->booking_reference
-            ]
+                'booking_reference' => $booking->booking_reference,
+            ],
         ]);
 
         $updatePayload = [
@@ -97,7 +97,7 @@ class AdminBookingManagementTest extends TestCase
             'toll_fare' => 400,
             'addon_fare' => 0,
             'discount_fare' => 0,
-            'status' => 'Confirmed'
+            'status' => 'Confirmed',
         ];
 
         $updateRes = $this->putJson("/api/admin/bookings/{$booking->id}", $updatePayload);
@@ -107,13 +107,13 @@ class AdminBookingManagementTest extends TestCase
             'booking' => [
                 'customer_name' => 'Ratan Tata',
                 'pickup_location' => 'Tata Motors Gate, Pune',
-                'total_amount' => 5400
-            ]
+                'total_amount' => 5400,
+            ],
         ]);
 
         $this->assertDatabaseHas('bookings', [
             'id' => $booking->id,
-            'customer_name' => 'Ratan Tata'
+            'customer_name' => 'Ratan Tata',
         ]);
     }
 
@@ -126,7 +126,7 @@ class AdminBookingManagementTest extends TestCase
 
         $response = $this->postJson("/api/admin/bookings/{$booking->id}/allot-driver", [
             'driver_id' => $driver->id,
-            'status' => 'Driver Assigned'
+            'status' => 'Driver Assigned',
         ]);
 
         $response->assertStatus(200);
@@ -135,14 +135,14 @@ class AdminBookingManagementTest extends TestCase
             'booking' => [
                 'id' => $booking->id,
                 'assigned_driver_id' => $driver->id,
-                'status' => 'Driver Assigned'
-            ]
+                'status' => 'Driver Assigned',
+            ],
         ]);
 
         $this->assertDatabaseHas('bookings', [
             'id' => $booking->id,
             'assigned_driver_id' => $driver->id,
-            'status' => 'Driver Assigned'
+            'status' => 'Driver Assigned',
         ]);
     }
 
@@ -161,13 +161,13 @@ class AdminBookingManagementTest extends TestCase
                 'company' => [
                     'name',
                     'gstin',
-                    'hsn_sac'
+                    'hsn_sac',
                 ],
                 'customer' => [
                     'name',
                     'phone',
                     'pickup_location',
-                    'drop_location'
+                    'drop_location',
                 ],
                 'charges' => [
                     'base_fare',
@@ -175,16 +175,15 @@ class AdminBookingManagementTest extends TestCase
                     'taxable_amount',
                     'cgst',
                     'sgst',
-                    'total_amount'
+                    'total_amount',
                 ],
                 'payment' => [
                     'status',
                     'transaction_ref',
-                    'start_otp'
-                ]
+                    'start_otp',
+                ],
             ],
-            'booking'
+            'booking',
         ]);
     }
 }
-

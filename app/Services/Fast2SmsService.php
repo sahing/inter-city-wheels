@@ -9,10 +9,6 @@ class Fast2SmsService
 {
     /**
      * Send OTP SMS via Fast2SMS API.
-     *
-     * @param string $phone
-     * @param string $otp
-     * @return array
      */
     public function sendOtp(string $phone, string $otp): array
     {
@@ -28,13 +24,14 @@ class Fast2SmsService
 
         if (empty($apiKey)) {
             Log::info("Fast2SMS: No API key configured. Simulated OTP for {$cleanPhone}: {$otp}");
+
             return [
                 'sent' => false,
                 'provider' => 'fast2sms',
                 'phone' => $cleanPhone,
                 'otp' => $otp,
-                'message' => "Fast2SMS API key not set in .env. Showing simulated OTP for testing.",
-                'is_demo' => true
+                'message' => 'Fast2SMS API key not set in .env. Showing simulated OTP for testing.',
+                'is_demo' => true,
             ];
         }
 
@@ -44,25 +41,26 @@ class Fast2SmsService
             $payload = [
                 'variables_values' => $otp,
                 'route' => $route,
-                'numbers' => $cleanPhone
+                'numbers' => $cleanPhone,
             ];
 
             $response = Http::withHeaders([
                 'authorization' => $apiKey,
-                'Content-Type' => 'application/json'
+                'Content-Type' => 'application/json',
             ])->timeout(10)->post('https://www.fast2sms.com/dev/bulkV2', $payload);
 
             $result = $response->json();
 
-            if ($response->successful() && !empty($result['return'])) {
+            if ($response->successful() && ! empty($result['return'])) {
                 Log::info("Fast2SMS: OTP sent successfully to {$cleanPhone}");
+
                 return [
                     'sent' => true,
                     'provider' => 'fast2sms',
                     'phone' => $cleanPhone,
                     'otp' => $otp,
                     'message' => 'OTP sent successfully to your mobile number via Fast2SMS.',
-                    'is_demo' => false
+                    'is_demo' => false,
                 ];
             }
 
@@ -78,20 +76,19 @@ class Fast2SmsService
                 'phone' => $cleanPhone,
                 'otp' => $otp,
                 'message' => "Fast2SMS gateway response: {$errMsg}. Displaying OTP for login.",
-                'is_demo' => true
+                'is_demo' => true,
             ];
         } catch (\Throwable $e) {
-            Log::error("Fast2SMS: Exception while sending OTP to {$cleanPhone}: " . $e->getMessage());
+            Log::error("Fast2SMS: Exception while sending OTP to {$cleanPhone}: ".$e->getMessage());
 
             return [
                 'sent' => false,
                 'provider' => 'fast2sms',
                 'phone' => $cleanPhone,
                 'otp' => $otp,
-                'message' => "Fast2SMS connection error: " . $e->getMessage(),
-                'is_demo' => true
+                'message' => 'Fast2SMS connection error: '.$e->getMessage(),
+                'is_demo' => true,
             ];
         }
     }
 }
-

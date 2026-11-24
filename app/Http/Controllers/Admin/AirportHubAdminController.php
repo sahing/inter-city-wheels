@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\AirportHub;
+use Illuminate\Http\Request;
 
 class AirportHubAdminController extends Controller
 {
@@ -19,8 +19,8 @@ class AirportHubAdminController extends Controller
             $s = $request->search;
             $query->where(function ($q) use ($s) {
                 $q->where('airport_name', 'like', "%{$s}%")
-                  ->orWhere('iata_code', 'like', "%{$s}%")
-                  ->orWhere('city', 'like', "%{$s}%");
+                    ->orWhere('iata_code', 'like', "%{$s}%")
+                    ->orWhere('city', 'like', "%{$s}%");
             });
         }
 
@@ -30,7 +30,7 @@ class AirportHubAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'airports' => $query->orderBy('city')->get()
+            'airports' => $query->orderBy('city')->get(),
         ]);
     }
 
@@ -48,7 +48,7 @@ class AirportHubAdminController extends Controller
             'drop_surcharge' => 'nullable|numeric|min:0',
             'sedan_base_fare' => 'nullable|numeric|min:0',
             'suv_base_fare' => 'nullable|numeric|min:0',
-            'is_active' => 'nullable|boolean'
+            'is_active' => 'nullable|boolean',
         ]);
 
         $airport = AirportHub::create([
@@ -56,17 +56,17 @@ class AirportHubAdminController extends Controller
             'iata_code' => strtoupper(trim($validated['iata_code'])),
             'city' => trim($validated['city']),
             'terminals' => trim($validated['terminals'] ?? 'Main Terminal') ?: 'Main Terminal',
-            'pickup_surcharge' => (float)($validated['pickup_surcharge'] ?? 250.00),
-            'drop_surcharge' => (float)($validated['drop_surcharge'] ?? 150.00),
-            'sedan_base_fare' => (float)($validated['sedan_base_fare'] ?? 950.00),
-            'suv_base_fare' => (float)($validated['suv_base_fare'] ?? 1450.00),
-            'is_active' => $request->has('is_active') ? (bool)$request->is_active : true,
+            'pickup_surcharge' => (float) ($validated['pickup_surcharge'] ?? 250.00),
+            'drop_surcharge' => (float) ($validated['drop_surcharge'] ?? 150.00),
+            'sedan_base_fare' => (float) ($validated['sedan_base_fare'] ?? 950.00),
+            'suv_base_fare' => (float) ($validated['suv_base_fare'] ?? 1450.00),
+            'is_active' => $request->has('is_active') ? (bool) $request->is_active : true,
         ]);
 
         return response()->json([
             'success' => true,
             'message' => "Airport Hub '{$airport->airport_name} ({$airport->iata_code})' created successfully!",
-            'airport' => $airport
+            'airport' => $airport,
         ], 201);
     }
 
@@ -79,7 +79,7 @@ class AirportHubAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'airport' => $airport
+            'airport' => $airport,
         ]);
     }
 
@@ -99,25 +99,43 @@ class AirportHubAdminController extends Controller
             'drop_surcharge' => 'nullable|numeric|min:0',
             'sedan_base_fare' => 'nullable|numeric|min:0',
             'suv_base_fare' => 'nullable|numeric|min:0',
-            'is_active' => 'nullable|boolean'
+            'is_active' => 'nullable|boolean',
         ]);
 
-        if (isset($validated['airport_name'])) $airport->airport_name = trim($validated['airport_name']);
-        if (isset($validated['iata_code'])) $airport->iata_code = strtoupper(trim($validated['iata_code']));
-        if (isset($validated['city'])) $airport->city = trim($validated['city']);
-        if (isset($validated['terminals'])) $airport->terminals = trim($validated['terminals']);
-        if (isset($validated['pickup_surcharge'])) $airport->pickup_surcharge = (float)$validated['pickup_surcharge'];
-        if (isset($validated['drop_surcharge'])) $airport->drop_surcharge = (float)$validated['drop_surcharge'];
-        if (isset($validated['sedan_base_fare'])) $airport->sedan_base_fare = (float)$validated['sedan_base_fare'];
-        if (isset($validated['suv_base_fare'])) $airport->suv_base_fare = (float)$validated['suv_base_fare'];
-        if ($request->has('is_active')) $airport->is_active = (bool)$request->is_active;
+        if (isset($validated['airport_name'])) {
+            $airport->airport_name = trim($validated['airport_name']);
+        }
+        if (isset($validated['iata_code'])) {
+            $airport->iata_code = strtoupper(trim($validated['iata_code']));
+        }
+        if (isset($validated['city'])) {
+            $airport->city = trim($validated['city']);
+        }
+        if (isset($validated['terminals'])) {
+            $airport->terminals = trim($validated['terminals']);
+        }
+        if (isset($validated['pickup_surcharge'])) {
+            $airport->pickup_surcharge = (float) $validated['pickup_surcharge'];
+        }
+        if (isset($validated['drop_surcharge'])) {
+            $airport->drop_surcharge = (float) $validated['drop_surcharge'];
+        }
+        if (isset($validated['sedan_base_fare'])) {
+            $airport->sedan_base_fare = (float) $validated['sedan_base_fare'];
+        }
+        if (isset($validated['suv_base_fare'])) {
+            $airport->suv_base_fare = (float) $validated['suv_base_fare'];
+        }
+        if ($request->has('is_active')) {
+            $airport->is_active = (bool) $request->is_active;
+        }
 
         $airport->save();
 
         return response()->json([
             'success' => true,
             'message' => "Airport Hub '{$airport->airport_name} ({$airport->iata_code})' updated successfully!",
-            'airport' => $airport
+            'airport' => $airport,
         ]);
     }
 
@@ -127,13 +145,13 @@ class AirportHubAdminController extends Controller
     public function toggleStatus($id)
     {
         $airport = AirportHub::findOrFail($id);
-        $airport->is_active = !$airport->is_active;
+        $airport->is_active = ! $airport->is_active;
         $airport->save();
 
         return response()->json([
             'success' => true,
-            'message' => "Airport status changed to " . ($airport->is_active ? 'Active' : 'Inactive'),
-            'is_active' => $airport->is_active
+            'message' => 'Airport status changed to '.($airport->is_active ? 'Active' : 'Inactive'),
+            'is_active' => $airport->is_active,
         ]);
     }
 
@@ -148,8 +166,7 @@ class AirportHubAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Airport Hub '{$name}' deleted successfully."
+            'message' => "Airport Hub '{$name}' deleted successfully.",
         ]);
     }
 }
-

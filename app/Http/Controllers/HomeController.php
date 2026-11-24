@@ -2,17 +2,21 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Models\RouteFare;
-use App\Models\Driver;
-use App\Models\SeatLayout;
-use App\Models\DynamicFormField;
-use App\Models\WorkflowStage;
-use App\Models\Coupon;
-use App\Models\Booking;
-use App\Models\ServiceLocation;
+use App\Models\AirportHub;
 use App\Models\BerthRoute;
+use App\Models\Booking;
+use App\Models\CarType;
+use App\Models\Coupon;
+use App\Models\Driver;
 use App\Models\DriverVehicle;
+use App\Models\DynamicFormField;
+use App\Models\LocalPackage;
+use App\Models\PlatformSetting;
+use App\Models\RouteFare;
+use App\Models\SeatLayout;
+use App\Models\ServiceLocation;
+use App\Models\User;
+use App\Models\WorkflowStage;
 
 class HomeController extends Controller
 {
@@ -28,7 +32,7 @@ class HomeController extends Controller
         $coupons = Coupon::where('is_active', true)->get();
         $recentBookings = Booking::with('driver')->latest()->get();
         $allDrivers = Driver::all();
-        $allUsers = \App\Models\User::latest()->get();
+        $allUsers = User::latest()->get();
         $currentUser = auth()->user();
 
         // Admin Datasets for Locations, Berth Routes, Berth Layouts & Vehicles
@@ -36,76 +40,63 @@ class HomeController extends Controller
         $berthRoutes = BerthRoute::with('seatLayouts')->latest()->get();
         $allSeatLayouts = SeatLayout::orderBy('coach_code')->orderBy('deck')->orderBy('berth_number')->get();
         $driverVehicles = DriverVehicle::with('driver')->latest()->get();
-        $localPackages = \App\Models\LocalPackage::orderBy('duration_hours')->get();
-        $airportHubs = \App\Models\AirportHub::orderBy('city')->get();
-        $allCarTypes = \App\Models\CarType::orderBy('order_index')->get();
+        $localPackages = LocalPackage::orderBy('duration_hours')->get();
+        $airportHubs = AirportHub::orderBy('city')->get();
+        $allCarTypes = CarType::orderBy('order_index')->get();
         $platformSettings = [
-            'privacy_policy_url' => \App\Models\PlatformSetting::get('privacy_policy_url', '/privacy-policy'),
-            'terms_conditions_url' => \App\Models\PlatformSetting::get('terms_conditions_url', '/terms-conditions'),
+            'privacy_policy_url' => PlatformSetting::get('privacy_policy_url', '/privacy-policy'),
+            'terms_conditions_url' => PlatformSetting::get('terms_conditions_url', '/terms-conditions'),
+            'enable_schedules_and_berths' => PlatformSetting::get('enable_schedules_and_berths', '0'),
         ];
+        $isSchedulesEnabled = $platformSettings['enable_schedules_and_berths'] === '1';
 
-        // Role-Specific Datasets
+        // Role-specific datasets.
+        //
+        // A GET must not write. This previously reassigned the first booking in
+        // the table to whichever driver loaded the page, and matched a
+        // customer's trips by first name, so customers with a common name saw
+        // each other's bookings. Ownership is now the account link, with a
+        // precise phone match for bookings made before accounts were linked.
         $customerBookings = collect();
+        $driverProfile = null;
+        $driverTrips = collect();
+        $driverMyVehicles = collect();
+
         if ($currentUser && $currentUser->role === 'customer') {
-            $cleanPhone = preg_replace('/[^0-9]/', '', (string)$currentUser->phone);
-            $last10 = strlen($cleanPhone) >= 10 ? substr($cleanPhone, -10) : $cleanPhone;
+            $digits = preg_replace('/[^0-9]/', '', (string) $currentUser->phone) ?? '';
+            $last10 = strlen($digits) >= 10 ? substr($digits, -10) : $digits;
 
             $customerBookings = Booking::with('driver')
-                ->where(function ($q) use ($currentUser, $last10) {
-                    if (!empty($currentUser->phone)) {
-                        $q->where('customer_phone', $currentUser->phone);
-                    }
-                    if (!empty($last10)) {
-                        $q->orWhere('customer_phone', 'like', '%' . $last10);
-                    }
-                    if (!empty($currentUser->email)) {
-                        $q->orWhere('customer_email', $currentUser->email);
-                    }
-                    if (!empty($currentUser->name)) {
-                        $firstName = explode(' ', trim($currentUser->name))[0];
-                        if (strlen($firstName) >= 3) {
-                            $q->orWhere('customer_name', 'like', '%' . $firstName . '%');
-                        }
+                ->where(function ($query) use ($currentUser, $last10) {
+                    $query->where('customer_user_id', $currentUser->id);
+
+                    if (strlen($last10) === 10) {
+                        $query->orWhere('customer_phone', 'like', '%'.$last10.'%');
                     }
                 })
                 ->latest()
                 ->get();
         }
 
-        $driverProfile = null;
-        $driverTrips = collect();
-        $driverMyVehicles = collect();
-
         if ($currentUser && $currentUser->role === 'driver') {
-            $driverProfile = Driver::where('phone', $currentUser->phone)
-                ->orWhere('name', 'like', '%' . explode(' ', $currentUser->name)[0] . '%')
-                ->first() ?: Driver::first();
+            $driverProfile = Driver::where('phone', $currentUser->phone)->first();
 
-            $driverMyVehicles = DriverVehicle::where('driver_phone', $currentUser->phone)
-                ->orWhere('driver_name', 'like', '%' . explode(' ', $currentUser->name)[0] . '%')
-                ->latest()
-                ->get();
+            if (! $driverProfile) {
+                $digits = preg_replace('/[^0-9]/', '', (string) $currentUser->phone) ?? '';
+                $last10 = substr($digits, -10);
 
-            if ($driverMyVehicles->isEmpty() && $driverProfile) {
-                $driverMyVehicles = DriverVehicle::where('driver_id', $driverProfile->id)->latest()->get();
+                if (strlen($last10) === 10) {
+                    $driverProfile = Driver::where('phone', 'like', '%'.$last10.'%')->first();
+                }
             }
 
             if ($driverProfile) {
+                $driverMyVehicles = DriverVehicle::where('driver_id', $driverProfile->id)->latest()->get();
+
                 $driverTrips = Booking::with('driver')
                     ->where('assigned_driver_id', $driverProfile->id)
                     ->latest()
                     ->get();
-
-                if ($driverTrips->isEmpty()) {
-                    $demoBooking = Booking::first();
-                    if ($demoBooking) {
-                        $demoBooking->update(['assigned_driver_id' => $driverProfile->id, 'status' => 'Driver Assigned']);
-                        $driverTrips = Booking::with('driver')
-                            ->where('assigned_driver_id', $driverProfile->id)
-                            ->latest()
-                            ->get();
-                    }
-                }
             }
         } elseif ($currentUser && $currentUser->role === 'admin') {
             $driverProfile = Driver::first();
@@ -139,7 +130,8 @@ class HomeController extends Controller
             'localPackages',
             'airportHubs',
             'allCarTypes',
-            'platformSettings'
+            'platformSettings',
+            'isSchedulesEnabled'
         ));
     }
 }

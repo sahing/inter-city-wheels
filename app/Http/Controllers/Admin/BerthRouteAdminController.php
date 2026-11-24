@@ -3,17 +3,18 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\BerthRoute;
+use Illuminate\Http\Request;
 
 class BerthRouteAdminController extends Controller
 {
     public function index()
     {
         $routes = BerthRoute::with('seatLayouts')->latest()->get();
+
         return response()->json([
             'success' => true,
-            'routes' => $routes
+            'routes' => $routes,
         ]);
     }
 
@@ -39,16 +40,17 @@ class BerthRouteAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Berth route '{$route->from_city} → {$route->to_city}' ({$route->coach_code}) created successfully!",
-            'route' => $route
+            'route' => $route,
         ]);
     }
 
     public function show($id)
     {
         $route = BerthRoute::with('seatLayouts')->findOrFail($id);
+
         return response()->json([
             'success' => true,
-            'route' => $route
+            'route' => $route,
         ]);
     }
 
@@ -75,20 +77,20 @@ class BerthRouteAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Berth route updated successfully!",
-            'route' => $route
+            'message' => 'Berth route updated successfully!',
+            'route' => $route,
         ]);
     }
 
     public function toggleStatus($id)
     {
         $route = BerthRoute::findOrFail($id);
-        $route->update(['is_active' => !$route->is_active]);
+        $route->update(['is_active' => ! $route->is_active]);
 
         return response()->json([
             'success' => true,
-            'message' => "Route status updated to " . ($route->is_active ? 'Active' : 'Inactive'),
-            'route' => $route
+            'message' => 'Route status updated to '.($route->is_active ? 'Active' : 'Inactive'),
+            'route' => $route,
         ]);
     }
 
@@ -100,8 +102,7 @@ class BerthRouteAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Berth route '{$summary}' deleted successfully!"
+            'message' => "Berth route '{$summary}' deleted successfully!",
         ]);
     }
 }
-

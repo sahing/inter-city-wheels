@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\LocalPackage;
+use Illuminate\Http\Request;
 
 class LocalPackageAdminController extends Controller
 {
@@ -19,8 +19,8 @@ class LocalPackageAdminController extends Controller
             $s = $request->search;
             $query->where(function ($q) use ($s) {
                 $q->where('package_code', 'like', "%{$s}%")
-                  ->orWhere('name', 'like', "%{$s}%")
-                  ->orWhere('city', 'like', "%{$s}%");
+                    ->orWhere('name', 'like', "%{$s}%")
+                    ->orWhere('city', 'like', "%{$s}%");
             });
         }
 
@@ -30,7 +30,7 @@ class LocalPackageAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'packages' => $query->orderBy('duration_hours')->get()
+            'packages' => $query->orderBy('duration_hours')->get(),
         ]);
     }
 
@@ -49,26 +49,26 @@ class LocalPackageAdminController extends Controller
             'suv_fare' => 'required|numeric|min:0',
             'extra_km_rate' => 'nullable|numeric|min:0',
             'extra_hour_rate' => 'nullable|numeric|min:0',
-            'is_active' => 'nullable|boolean'
+            'is_active' => 'nullable|boolean',
         ]);
 
         $package = LocalPackage::create([
             'package_code' => trim($validated['package_code']),
             'city' => trim($validated['city'] ?? 'All Cities') ?: 'All Cities',
             'name' => trim($validated['name']),
-            'duration_hours' => (int)$validated['duration_hours'],
-            'included_km' => (int)$validated['included_km'],
-            'sedan_fare' => (float)$validated['sedan_fare'],
-            'suv_fare' => (float)$validated['suv_fare'],
-            'extra_km_rate' => (float)($validated['extra_km_rate'] ?? 14.00),
-            'extra_hour_rate' => (float)($validated['extra_hour_rate'] ?? 150.00),
-            'is_active' => $request->has('is_active') ? (bool)$request->is_active : true,
+            'duration_hours' => (int) $validated['duration_hours'],
+            'included_km' => (int) $validated['included_km'],
+            'sedan_fare' => (float) $validated['sedan_fare'],
+            'suv_fare' => (float) $validated['suv_fare'],
+            'extra_km_rate' => (float) ($validated['extra_km_rate'] ?? 14.00),
+            'extra_hour_rate' => (float) ($validated['extra_hour_rate'] ?? 150.00),
+            'is_active' => $request->has('is_active') ? (bool) $request->is_active : true,
         ]);
 
         return response()->json([
             'success' => true,
             'message' => "Local Package '{$package->name}' created successfully!",
-            'package' => $package
+            'package' => $package,
         ], 201);
     }
 
@@ -81,7 +81,7 @@ class LocalPackageAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'package' => $package
+            'package' => $package,
         ]);
     }
 
@@ -102,26 +102,46 @@ class LocalPackageAdminController extends Controller
             'suv_fare' => 'sometimes|required|numeric|min:0',
             'extra_km_rate' => 'nullable|numeric|min:0',
             'extra_hour_rate' => 'nullable|numeric|min:0',
-            'is_active' => 'nullable|boolean'
+            'is_active' => 'nullable|boolean',
         ]);
 
-        if (isset($validated['package_code'])) $package->package_code = trim($validated['package_code']);
-        if (isset($validated['city'])) $package->city = trim($validated['city']) ?: 'All Cities';
-        if (isset($validated['name'])) $package->name = trim($validated['name']);
-        if (isset($validated['duration_hours'])) $package->duration_hours = (int)$validated['duration_hours'];
-        if (isset($validated['included_km'])) $package->included_km = (int)$validated['included_km'];
-        if (isset($validated['sedan_fare'])) $package->sedan_fare = (float)$validated['sedan_fare'];
-        if (isset($validated['suv_fare'])) $package->suv_fare = (float)$validated['suv_fare'];
-        if (isset($validated['extra_km_rate'])) $package->extra_km_rate = (float)$validated['extra_km_rate'];
-        if (isset($validated['extra_hour_rate'])) $package->extra_hour_rate = (float)$validated['extra_hour_rate'];
-        if ($request->has('is_active')) $package->is_active = (bool)$request->is_active;
+        if (isset($validated['package_code'])) {
+            $package->package_code = trim($validated['package_code']);
+        }
+        if (isset($validated['city'])) {
+            $package->city = trim($validated['city']) ?: 'All Cities';
+        }
+        if (isset($validated['name'])) {
+            $package->name = trim($validated['name']);
+        }
+        if (isset($validated['duration_hours'])) {
+            $package->duration_hours = (int) $validated['duration_hours'];
+        }
+        if (isset($validated['included_km'])) {
+            $package->included_km = (int) $validated['included_km'];
+        }
+        if (isset($validated['sedan_fare'])) {
+            $package->sedan_fare = (float) $validated['sedan_fare'];
+        }
+        if (isset($validated['suv_fare'])) {
+            $package->suv_fare = (float) $validated['suv_fare'];
+        }
+        if (isset($validated['extra_km_rate'])) {
+            $package->extra_km_rate = (float) $validated['extra_km_rate'];
+        }
+        if (isset($validated['extra_hour_rate'])) {
+            $package->extra_hour_rate = (float) $validated['extra_hour_rate'];
+        }
+        if ($request->has('is_active')) {
+            $package->is_active = (bool) $request->is_active;
+        }
 
         $package->save();
 
         return response()->json([
             'success' => true,
             'message' => "Local Package '{$package->name}' updated successfully!",
-            'package' => $package
+            'package' => $package,
         ]);
     }
 
@@ -131,13 +151,13 @@ class LocalPackageAdminController extends Controller
     public function toggleStatus($id)
     {
         $package = LocalPackage::findOrFail($id);
-        $package->is_active = !$package->is_active;
+        $package->is_active = ! $package->is_active;
         $package->save();
 
         return response()->json([
             'success' => true,
-            'message' => "Local Package status changed to " . ($package->is_active ? 'Active' : 'Inactive'),
-            'is_active' => $package->is_active
+            'message' => 'Local Package status changed to '.($package->is_active ? 'Active' : 'Inactive'),
+            'is_active' => $package->is_active,
         ]);
     }
 
@@ -152,8 +172,7 @@ class LocalPackageAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Local Package '{$code}' deleted successfully."
+            'message' => "Local Package '{$code}' deleted successfully.",
         ]);
     }
 }
-

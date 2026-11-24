@@ -3,17 +3,18 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\ServiceLocation;
+use Illuminate\Http\Request;
 
 class LocationAdminController extends Controller
 {
     public function index()
     {
         $locations = ServiceLocation::orderBy('name')->get();
+
         return response()->json([
             'success' => true,
-            'locations' => $locations
+            'locations' => $locations,
         ]);
     }
 
@@ -37,16 +38,17 @@ class LocationAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Service location '{$location->name}' added successfully!",
-            'location' => $location
+            'location' => $location,
         ]);
     }
 
     public function show($id)
     {
         $location = ServiceLocation::findOrFail($id);
+
         return response()->json([
             'success' => true,
-            'location' => $location
+            'location' => $location,
         ]);
     }
 
@@ -55,7 +57,7 @@ class LocationAdminController extends Controller
         $location = ServiceLocation::findOrFail($id);
 
         $validated = $request->validate([
-            'name' => 'required|string|max:80|unique:service_locations,name,' . $id,
+            'name' => 'required|string|max:80|unique:service_locations,name,'.$id,
             'state' => 'required|string|max:80',
             'latitude' => 'required|numeric',
             'longitude' => 'required|numeric',
@@ -72,19 +74,19 @@ class LocationAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Location '{$location->name}' updated successfully!",
-            'location' => $location
+            'location' => $location,
         ]);
     }
 
     public function toggleStatus($id)
     {
         $location = ServiceLocation::findOrFail($id);
-        $location->update(['is_active' => !$location->is_active]);
+        $location->update(['is_active' => ! $location->is_active]);
 
         return response()->json([
             'success' => true,
-            'message' => "Location status updated to " . ($location->is_active ? 'Active' : 'Inactive'),
-            'location' => $location
+            'message' => 'Location status updated to '.($location->is_active ? 'Active' : 'Inactive'),
+            'location' => $location,
         ]);
     }
 
@@ -96,8 +98,7 @@ class LocationAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Location '{$name}' deleted successfully!"
+            'message' => "Location '{$name}' deleted successfully!",
         ]);
     }
 }
-

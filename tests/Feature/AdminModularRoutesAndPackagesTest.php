@@ -2,12 +2,9 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
 use App\Models\User;
-use App\Models\LocalPackage;
-use App\Models\AirportHub;
-use App\Models\RouteFare;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class AdminModularRoutesAndPackagesTest extends TestCase
 {
@@ -27,7 +24,7 @@ class AdminModularRoutesAndPackagesTest extends TestCase
                 'name' => 'Vikram Singhania (Ops Admin)',
                 'password' => bcrypt('password123'),
                 'role' => 'admin',
-                'phone' => '+91 99000 00001'
+                'phone' => '+91 99000 00001',
             ]
         );
     }
@@ -70,11 +67,11 @@ class AdminModularRoutesAndPackagesTest extends TestCase
             'suv_fare' => 2650.00,
             'extra_km_rate' => 14.50,
             'extra_hour_rate' => 160.00,
-            'is_active' => true
+            'is_active' => true,
         ]);
         $resCreate->assertStatus(201)
-                  ->assertJsonPath('success', true)
-                  ->assertJsonPath('package.package_code', '6_60');
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('package.package_code', '6_60');
 
         $pkgId = $resCreate->json('package.id');
 
@@ -85,11 +82,11 @@ class AdminModularRoutesAndPackagesTest extends TestCase
         $resUpdate = $this->actingAs($admin)->putJson("/api/admin/local-packages/{$pkgId}", [
             'sedan_fare' => 2100.00,
             'suv_fare' => 2800.00,
-            'name' => '6 Hours / 60 KM (Executive City Tour)'
+            'name' => '6 Hours / 60 KM (Executive City Tour)',
         ]);
         $resUpdate->assertStatus(200)
-                  ->assertJsonPath('success', true)
-                  ->assertJsonPath('package.sedan_fare', 2100);
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('package.sedan_fare', 2100);
 
         // 4. Toggle Status
         $resToggle = $this->actingAs($admin)->postJson("/api/admin/local-packages/{$pkgId}/toggle");
@@ -119,11 +116,11 @@ class AdminModularRoutesAndPackagesTest extends TestCase
             'drop_surcharge' => 120.00,
             'sedan_base_fare' => 850.00,
             'suv_base_fare' => 1350.00,
-            'is_active' => true
+            'is_active' => true,
         ]);
         $resCreate->assertStatus(201)
-                  ->assertJsonPath('success', true)
-                  ->assertJsonPath('airport.iata_code', 'STV');
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('airport.iata_code', 'STV');
 
         $airportId = $resCreate->json('airport.id');
 
@@ -133,11 +130,11 @@ class AdminModularRoutesAndPackagesTest extends TestCase
 
         $resUpdate = $this->actingAs($admin)->putJson("/api/admin/airport-hubs/{$airportId}", [
             'pickup_surcharge' => 250.00,
-            'sedan_base_fare' => 900.00
+            'sedan_base_fare' => 900.00,
         ]);
         $resUpdate->assertStatus(200)
-                  ->assertJsonPath('success', true)
-                  ->assertJsonPath('airport.pickup_surcharge', 250);
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('airport.pickup_surcharge', 250);
 
         // 4. Toggle Status
         $resToggle = $this->actingAs($admin)->postJson("/api/admin/airport-hubs/{$airportId}/toggle");
@@ -162,22 +159,22 @@ class AdminModularRoutesAndPackagesTest extends TestCase
             'sedan_fare' => 2800.00,
             'suv_fare' => 3900.00,
             'roundtrip_discount_pct' => 10.00,
-            'is_active' => true
+            'is_active' => true,
         ]);
         $resCreate->assertStatus(201)
-                  ->assertJsonPath('success', true)
-                  ->assertJsonPath('route.sedan_fare', 2800)
-                  ->assertJsonPath('route.roundtrip_discount_pct', 10);
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('route.sedan_fare', 2800)
+            ->assertJsonPath('route.roundtrip_discount_pct', 10);
 
         $routeId = $resCreate->json('route.id');
 
         $resUpdate = $this->actingAs($admin)->putJson("/api/admin/cab-routes/{$routeId}", [
             'sedan_fare' => 2950.00,
-            'roundtrip_discount_pct' => 12.00
+            'roundtrip_discount_pct' => 12.00,
         ]);
         $resUpdate->assertStatus(200)
-                  ->assertJsonPath('success', true)
-                  ->assertJsonPath('route.sedan_fare', 2950);
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('route.sedan_fare', 2950);
 
         // Clean up
         $this->actingAs($admin)->deleteJson("/api/admin/cab-routes/{$routeId}");
@@ -187,12 +184,12 @@ class AdminModularRoutesAndPackagesTest extends TestCase
     {
         $resPkgs = $this->getJson('/api/local-packages');
         $resPkgs->assertStatus(200)
-                ->assertJsonPath('success', true)
-                ->assertJsonStructure(['packages']);
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure(['packages']);
 
         $resAirports = $this->getJson('/api/airport-hubs');
         $resAirports->assertStatus(200)
-                    ->assertJsonPath('success', true)
-                    ->assertJsonStructure(['airports']);
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure(['airports']);
     }
 }

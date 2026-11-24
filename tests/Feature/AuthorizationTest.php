@@ -2,9 +2,10 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
+use Tests\TestCase;
 
 /**
  * Proves the privilege boundary actually holds.
@@ -28,7 +29,7 @@ class AuthorizationTest extends TestCase
         return User::where('role', $role)->firstOrFail();
     }
 
-    /** @test */
+    #[Test]
     public function guest_cannot_reach_admin_api(): void
     {
         $this->getJson('/api/admin/bookings')->assertStatus(401);
@@ -38,7 +39,7 @@ class AuthorizationTest extends TestCase
         $this->deleteJson('/api/admin/vehicles/1')->assertStatus(401);
     }
 
-    /** @test */
+    #[Test]
     public function customer_cannot_reach_admin_api(): void
     {
         $customer = $this->userFor('customer');
@@ -51,21 +52,21 @@ class AuthorizationTest extends TestCase
         $this->actingAs($customer)->postJson('/api/admin/dynamic-fields', [])->assertStatus(403);
     }
 
-    /** @test */
+    #[Test]
     public function driver_cannot_reach_admin_api(): void
     {
         $driver = $this->userFor('driver');
         $this->actingAs($driver)->getJson('/api/admin/bookings')->assertStatus(403);
     }
 
-    /** @test */
+    #[Test]
     public function admin_can_reach_admin_api(): void
     {
         $admin = $this->userFor('admin');
         $this->actingAs($admin)->getJson('/api/admin/bookings')->assertStatus(200);
     }
 
-    /** @test */
+    #[Test]
     public function guest_cannot_reach_driver_console(): void
     {
         $this->getJson('/api/bids')->assertStatus(401);
@@ -73,7 +74,7 @@ class AuthorizationTest extends TestCase
         $this->getJson('/api/driver/profile')->assertStatus(401);
     }
 
-    /** @test */
+    #[Test]
     public function customer_cannot_reach_driver_console(): void
     {
         $customer = $this->userFor('customer');
@@ -83,20 +84,20 @@ class AuthorizationTest extends TestCase
         $this->actingAs($customer)->getJson('/api/driver/profile')->assertStatus(403);
     }
 
-    /** @test */
+    #[Test]
     public function driver_can_reach_driver_console(): void
     {
         $driver = $this->userFor('driver');
         $this->actingAs($driver)->getJson('/api/driver/profile')->assertStatus(200);
     }
 
-    /** @test */
+    #[Test]
     public function guest_must_be_authenticated_for_current_user_endpoint(): void
     {
         $this->getJson('/api/auth/user')->assertStatus(401);
     }
 
-    /** @test */
+    #[Test]
     public function public_catalogue_and_booking_intake_remain_open(): void
     {
         // Guests must still be able to browse and book.

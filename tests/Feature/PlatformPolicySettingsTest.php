@@ -2,16 +2,17 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use App\Models\User;
 use App\Models\PlatformSetting;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class PlatformPolicySettingsTest extends TestCase
 {
     use RefreshDatabase;
 
     protected User $admin;
+
     protected User $customer;
 
     protected function setUp(): void
@@ -40,7 +41,7 @@ class PlatformPolicySettingsTest extends TestCase
     {
         $payload = [
             'privacy_policy_url' => 'https://policies.intercitywheels.com/privacy-v2',
-            'terms_conditions_url' => 'https://policies.intercitywheels.com/terms-v2'
+            'terms_conditions_url' => 'https://policies.intercitywheels.com/terms-v2',
         ];
 
         $response = $this->actingAs($this->admin)->postJson('/api/admin/settings/policy-urls', $payload);
@@ -48,7 +49,7 @@ class PlatformPolicySettingsTest extends TestCase
         $response->assertStatus(200)
             ->assertJson([
                 'success' => true,
-                'settings' => $payload
+                'settings' => $payload,
             ]);
 
         $this->assertEquals('https://policies.intercitywheels.com/privacy-v2', PlatformSetting::get('privacy_policy_url'));
@@ -64,7 +65,7 @@ class PlatformPolicySettingsTest extends TestCase
     {
         $payload = [
             'privacy_policy_url' => '/hacked-privacy',
-            'terms_conditions_url' => '/hacked-terms'
+            'terms_conditions_url' => '/hacked-terms',
         ];
 
         $response = $this->actingAs($this->customer)->postJson('/api/admin/settings/policy-urls', $payload);

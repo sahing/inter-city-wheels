@@ -2,14 +2,21 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\InvalidBookingTransition;
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Booking;
 use App\Models\Driver;
-use App\Models\RouteFare;
+use App\Services\BookingReferenceGenerator;
+use App\Services\BookingWorkflow;
+use Illuminate\Http\Request;
 
 class BookingAdminController extends Controller
 {
+    public function __construct(
+        private readonly BookingWorkflow $workflow,
+        private readonly BookingReferenceGenerator $references,
+    ) {}
+
     /**
      * Return list of bookings with drivers.
      */
@@ -25,15 +32,15 @@ class BookingAdminController extends Controller
             $s = $request->search;
             $query->where(function ($q) use ($s) {
                 $q->where('booking_reference', 'like', "%{$s}%")
-                  ->orWhere('customer_name', 'like', "%{$s}%")
-                  ->orWhere('customer_phone', 'like', "%{$s}%")
-                  ->orWhere('route_summary', 'like', "%{$s}%");
+                    ->orWhere('customer_name', 'like', "%{$s}%")
+                    ->orWhere('customer_phone', 'like', "%{$s}%")
+                    ->orWhere('route_summary', 'like', "%{$s}%");
             });
         }
 
         return response()->json([
             'success' => true,
-            'bookings' => $query->get()
+            'bookings' => $query->get(),
         ]);
     }
 
@@ -58,7 +65,7 @@ class BookingAdminController extends Controller
             'addon_fare' => 'nullable|numeric|min:0',
             'discount_fare' => 'nullable|numeric|min:0',
             'status' => 'nullable|string',
-            'assigned_driver_id' => 'nullable|exists:drivers,id'
+            'assigned_driver_id' => 'nullable|exists:drivers,id',
         ]);
 
         $baseFare = (float) $validated['base_fare'];
@@ -67,19 +74,28 @@ class BookingAdminController extends Controller
         $discountFare = (float) ($validated['discount_fare'] ?? 0);
         $totalAmount = max(0, round($baseFare + $tollFare + $addonFare - $discountFare));
 
-        $bookingRef = 'ICW-' . mt_rand(10000, 99999);
-        $otp = str_pad(mt_rand(1000, 9999), 4, '0', STR_PAD_LEFT);
+        $bookingRef = $this->references->generate();
+        $otp = $this->references->startOtp();
 
-        $status = $validated['status'] ?? ($request->filled('assigned_driver_id') ? 'Driver Assigned' : 'Confirmed');
+        $requestedStatus = $validated['status']
+            ?? ($request->filled('assigned_driver_id') ? BookingWorkflow::DRIVER_ASSIGNED : BookingWorkflow::CONFIRMED);
 
-        $booking = Booking::create([
+        if (! BookingWorkflow::isKnownStatus($requestedStatus)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unknown booking status "'.$requestedStatus.'".',
+                'allowed' => BookingWorkflow::STATUSES,
+            ], 422);
+        }
+
+        $attributes = [
             'booking_reference' => $bookingRef,
             'service_type' => $validated['service_type'],
             'trip_type' => $validated['trip_type'],
             'route_summary' => "{$validated['from_city']} → {$validated['to_city']}",
             'pickup_location' => $validated['pickup_location'],
             'drop_location' => $validated['drop_location'],
-            'departure_time' => !empty($validated['departure_time'] ?? null) ? date('Y-m-d H:i:s', strtotime($validated['departure_time'])) : now()->addHours(2),
+            'departure_time' => ! empty($validated['departure_time'] ?? null) ? date('Y-m-d H:i:s', strtotime($validated['departure_time'])) : now()->addHours(2),
             'customer_name' => $validated['customer_name'],
             'customer_phone' => $validated['customer_phone'],
             'customer_email' => $validated['customer_email'] ?? null,
@@ -88,18 +104,30 @@ class BookingAdminController extends Controller
             'addon_fare' => $addonFare,
             'discount_fare' => $discountFare,
             'total_amount' => $totalAmount,
-            'status' => $status,
             'start_otp' => $otp,
             'assigned_driver_id' => $validated['assigned_driver_id'] ?? null,
-            'selected_units' => [$validated['service_type'] === 'cab' ? 'Admin Assigned' : 'Sleeper Seat']
-        ]);
+            'selected_units' => [$validated['service_type'] === 'cab' ? 'Admin Assigned' : 'Sleeper Seat'],
+        ];
+
+        try {
+            // Created as Requested, then advanced along a legal path only (P0-5).
+            $booking = $this->workflow->create($attributes, $requestedStatus, [
+                'assigned_driver_id' => $attributes['assigned_driver_id'],
+            ]);
+        } catch (InvalidBookingTransition $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'transition' => $e->toArray(),
+            ], 422);
+        }
 
         $booking->load('driver');
 
         return response()->json([
             'success' => true,
             'message' => 'New booking created successfully!',
-            'booking' => $booking
+            'booking' => $booking,
         ], 201);
     }
 
@@ -112,7 +140,7 @@ class BookingAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'booking' => $booking
+            'booking' => $booking,
         ]);
     }
 
@@ -139,7 +167,7 @@ class BookingAdminController extends Controller
             'discount_fare' => 'sometimes|numeric|min:0',
             'status' => 'sometimes|required|string',
             'start_otp' => 'sometimes|nullable|string|max:6',
-            'assigned_driver_id' => 'nullable|exists:drivers,id'
+            'assigned_driver_id' => 'nullable|exists:drivers,id',
         ]);
 
         if (isset($validated['base_fare']) || isset($validated['toll_fare']) || isset($validated['addon_fare']) || isset($validated['discount_fare'])) {
@@ -150,17 +178,43 @@ class BookingAdminController extends Controller
             $validated['total_amount'] = max(0, round($baseFare + $tollFare + $addonFare - $discountFare));
         }
 
-        if (!empty($validated['departure_time'])) {
+        if (! empty($validated['departure_time'])) {
             $validated['departure_time'] = date('Y-m-d H:i:s', strtotime($validated['departure_time']));
         }
 
-        $booking->update($validated);
+        $newStatus = $validated['status'] ?? null;
+
+        if ($newStatus === null) {
+            $booking->update($validated);
+        } else {
+            if (! BookingWorkflow::isKnownStatus($newStatus)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unknown booking status "'.$newStatus.'".',
+                    'allowed' => BookingWorkflow::STATUSES,
+                ], 422);
+            }
+
+            unset($validated['status']);
+
+            try {
+                // P0-5: an admin edit may not teleport a booking between stages.
+                $this->workflow->transition($booking, $newStatus, $validated);
+            } catch (InvalidBookingTransition $e) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                    'transition' => $e->toArray(),
+                ], 422);
+            }
+        }
+
         $booking->load('driver');
 
         return response()->json([
             'success' => true,
             'message' => 'Booking updated successfully!',
-            'booking' => $booking
+            'booking' => $booking,
         ]);
     }
 
@@ -173,25 +227,40 @@ class BookingAdminController extends Controller
 
         $validated = $request->validate([
             'driver_id' => 'nullable|exists:drivers,id',
-            'status' => 'nullable|string'
+            'status' => 'nullable|string',
         ]);
 
         $driverId = $validated['driver_id'] ?? null;
-        $booking->assigned_driver_id = $driverId;
-        
-        if ($driverId) {
-            $booking->status = $validated['status'] ?? 'Driver Assigned';
-        } else {
-            $booking->status = 'Confirmed';
+        $targetStatus = $driverId
+            ? ($validated['status'] ?? BookingWorkflow::DRIVER_ASSIGNED)
+            : BookingWorkflow::CONFIRMED;
+
+        if (! BookingWorkflow::isKnownStatus($targetStatus)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unknown booking status "'.$targetStatus.'".',
+                'allowed' => BookingWorkflow::STATUSES,
+            ], 422);
         }
 
-        $booking->save();
+        try {
+            $this->workflow->transition($booking, $targetStatus, [
+                'assigned_driver_id' => $driverId,
+            ]);
+        } catch (InvalidBookingTransition $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'transition' => $e->toArray(),
+            ], 422);
+        }
+
         $booking->load('driver');
 
         return response()->json([
             'success' => true,
             'message' => $driverId ? 'Driver allotted successfully!' : 'Driver allotment removed.',
-            'booking' => $booking
+            'booking' => $booking,
         ]);
     }
 
@@ -202,7 +271,7 @@ class BookingAdminController extends Controller
     {
         $booking = Booking::with('driver')->findOrFail($id);
 
-        $invoiceNumber = 'INV-' . date('Y', strtotime($booking->created_at ?? now())) . '-' . $booking->booking_reference;
+        $invoiceNumber = 'INV-'.date('Y', strtotime($booking->created_at ?? now())).'-'.$booking->booking_reference;
         $invoiceDate = $booking->created_at ? $booking->created_at->format('d M Y, h:i A') : now()->format('d M Y, h:i A');
 
         // Tax calculation: 5% GST (2.5% CGST + 2.5% SGST) for passenger transport
@@ -222,7 +291,7 @@ class BookingAdminController extends Controller
                 'address' => 'Floor 4, Tech Vista Towers, Senapati Bapat Road, Pune - 411016, Maharashtra, India',
                 'support_phone' => '1800-209-WHEELS',
                 'support_email' => 'billing@intercitywheels.com',
-                'website' => 'https://intercitywheels.com'
+                'website' => 'https://intercitywheels.com',
             ],
             'customer' => [
                 'name' => $booking->customer_name,
@@ -233,14 +302,14 @@ class BookingAdminController extends Controller
                 'trip_type' => strtoupper($booking->trip_type ?? 'One-Way'),
                 'service_type' => strtoupper($booking->service_type ?? 'Cab'),
                 'route' => $booking->route_summary,
-                'travel_date' => $booking->departure_time ? $booking->departure_time->format('d M Y, h:i A') : 'Scheduled Departure'
+                'travel_date' => $booking->departure_time ? $booking->departure_time->format('d M Y, h:i A') : 'Scheduled Departure',
             ],
             'driver' => $booking->driver ? [
                 'name' => $booking->driver->name,
                 'phone' => $booking->driver->phone,
                 'vehicle_model' => $booking->driver->vehicle_model,
                 'vehicle_plate' => $booking->driver->vehicle_plate,
-                'rating' => $booking->driver->rating
+                'rating' => $booking->driver->rating,
             ] : null,
             'charges' => [
                 'base_fare' => $booking->base_fare,
@@ -250,20 +319,20 @@ class BookingAdminController extends Controller
                 'taxable_amount' => $taxableBase,
                 'cgst' => $cgst,
                 'sgst' => $sgst,
-                'total_amount' => $booking->total_amount
+                'total_amount' => $booking->total_amount,
             ],
             'payment' => [
                 'method' => 'Online Escrow (Prepaid UPI / Card)',
-                'transaction_ref' => 'TXN-' . strtoupper(substr(md5($booking->booking_reference), 0, 10)),
+                'transaction_ref' => 'TXN-'.strtoupper(substr(md5($booking->booking_reference), 0, 10)),
                 'status' => 'PAID IN FULL',
-                'start_otp' => $booking->start_otp
-            ]
+                'start_otp' => $booking->start_otp,
+            ],
         ];
 
         return response()->json([
             'success' => true,
             'invoice' => $invoiceData,
-            'booking' => $booking
+            'booking' => $booking,
         ]);
     }
 }

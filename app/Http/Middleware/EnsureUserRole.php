@@ -28,7 +28,7 @@ class EnsureUserRole
             return $request->expectsJson()
                 ? response()->json([
                     'success' => false,
-                    'message' => 'Forbidden. Required role: ' . implode('|', $roles),
+                    'message' => 'Forbidden. Required role: '.implode('|', $roles),
                 ], 403)
                 : abort(403);
         }

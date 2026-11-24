@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('local_packages')) {
+        if (! Schema::hasTable('local_packages')) {
             Schema::create('local_packages', function (Blueprint $table) {
                 $table->id();
                 $table->string('package_code')->unique();
@@ -25,7 +25,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('airport_hubs')) {
+        if (! Schema::hasTable('airport_hubs')) {
             Schema::create('airport_hubs', function (Blueprint $table) {
                 $table->id();
                 $table->string('airport_name');
@@ -43,13 +43,13 @@ return new class extends Migration
 
         if (Schema::hasTable('route_fares')) {
             Schema::table('route_fares', function (Blueprint $table) {
-                if (!Schema::hasColumn('route_fares', 'sedan_fare')) {
+                if (! Schema::hasColumn('route_fares', 'sedan_fare')) {
                     $table->decimal('sedan_fare', 10, 2)->nullable();
                 }
-                if (!Schema::hasColumn('route_fares', 'suv_fare')) {
+                if (! Schema::hasColumn('route_fares', 'suv_fare')) {
                     $table->decimal('suv_fare', 10, 2)->nullable();
                 }
-                if (!Schema::hasColumn('route_fares', 'roundtrip_discount_pct')) {
+                if (! Schema::hasColumn('route_fares', 'roundtrip_discount_pct')) {
                     $table->decimal('roundtrip_discount_pct', 5, 2)->default(0);
                 }
             });
@@ -69,4 +69,3 @@ return new class extends Migration
         }
     }
 };
-

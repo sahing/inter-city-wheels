@@ -13,6 +13,6 @@ class SeatLayout extends Model
 
     protected $casts = [
         'is_ladies_quota' => 'boolean',
-        'is_booked' => 'boolean'
+        'is_booked' => 'boolean',
     ];
 }

@@ -16,12 +16,12 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => EnsureUserRole::class,
         ]);
 
-        $middleware->validateCsrfTokens(except: [
-            'login',
-            'login/*',
-            'logout',
-            'api/*',
-        ]);
+        // P0-3: CSRF protection is back on for every state-changing route,
+        // including /api/* and the login/OTP/logout endpoints. The browser
+        // attaches the X-CSRF-TOKEN header from <meta name="csrf-token"> in
+        // public/js/app.js, so the SPA and plain form posts both keep working.
+        // Do not add browser-reachable paths back to this list.
+        $middleware->validateCsrfTokens(except: []);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

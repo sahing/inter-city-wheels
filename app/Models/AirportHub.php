@@ -19,4 +19,3 @@ class AirportHub extends Model
         'is_active' => 'boolean',
     ];
 }
-

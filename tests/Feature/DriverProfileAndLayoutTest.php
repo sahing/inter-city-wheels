@@ -20,17 +20,17 @@ class DriverProfileAndLayoutTest extends TestCase
     public function test_driver_can_get_and_update_profile()
     {
         $driverUser = User::where('role', 'driver')->first();
-        if (!$driverUser) {
+        if (! $driverUser) {
             $driverUser = User::factory()->create([
                 'name' => 'Kishore Kumar',
                 'email' => 'kishore.driver@intercitywheels.com',
                 'role' => 'driver',
-                'phone' => '+91 98300 11223'
+                'phone' => '+91 98300 11223',
             ]);
         }
 
         $driver = Driver::where('phone', $driverUser->phone)->first();
-        if (!$driver) {
+        if (! $driver) {
             $driver = Driver::create([
                 'name' => $driverUser->name,
                 'phone' => $driverUser->phone,
@@ -54,7 +54,7 @@ class DriverProfileAndLayoutTest extends TestCase
                 'profile' => [
                     'name' => $driver->name,
                     'vehicle_plate' => $driver->vehicle_plate,
-                ]
+                ],
             ]);
 
         // 2. Update Profile API
@@ -109,12 +109,12 @@ class DriverProfileAndLayoutTest extends TestCase
         $response->assertStatus(200)
             ->assertJson([
                 'success' => true,
-                'is_online' => !$initialStatus,
+                'is_online' => ! $initialStatus,
             ]);
 
         $this->assertDatabaseHas('drivers', [
             'id' => $driver->id,
-            'is_online' => !$initialStatus,
+            'is_online' => ! $initialStatus,
         ]);
     }
 

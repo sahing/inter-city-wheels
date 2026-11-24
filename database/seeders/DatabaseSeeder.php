@@ -2,14 +2,23 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\RouteFare;
-use App\Models\Driver;
-use App\Models\SeatLayout;
-use App\Models\DynamicFormField;
-use App\Models\WorkflowStage;
-use App\Models\Coupon;
+use App\Models\AirportHub;
+use App\Models\BerthRoute;
 use App\Models\Booking;
+use App\Models\CarType;
+use App\Models\Coupon;
+use App\Models\Driver;
+use App\Models\DriverVehicle;
+use App\Models\DynamicFormField;
+use App\Models\LocalPackage;
+use App\Models\PlatformSetting;
+use App\Models\RouteFare;
+use App\Models\SeatLayout;
+use App\Models\ServiceLocation;
+use App\Models\User;
+use App\Models\WorkflowStage;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -129,7 +138,7 @@ class DatabaseSeeder extends Seeder
             'customer_email' => 'rahul@example.com',
             'passengers' => [
                 ['name' => 'Rahul Sharma', 'age' => 29, 'gender' => 'male', 'berth' => 'L4'],
-                ['name' => 'Sneha Verma', 'age' => 27, 'gender' => 'female', 'berth' => 'L5']
+                ['name' => 'Sneha Verma', 'age' => 27, 'gender' => 'female', 'berth' => 'L5'],
             ],
             'selected_units' => ['L4', 'L5'],
             'base_fare' => 1700.00,
@@ -138,40 +147,40 @@ class DatabaseSeeder extends Seeder
             'discount_fare' => 0.00,
             'total_amount' => 1700.00,
             'status' => 'Confirmed',
-            'start_otp' => '8492'
+            'start_otp' => '8492',
         ]);
 
         // 8. Seed Role-Based Demo Accounts
-        \App\Models\User::firstOrCreate(
+        User::firstOrCreate(
             ['email' => 'admin@intercitywheels.com'],
             [
                 'name' => 'Vikram Singhania (Ops Admin)',
-                'password' => \Illuminate\Support\Facades\Hash::make('password123'),
+                'password' => Hash::make('password123'),
                 'role' => 'admin',
                 'phone' => '+91 99000 00001',
-                'avatar' => '🛡️'
+                'avatar' => '🛡️',
             ]
         );
 
-        \App\Models\User::firstOrCreate(
+        User::firstOrCreate(
             ['email' => 'driver@intercitywheels.com'],
             [
                 'name' => 'Ramesh Patil (Partner Chauffeur)',
-                'password' => \Illuminate\Support\Facades\Hash::make('password123'),
+                'password' => Hash::make('password123'),
                 'role' => 'driver',
                 'phone' => '+91 98220 11920',
-                'avatar' => '👨🏽‍✈️'
+                'avatar' => '👨🏽‍✈️',
             ]
         );
 
-        \App\Models\User::firstOrCreate(
+        User::firstOrCreate(
             ['email' => 'customer@intercitywheels.com'],
             [
                 'name' => 'Rahul Sharma (Traveler)',
-                'password' => \Illuminate\Support\Facades\Hash::make('password123'),
+                'password' => Hash::make('password123'),
                 'role' => 'customer',
                 'phone' => '+91 98765 43210',
-                'avatar' => '👤'
+                'avatar' => '👤',
             ]
         );
 
@@ -203,7 +212,7 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Mayapur', 'state' => 'West Bengal (Nadia)', 'latitude' => 23.4232, 'longitude' => 88.3900, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
         ];
         foreach ($locations as $loc) {
-            \App\Models\ServiceLocation::firstOrCreate(['name' => $loc['name']], $loc);
+            ServiceLocation::firstOrCreate(['name' => $loc['name']], $loc);
         }
 
         // 10. Seed Berth Routes (Setup by Admin for Sleeper Bus / Berth Van System)
@@ -218,7 +227,7 @@ class DatabaseSeeder extends Seeder
                 'arrival_time' => '06:45 AM',
                 'base_price' => 850.00,
                 'total_berths' => 30,
-                'is_active' => true
+                'is_active' => true,
             ],
             [
                 'from_city' => 'Mumbai',
@@ -230,7 +239,7 @@ class DatabaseSeeder extends Seeder
                 'arrival_time' => '07:30 AM',
                 'base_price' => 950.00,
                 'total_berths' => 32,
-                'is_active' => true
+                'is_active' => true,
             ],
             [
                 'from_city' => 'Bengaluru',
@@ -242,7 +251,7 @@ class DatabaseSeeder extends Seeder
                 'arrival_time' => '06:00 AM',
                 'base_price' => 800.00,
                 'total_berths' => 30,
-                'is_active' => true
+                'is_active' => true,
             ],
             [
                 'from_city' => 'Pune',
@@ -254,7 +263,7 @@ class DatabaseSeeder extends Seeder
                 'arrival_time' => '09:30 AM',
                 'base_price' => 550.00,
                 'total_berths' => 7,
-                'is_active' => true
+                'is_active' => true,
             ],
             [
                 'from_city' => 'Baharampur',
@@ -266,7 +275,7 @@ class DatabaseSeeder extends Seeder
                 'arrival_time' => '05:30 AM',
                 'base_price' => 450.00,
                 'total_berths' => 30,
-                'is_active' => true
+                'is_active' => true,
             ],
             [
                 'from_city' => 'Kolkata',
@@ -278,11 +287,11 @@ class DatabaseSeeder extends Seeder
                 'arrival_time' => '11:00 AM',
                 'base_price' => 450.00,
                 'total_berths' => 30,
-                'is_active' => true
-            ]
+                'is_active' => true,
+            ],
         ];
         foreach ($berthRoutes as $br) {
-            \App\Models\BerthRoute::firstOrCreate(['coach_code' => $br['coach_code']], $br);
+            BerthRoute::firstOrCreate(['coach_code' => $br['coach_code']], $br);
         }
 
         // Additional berths for Coach 5510 (Force Urbania 7-Berth Van)
@@ -296,12 +305,12 @@ class DatabaseSeeder extends Seeder
             ['coach_code' => '5510', 'operator_name' => 'Executive Urbania Transit', 'deck' => 'lower', 'berth_number' => 'B7', 'berth_type' => 'window', 'price' => 550, 'is_ladies_quota' => false, 'is_booked' => false],
         ];
         foreach ($vanBerths as $vb) {
-            \App\Models\SeatLayout::firstOrCreate(['coach_code' => $vb['coach_code'], 'berth_number' => $vb['berth_number']], $vb);
+            SeatLayout::firstOrCreate(['coach_code' => $vb['coach_code'], 'berth_number' => $vb['berth_number']], $vb);
         }
 
         // 11. Seed Driver Vehicles (Driver Listed Vehicles & Pending Approvals)
-        $ramesh = \App\Models\Driver::first();
-        \App\Models\DriverVehicle::firstOrCreate(
+        $ramesh = Driver::first();
+        DriverVehicle::firstOrCreate(
             ['vehicle_plate' => 'MH 12 QX 4920'],
             [
                 'driver_id' => $ramesh ? $ramesh->id : null,
@@ -317,11 +326,11 @@ class DatabaseSeeder extends Seeder
                 'rc_number' => 'RC-MH12-984129',
                 'status' => 'Approved',
                 'admin_notes' => 'Verified commercial taxi permit and fastag active.',
-                'is_active' => true
+                'is_active' => true,
             ]
         );
 
-        \App\Models\DriverVehicle::firstOrCreate(
+        DriverVehicle::firstOrCreate(
             ['vehicle_plate' => 'MH 12 TS 9901'],
             [
                 'driver_id' => $ramesh ? $ramesh->id : null,
@@ -337,11 +346,11 @@ class DatabaseSeeder extends Seeder
                 'rc_number' => 'RC-MH12-110022',
                 'status' => 'Pending',
                 'admin_notes' => 'Uploaded RC copy and insurance certificate pending physical inspection.',
-                'is_active' => false
+                'is_active' => false,
             ]
         );
 
-        \App\Models\DriverVehicle::firstOrCreate(
+        DriverVehicle::firstOrCreate(
             ['vehicle_plate' => 'MH 14 CL 7720'],
             [
                 'driver_id' => null,
@@ -357,13 +366,15 @@ class DatabaseSeeder extends Seeder
                 'rc_number' => 'RC-MH14-883921',
                 'status' => 'Pending',
                 'admin_notes' => '7 sleeper berths fitted. Pending berth safety certificate check.',
-                'is_active' => false
+                'is_active' => false,
             ]
         );
 
-        // 12. Seed Platform Settings (Policy URLs)
-        \App\Models\PlatformSetting::set('privacy_policy_url', '/privacy-policy');
-        \App\Models\PlatformSetting::set('terms_conditions_url', '/terms-conditions');
+        // 12. Seed Platform Settings (Policy URLs & Feature Toggles)
+        PlatformSetting::set('privacy_policy_url', '/privacy-policy');
+        PlatformSetting::set('terms_conditions_url', '/terms-conditions');
+        // Initial state: Off by default per platform admin settings
+        PlatformSetting::set('enable_schedules_and_berths', '0');
 
         // 13. Seed Configured Local Rental Packages (Hourly & KM)
         $localPackages = [
@@ -417,7 +428,7 @@ class DatabaseSeeder extends Seeder
             ],
         ];
         foreach ($localPackages as $lp) {
-            \App\Models\LocalPackage::firstOrCreate(['package_code' => $lp['package_code']], $lp);
+            LocalPackage::firstOrCreate(['package_code' => $lp['package_code']], $lp);
         }
 
         // 14. Seed Configured Airport Transit Hubs
@@ -512,7 +523,7 @@ class DatabaseSeeder extends Seeder
             ],
         ];
         foreach ($airportHubs as $ah) {
-            \App\Models\AirportHub::firstOrCreate(['iata_code' => $ah['iata_code']], $ah);
+            AirportHub::firstOrCreate(['iata_code' => $ah['iata_code']], $ah);
         }
 
         // 15. Seed Configured Car Types / Fleet Categories
@@ -603,7 +614,7 @@ class DatabaseSeeder extends Seeder
             ],
         ];
         foreach ($carTypes as $ct) {
-            \App\Models\CarType::firstOrCreate(['category_key' => $ct['category_key']], $ct);
+            CarType::firstOrCreate(['category_key' => $ct['category_key']], $ct);
         }
     }
 }

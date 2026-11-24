@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\RouteFare;
+use Illuminate\Http\Request;
 
 class CabRouteAdminController extends Controller
 {
@@ -19,7 +19,7 @@ class CabRouteAdminController extends Controller
             $s = $request->search;
             $query->where(function ($q) use ($s) {
                 $q->where('from_city', 'like', "%{$s}%")
-                  ->orWhere('to_city', 'like', "%{$s}%");
+                    ->orWhere('to_city', 'like', "%{$s}%");
             });
         }
 
@@ -29,7 +29,7 @@ class CabRouteAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'routes' => $query->get()
+            'routes' => $query->get(),
         ]);
     }
 
@@ -58,7 +58,7 @@ class CabRouteAdminController extends Controller
             'from_lng' => 'nullable|numeric',
             'to_lat' => 'nullable|numeric',
             'to_lng' => 'nullable|numeric',
-            'is_active' => 'nullable|boolean'
+            'is_active' => 'nullable|boolean',
         ]);
 
         $route = RouteFare::create([
@@ -70,24 +70,24 @@ class CabRouteAdminController extends Controller
             'to_lng' => $validated['to_lng'] ?? 74.1240,
             'distance_km' => round($validated['distance_km']),
             'estimated_time' => trim($validated['estimated_time']),
-            'base_toll' => (float)($validated['base_toll'] ?? 0),
-            'hatchback_fare' => isset($validated['hatchback_fare']) && $validated['hatchback_fare'] !== '' ? (float)$validated['hatchback_fare'] : null,
-            'sedan_fare' => isset($validated['sedan_fare']) && $validated['sedan_fare'] !== '' ? (float)$validated['sedan_fare'] : null,
-            'suv_fare' => isset($validated['suv_fare']) && $validated['suv_fare'] !== '' ? (float)$validated['suv_fare'] : null,
-            'innova_fare' => isset($validated['innova_fare']) && $validated['innova_fare'] !== '' ? (float)$validated['innova_fare'] : null,
-            'tempo_fare' => isset($validated['tempo_fare']) && $validated['tempo_fare'] !== '' ? (float)$validated['tempo_fare'] : null,
-            'luxury_fare' => isset($validated['luxury_fare']) && $validated['luxury_fare'] !== '' ? (float)$validated['luxury_fare'] : null,
+            'base_toll' => (float) ($validated['base_toll'] ?? 0),
+            'hatchback_fare' => isset($validated['hatchback_fare']) && $validated['hatchback_fare'] !== '' ? (float) $validated['hatchback_fare'] : null,
+            'sedan_fare' => isset($validated['sedan_fare']) && $validated['sedan_fare'] !== '' ? (float) $validated['sedan_fare'] : null,
+            'suv_fare' => isset($validated['suv_fare']) && $validated['suv_fare'] !== '' ? (float) $validated['suv_fare'] : null,
+            'innova_fare' => isset($validated['innova_fare']) && $validated['innova_fare'] !== '' ? (float) $validated['innova_fare'] : null,
+            'tempo_fare' => isset($validated['tempo_fare']) && $validated['tempo_fare'] !== '' ? (float) $validated['tempo_fare'] : null,
+            'luxury_fare' => isset($validated['luxury_fare']) && $validated['luxury_fare'] !== '' ? (float) $validated['luxury_fare'] : null,
             'car_fares' => $validated['car_fares'] ?? null,
-            'departure_schedule' => !empty($validated['departure_schedule']) ? trim($validated['departure_schedule']) : null,
-            'schedule_frequency' => !empty($validated['schedule_frequency']) ? trim($validated['schedule_frequency']) : 'Daily Express',
-            'roundtrip_discount_pct' => (float)($validated['roundtrip_discount_pct'] ?? 0),
-            'is_active' => $request->has('is_active') ? (bool)$request->is_active : true,
+            'departure_schedule' => ! empty($validated['departure_schedule']) ? trim($validated['departure_schedule']) : null,
+            'schedule_frequency' => ! empty($validated['schedule_frequency']) ? trim($validated['schedule_frequency']) : 'Daily Express',
+            'roundtrip_discount_pct' => (float) ($validated['roundtrip_discount_pct'] ?? 0),
+            'is_active' => $request->has('is_active') ? (bool) $request->is_active : true,
         ]);
 
         return response()->json([
             'success' => true,
             'message' => "Cab Route {$route->from_city} → {$route->to_city} created successfully!",
-            'route' => $route
+            'route' => $route,
         ], 201);
     }
 
@@ -100,7 +100,7 @@ class CabRouteAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'route' => $route
+            'route' => $route,
         ]);
     }
 
@@ -131,7 +131,7 @@ class CabRouteAdminController extends Controller
             'from_lng' => 'nullable|numeric',
             'to_lat' => 'nullable|numeric',
             'to_lng' => 'nullable|numeric',
-            'is_active' => 'nullable|boolean'
+            'is_active' => 'nullable|boolean',
         ]);
 
         if (isset($validated['distance_km'])) {
@@ -149,7 +149,7 @@ class CabRouteAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Cab Route {$route->from_city} → {$route->to_city} updated successfully!",
-            'route' => $route
+            'route' => $route,
         ]);
     }
 
@@ -159,13 +159,13 @@ class CabRouteAdminController extends Controller
     public function toggleStatus($id)
     {
         $route = RouteFare::findOrFail($id);
-        $route->is_active = !$route->is_active;
+        $route->is_active = ! $route->is_active;
         $route->save();
 
         return response()->json([
             'success' => true,
-            'message' => "Route status updated to " . ($route->is_active ? 'Active' : 'Inactive'),
-            'route' => $route
+            'message' => 'Route status updated to '.($route->is_active ? 'Active' : 'Inactive'),
+            'route' => $route,
         ]);
     }
 
@@ -180,8 +180,7 @@ class CabRouteAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Cab Route {$summary} deleted successfully!"
+            'message' => "Cab Route {$summary} deleted successfully!",
         ]);
     }
 }
-

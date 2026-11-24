@@ -1,0 +1,86 @@
+name: CI
+
+# Runs the project gates from AUTOMATION_RULES.md §4 (G1, G4, G4b, G5, G6)
+# on every push and pull request. No secrets are required.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    name: Gates (G1, G4, G4b, G5, G6)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo, pdo_sqlite, sqlite3, bcmath, openssl, tokenizer, xml, ctype, json, curl, fileinfo
+          coverage: none
+          tools: composer:v2
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Prepare environment file
+        run: cp .env.example .env
+
+      - name: Generate application key
+        run: php artisan key:generate
+
+      - name: Create SQLite database file
+        run: |
+          mkdir -p database
+          [ -f database/database.sqlite ] || touch database/database.sqlite
+
+      - name: Apply migrations
+        run: php artisan migrate --force --no-interaction
+
+      # G1 — authorization matrix input for review.
+      - name: "G1 - Route audit (route:list --json)"
+        run: php artisan route:list --json > route-audit.json
+
+      - name: "G1 - Upload route-audit.json artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: route-audit
+          path: route-audit.json
+          if-no-files-found: error
+          retention-days: 14
+
+      # G4 — full suite: RefreshDatabase + in-memory SQLite from phpunit.xml.
+      - name: "G4 - Full test suite"
+        run: php artisan test
+
+      # G4b — static quality gate.
+      - name: "G4b - Pint style check (test mode)"
+        run: vendor/bin/pint --test
+
+      # G5 — frontend build; must exit 0 and emit public/build/manifest.json.
+      - name: "G5 - Frontend build"
+        run: npm run build
+
+      # G6 — release readiness: no stale config cache, clean migration dry run.
+      - name: "G6a - Clear config cache"
+        run: php artisan config:clear
+
+      - name: "G6b - Migration dry run"
+        run: php artisan migrate --pretend --force --no-interaction

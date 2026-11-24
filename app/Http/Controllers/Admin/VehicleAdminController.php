@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use App\Models\DriverVehicle;
 use App\Models\Driver;
+use App\Models\DriverVehicle;
+use Illuminate\Http\Request;
 
 class VehicleAdminController extends Controller
 {
@@ -48,7 +48,7 @@ class VehicleAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Vehicle '{$vehicle->vehicle_model}' ({$vehicle->vehicle_plate}) listed successfully! Status is Pending Admin Approval.",
-            'vehicle' => $vehicle
+            'vehicle' => $vehicle,
         ]);
     }
 
@@ -65,16 +65,17 @@ class VehicleAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'vehicles' => $vehicles
+            'vehicles' => $vehicles,
         ]);
     }
 
     public function show($id)
     {
         $vehicle = DriverVehicle::with('driver')->findOrFail($id);
+
         return response()->json([
             'success' => true,
-            'vehicle' => $vehicle
+            'vehicle' => $vehicle,
         ]);
     }
 
@@ -87,7 +88,7 @@ class VehicleAdminController extends Controller
             'driver_name' => 'required|string|max:100',
             'driver_phone' => 'required|string|max:30',
             'vehicle_model' => 'required|string|max:120',
-            'vehicle_plate' => 'required|string|max:30|unique:driver_vehicles,vehicle_plate,' . $id,
+            'vehicle_plate' => 'required|string|max:30|unique:driver_vehicles,vehicle_plate,'.$id,
             'fleet_category' => 'required|string|in:sedan,prime,suv,luxury,sleeper_van',
             'seating_capacity' => 'required|integer|min:2|max:60',
             'berth_capacity' => 'nullable|integer|min:0|max:40',
@@ -108,7 +109,7 @@ class VehicleAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Vehicle '{$vehicle->vehicle_plate}' updated successfully by Admin!",
-            'vehicle' => $vehicle
+            'vehicle' => $vehicle,
         ]);
     }
 
@@ -132,7 +133,7 @@ class VehicleAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Vehicle '{$vehicle->vehicle_model}' ({$vehicle->vehicle_plate}) has been APPROVED and activated!",
-            'vehicle' => $vehicle
+            'vehicle' => $vehicle,
         ]);
     }
 
@@ -151,7 +152,7 @@ class VehicleAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Vehicle '{$vehicle->vehicle_plate}' has been rejected.",
-            'vehicle' => $vehicle
+            'vehicle' => $vehicle,
         ]);
     }
 
@@ -163,8 +164,7 @@ class VehicleAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Vehicle '{$plate}' deleted successfully."
+            'message' => "Vehicle '{$plate}' deleted successfully.",
         ]);
     }
 }
-

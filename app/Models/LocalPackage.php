@@ -21,4 +21,3 @@ class LocalPackage extends Model
         'is_active' => 'boolean',
     ];
 }
-

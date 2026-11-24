@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\CarType;
+use Illuminate\Http\Request;
 
 class CarTypeAdminController extends Controller
 {
@@ -19,8 +19,8 @@ class CarTypeAdminController extends Controller
             $s = $request->search;
             $query->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
-                  ->orWhere('category_key', 'like', "%{$s}%")
-                  ->orWhere('models', 'like', "%{$s}%");
+                    ->orWhere('category_key', 'like', "%{$s}%")
+                    ->orWhere('models', 'like', "%{$s}%");
             });
         }
 
@@ -30,7 +30,7 @@ class CarTypeAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'car_types' => $query->get()
+            'car_types' => $query->get(),
         ]);
     }
 
@@ -51,7 +51,7 @@ class CarTypeAdminController extends Controller
             'base_fare_min' => 'nullable|numeric|min:0',
             'image_url' => 'nullable|string|max:500',
             'order_index' => 'nullable|integer|min:0',
-            'is_active' => 'nullable|boolean'
+            'is_active' => 'nullable|boolean',
         ]);
 
         $categoryKey = strtolower(preg_replace('/[^a-zA-Z0-9_-]/', '', $validated['category_key']));
@@ -63,18 +63,18 @@ class CarTypeAdminController extends Controller
             'models' => trim($validated['models']),
             'seats' => trim($validated['seats']),
             'luggage' => trim($validated['luggage']),
-            'rate_per_km' => (float)$validated['rate_per_km'],
-            'extra_km_rate' => isset($validated['extra_km_rate']) ? (float)$validated['extra_km_rate'] : (float)$validated['rate_per_km'],
-            'base_fare_min' => (float)($validated['base_fare_min'] ?? 800),
+            'rate_per_km' => (float) $validated['rate_per_km'],
+            'extra_km_rate' => isset($validated['extra_km_rate']) ? (float) $validated['extra_km_rate'] : (float) $validated['rate_per_km'],
+            'base_fare_min' => (float) ($validated['base_fare_min'] ?? 800),
             'image_url' => $validated['image_url'] ?? 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80',
-            'order_index' => (int)($validated['order_index'] ?? 0),
-            'is_active' => $request->has('is_active') ? (bool)$request->is_active : true,
+            'order_index' => (int) ($validated['order_index'] ?? 0),
+            'is_active' => $request->has('is_active') ? (bool) $request->is_active : true,
         ]);
 
         return response()->json([
             'success' => true,
             'message' => "Car Type '{$carType->name}' added successfully!",
-            'car_type' => $carType
+            'car_type' => $carType,
         ], 201);
     }
 
@@ -87,7 +87,7 @@ class CarTypeAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'car_type' => $carType
+            'car_type' => $carType,
         ]);
     }
 
@@ -100,7 +100,7 @@ class CarTypeAdminController extends Controller
 
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:120',
-            'category_key' => 'sometimes|required|string|max:60|unique:car_types,category_key,' . $id,
+            'category_key' => 'sometimes|required|string|max:60|unique:car_types,category_key,'.$id,
             'badge' => 'nullable|string|max:60',
             'models' => 'sometimes|required|string|max:255',
             'seats' => 'sometimes|required|max:40',
@@ -110,7 +110,7 @@ class CarTypeAdminController extends Controller
             'base_fare_min' => 'nullable|numeric|min:0',
             'image_url' => 'nullable|string|max:500',
             'order_index' => 'nullable|integer|min:0',
-            'is_active' => 'nullable|boolean'
+            'is_active' => 'nullable|boolean',
         ]);
 
         if (isset($validated['category_key'])) {
@@ -122,7 +122,7 @@ class CarTypeAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Car Type '{$carType->name}' updated successfully!",
-            'car_type' => $carType
+            'car_type' => $carType,
         ]);
     }
 
@@ -132,13 +132,13 @@ class CarTypeAdminController extends Controller
     public function toggleStatus($id)
     {
         $carType = CarType::findOrFail($id);
-        $carType->is_active = !$carType->is_active;
+        $carType->is_active = ! $carType->is_active;
         $carType->save();
 
         return response()->json([
             'success' => true,
-            'message' => "Car Type '{$carType->name}' is now " . ($carType->is_active ? 'Active' : 'Inactive'),
-            'car_type' => $carType
+            'message' => "Car Type '{$carType->name}' is now ".($carType->is_active ? 'Active' : 'Inactive'),
+            'car_type' => $carType,
         ]);
     }
 
@@ -153,7 +153,7 @@ class CarTypeAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Car Type '{$name}' deleted successfully!"
+            'message' => "Car Type '{$name}' deleted successfully!",
         ]);
     }
 }

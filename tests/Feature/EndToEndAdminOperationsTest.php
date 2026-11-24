@@ -2,23 +2,22 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use App\Models\User;
-use App\Models\Driver;
 use App\Models\Booking;
-use App\Models\ServiceLocation;
-use App\Models\BerthRoute;
-use App\Models\SeatLayout;
-use App\Models\DriverVehicle;
+use App\Models\Driver;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class EndToEndAdminOperationsTest extends TestCase
 {
     use RefreshDatabase;
 
     protected User $admin;
+
     protected User $driverUser;
+
     protected Driver $driverProfile;
+
     protected User $customerUser;
 
     protected function setUp(): void
@@ -56,7 +55,7 @@ class EndToEndAdminOperationsTest extends TestCase
         $this->assertDatabaseHas('service_locations', [
             'id' => $locationId,
             'name' => 'Nagpur Junction Hub',
-            'airport_code' => 'NAG'
+            'airport_code' => 'NAG',
         ]);
 
         // READ / SHOW
@@ -116,7 +115,7 @@ class EndToEndAdminOperationsTest extends TestCase
         $this->assertDatabaseHas('berth_routes', [
             'coach_code' => '9988',
             'from_city' => 'Pune',
-            'to_city' => 'Bengaluru'
+            'to_city' => 'Bengaluru',
         ]);
 
         // UPDATE
@@ -242,7 +241,7 @@ class EndToEndAdminOperationsTest extends TestCase
 
         // Admin rejects vehicle with audit note
         $rejectRes = $this->actingAs($this->admin)->postJson("/api/admin/vehicles/{$oldVehId}/reject", [
-            'admin_notes' => 'Vehicle is older than 8 years, taxi fitness standards not satisfied.'
+            'admin_notes' => 'Vehicle is older than 8 years, taxi fitness standards not satisfied.',
         ]);
         $rejectRes->assertStatus(200)
             ->assertJsonPath('vehicle.status', 'Rejected')
@@ -273,7 +272,7 @@ class EndToEndAdminOperationsTest extends TestCase
             'discount_fare' => 0.00,
             'total_amount' => 3270.00,
             'status' => 'Confirmed',
-            'start_otp' => '5182'
+            'start_otp' => '5182',
         ]);
 
         $createRes->assertStatus(201)->assertJson(['success' => true]);
@@ -285,13 +284,13 @@ class EndToEndAdminOperationsTest extends TestCase
             'pickup_location' => 'Koregaon Park, North Main Road',
             'drop_location' => 'BKC Trident Hotel',
             'status' => 'Confirmed',
-            'total_amount' => 3270.00
+            'total_amount' => 3270.00,
         ]);
         $editRes->assertStatus(200)->assertJson(['success' => true]);
 
         // 3. Admin allots driver
         $allotRes = $this->actingAs($this->admin)->postJson("/api/admin/bookings/{$bookingId}/allot-driver", [
-            'driver_id' => $this->driverProfile->id
+            'driver_id' => $this->driverProfile->id,
         ]);
         $allotRes->assertStatus(200)
             ->assertJson(['success' => true])
@@ -316,15 +315,15 @@ class EndToEndAdminOperationsTest extends TestCase
                         'taxable_amount',
                         'cgst',
                         'sgst',
-                        'total_amount'
-                    ]
-                ]
+                        'total_amount',
+                    ],
+                ],
             ]);
 
         // 5. Driver verifies ride start OTP
         $rideOtp = $booking['start_otp'];
         $otpRes = $this->actingAs($this->driverUser)->postJson("/api/driver/trips/{$bookingId}/verify-otp", [
-            'otp' => $rideOtp
+            'otp' => $rideOtp,
         ]);
         $otpRes->assertStatus(200)
             ->assertJson(['success' => true])

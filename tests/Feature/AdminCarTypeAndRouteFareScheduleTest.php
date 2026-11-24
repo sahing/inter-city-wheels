@@ -2,11 +2,11 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
 use App\Models\CarType;
 use App\Models\RouteFare;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class AdminCarTypeAndRouteFareScheduleTest extends TestCase
 {
@@ -26,7 +26,7 @@ class AdminCarTypeAndRouteFareScheduleTest extends TestCase
                 'name' => 'Vikram Singhania (Ops Admin)',
                 'password' => bcrypt('password123'),
                 'role' => 'admin',
-                'phone' => '+91 99000 00001'
+                'phone' => '+91 99000 00001',
             ]
         );
     }
@@ -39,7 +39,7 @@ class AdminCarTypeAndRouteFareScheduleTest extends TestCase
                 'name' => 'Rahul Verma',
                 'password' => bcrypt('password123'),
                 'role' => 'customer',
-                'phone' => '+91 98765 43210'
+                'phone' => '+91 98765 43210',
             ]
         );
     }
@@ -65,8 +65,8 @@ class AdminCarTypeAndRouteFareScheduleTest extends TestCase
         $response->assertJsonStructure([
             'success',
             'car_types' => [
-                '*' => ['id', 'name', 'category_key', 'rate_per_km', 'seats', 'is_active']
-            ]
+                '*' => ['id', 'name', 'category_key', 'rate_per_km', 'seats', 'is_active'],
+            ],
         ]);
         $this->assertTrue($response->json('success'));
         $carTypes = $response->json('car_types');
@@ -108,7 +108,7 @@ class AdminCarTypeAndRouteFareScheduleTest extends TestCase
         $carType = CarType::first();
 
         $updateData = [
-            'name' => $carType->name . ' Prime Edition',
+            'name' => $carType->name.' Prime Edition',
             'rate_per_km' => 16.50,
             'seats' => $carType->seats,
             'luggage' => $carType->luggage,
@@ -121,7 +121,7 @@ class AdminCarTypeAndRouteFareScheduleTest extends TestCase
 
         $this->assertDatabaseHas('car_types', [
             'id' => $carType->id,
-            'name' => $carType->name . ' Prime Edition',
+            'name' => $carType->name.' Prime Edition',
             'rate_per_km' => 16.50,
         ]);
     }
@@ -137,7 +137,7 @@ class AdminCarTypeAndRouteFareScheduleTest extends TestCase
         $response->assertJson(['success' => true]);
 
         $carType->refresh();
-        $this->assertEquals(!$originalStatus, (bool) $carType->is_active);
+        $this->assertEquals(! $originalStatus, (bool) $carType->is_active);
     }
 
     public function test_admin_can_create_route_with_custom_car_fare_schedule_and_departure_timings(): void

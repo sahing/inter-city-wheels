@@ -11,6 +11,7 @@ class PlatformSetting extends Model
     public static function get(string $key, ?string $default = null): ?string
     {
         $setting = static::where('key', $key)->first();
+
         return $setting ? $setting->value : $default;
     }
 
@@ -18,5 +19,9 @@ class PlatformSetting extends Model
     {
         return static::updateOrCreate(['key' => $key], ['value' => $value]);
     }
-}
 
+    public static function isSchedulesAndBerthsEnabled(): bool
+    {
+        return static::get('enable_schedules_and_berths', '0') === '1';
+    }
+}

@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Driver;
+use App\Models\User;
+use App\Services\AlternateAuthService;
+use App\Services\Fast2SmsService;
+use App\Services\OtpService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use App\Models\User;
-use App\Models\Driver;
-use App\Services\Fast2SmsService;
-use App\Services\AlternateAuthService;
 
 class AuthController extends Controller
 {
@@ -21,12 +22,12 @@ class AuthController extends Controller
             'email' => 'required|email',
             'password' => 'required|string',
             'role' => 'nullable|string|in:customer,driver,admin',
-            'remember' => 'nullable|boolean'
+            'remember' => 'nullable|boolean',
         ]);
 
         $credentials = [
             'email' => strtolower(trim($validated['email'])),
-            'password' => $validated['password']
+            'password' => $validated['password'],
         ];
 
         $user = User::where('email', $credentials['email'])->first();
@@ -34,36 +35,40 @@ class AuthController extends Controller
         $passwordMatches = $user && Hash::check($credentials['password'], $user->password);
 
         // If user was created via Firebase/SSO and enters a new custom password (6+ chars) while default password is set
-        if ($user && !$passwordMatches && $user->auth_provider === 'firebase' && Hash::check('password123', $user->password) && strlen($credentials['password']) >= 6) {
+        if ($user && ! $passwordMatches && $user->auth_provider === 'firebase' && Hash::check('password123', $user->password) && strlen($credentials['password']) >= 6) {
             $user->update(['password' => Hash::make($credentials['password'])]);
             $passwordMatches = true;
         }
 
-        if (!$user || !$passwordMatches) {
-            if (!$request->wantsJson() && !$request->ajax()) {
+        if (! $user || ! $passwordMatches) {
+            if (! $request->wantsJson() && ! $request->ajax()) {
                 return back()->withErrors(['email' => 'Invalid email or password. Please verify your credentials.'])->withInput();
             }
+
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid email or password. Please verify your credentials.'
+                'message' => 'Invalid email or password. Please verify your credentials.',
             ], 422);
         }
 
         // If a specific role tab was selected in the login modal, check role match
-        if (!empty($validated['role']) && $user->role !== $validated['role']) {
-            $msg = "This account is registered as a " . ucfirst($user->role) . ". Please select the " . ucfirst($user->role) . " tab to log in.";
-            if (!$request->wantsJson() && !$request->ajax()) {
+        if (! empty($validated['role']) && $user->role !== $validated['role']) {
+            $msg = 'This account is registered as a '.ucfirst($user->role).'. Please select the '.ucfirst($user->role).' tab to log in.';
+            if (! $request->wantsJson() && ! $request->ajax()) {
                 return back()->withErrors(['email' => $msg])->withInput();
             }
+
             return response()->json([
                 'success' => false,
-                'message' => $msg
+                'message' => $msg,
             ], 422);
         }
 
         $remember = $request->boolean('remember');
         Auth::login($user, $remember);
         $request->session()->regenerate();
+
+        $redirectTo = $this->safeNext($request) ?? route('home');
 
         // Target landing tab according to role
         $targetTab = match ($user->role) {
@@ -72,23 +77,23 @@ class AuthController extends Controller
             default => 'cabs'
         };
 
-        if (!$request->wantsJson() && !$request->ajax()) {
-            return redirect()->route('home')->with('success', "Welcome back, {$user->name}!");
+        if (! $request->wantsJson() && ! $request->ajax()) {
+            return redirect($redirectTo)->with('success', "Welcome back, {$user->name}!");
         }
 
         return response()->json([
             'success' => true,
             'message' => "Welcome back, {$user->name}!",
-            'redirect_url' => route('home'),
+            'redirect_url' => $redirectTo,
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role,
                 'phone' => $user->phone,
-                'avatar' => $user->avatar ?? '👤'
+                'avatar' => $user->avatar ?? '👤',
             ],
-            'target_tab' => $targetTab
+            'target_tab' => $targetTab,
         ]);
     }
 
@@ -127,7 +132,7 @@ class AuthController extends Controller
                     'name' => $user->name,
                     'avatar' => '👨🏽‍✈️',
                     'vehicle_model' => trim($request->input('vehicle_model', 'Maruti Suzuki Ertiga')),
-                    'vehicle_plate' => strtoupper(trim($request->input('vehicle_plate', 'WB 02 ' . rand(10, 99) . ' ' . rand(1000, 9999)))),
+                    'vehicle_plate' => strtoupper(trim($request->input('vehicle_plate', 'WB 02 '.rand(10, 99).' '.rand(1000, 9999)))),
                     'fleet_category' => 'suv',
                     'rating' => 4.90,
                     'trips_count' => 0,
@@ -143,7 +148,7 @@ class AuthController extends Controller
 
         $targetTab = $user->role === 'driver' ? 'bidding' : 'cabs';
 
-        if (!$request->wantsJson() && !$request->ajax()) {
+        if (! $request->wantsJson() && ! $request->ajax()) {
             return redirect()->route('home')->with('success', "Welcome to Intercity Wheels, {$user->name}! Your account has been registered.");
         }
 
@@ -157,61 +162,64 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'role' => $user->role,
                 'phone' => $user->phone,
-                'avatar' => $user->avatar ?? '👤'
+                'avatar' => $user->avatar ?? '👤',
             ],
-            'target_tab' => $targetTab
+            'target_tab' => $targetTab,
         ]);
     }
 
     /**
-     * Dispatch OTP to mobile number via Fast2SMS API.
-     * Displays simulated OTP until real SMS credits & production gateway are integrated.
+     * Dispatch an OTP to a mobile number.
+     *
+     * P1-5: codes are issued through OtpService (CSPRNG, hashed at rest, TTL,
+     * attempt cap, per-phone send throttle). The code is only echoed back in
+     * demo mode — i.e. when no SMS gateway is configured — because otherwise
+     * the response would hand the login code to whoever asked for it.
      */
-    public function sendMobileOtp(Request $request, Fast2SmsService $smsService)
+    public function sendMobileOtp(Request $request, Fast2SmsService $smsService, OtpService $otpService)
     {
         $validated = $request->validate([
             'phone' => 'required|string|min:10|max:20',
             'role' => 'nullable|string|in:customer,driver,admin',
         ]);
 
-        $rawPhone = $validated['phone'];
-        $cleanPhone = preg_replace('/[^0-9]/', '', $rawPhone);
-        if (str_starts_with($cleanPhone, '91') && strlen($cleanPhone) === 12) {
-            $cleanPhone = substr($cleanPhone, 2);
-        } elseif (strlen($cleanPhone) > 10) {
-            $cleanPhone = substr($cleanPhone, -10);
-        }
+        $cleanPhone = $otpService->normalizePhone($validated['phone']);
 
         if (strlen($cleanPhone) < 10) {
             return response()->json([
                 'success' => false,
-                'message' => 'Please enter a valid 10-digit mobile number.'
+                'message' => 'Please enter a valid 10-digit mobile number.',
             ], 422);
         }
 
-        // Generate 4-digit numeric OTP
-        $otp = sprintf('%04d', rand(1000, 9999));
+        $issued = $otpService->issue($cleanPhone, 'login');
 
-        // Save OTP to session & cache with 10 minutes TTL
-        session([
-            "login_otp_{$cleanPhone}" => $otp,
-            "login_otp_time_{$cleanPhone}" => now()->timestamp,
-        ]);
-        \Illuminate\Support\Facades\Cache::put("login_otp_{$cleanPhone}", $otp, now()->addMinutes(10));
+        if ($issued['throttled']) {
+            return response()->json([
+                'success' => false,
+                'code' => 'otp_throttled',
+                'message' => 'Too many OTP requests for this number. Try again in '
+                    .$issued['retry_after'].' seconds.',
+                'retry_after' => $issued['retry_after'],
+            ], 429);
+        }
 
         // Attempt SMS dispatch via Fast2SMS
-        $smsResult = $smsService->sendOtp($cleanPhone, $otp);
+        $smsResult = $smsService->sendOtp($cleanPhone, $issued['otp']);
+        $isDemo = ! ($smsResult['sent'] ?? false);
 
         $msg = $smsResult['sent']
             ? "OTP sent to +91 {$cleanPhone} via Fast2SMS."
-            : "OTP for +91 {$cleanPhone} generated: {$otp} (Demo Mode)";
+            : "OTP for +91 {$cleanPhone} generated: {$issued['otp']} (Demo Mode)";
 
         return response()->json([
             'success' => true,
             'message' => $msg,
             'phone' => $cleanPhone,
-            'otp' => $otp, // Expose OTP until real SMS API gateway delivers in production
-            'display_otp' => $otp,
+            // Never leak a live code once a real gateway is delivering it.
+            'otp' => $isDemo ? $issued['otp'] : null,
+            'display_otp' => $isDemo ? $issued['otp'] : null,
+            'expires_in' => $issued['expires_in'],
             'sms_sent' => $smsResult['sent'],
             'is_demo' => $smsResult['is_demo'] ?? true,
             'gateway_note' => $smsResult['message'] ?? null,
@@ -221,7 +229,7 @@ class AuthController extends Controller
     /**
      * Verify mobile OTP and authenticate/provision user session.
      */
-    public function verifyMobileOtp(Request $request)
+    public function verifyMobileOtp(Request $request, OtpService $otpService)
     {
         $validated = $request->validate([
             'phone' => 'required|string|min:10|max:20',
@@ -229,48 +237,44 @@ class AuthController extends Controller
             'role' => 'nullable|string|in:customer,driver,admin',
         ]);
 
-        $rawPhone = $validated['phone'];
-        $cleanPhone = preg_replace('/[^0-9]/', '', $rawPhone);
-        if (str_starts_with($cleanPhone, '91') && strlen($cleanPhone) === 12) {
-            $cleanPhone = substr($cleanPhone, 2);
-        } elseif (strlen($cleanPhone) > 10) {
-            $cleanPhone = substr($cleanPhone, -10);
-        }
-
+        $cleanPhone = $otpService->normalizePhone($validated['phone']);
         $inputOtp = trim($validated['otp']);
 
-        $storedOtp = session("login_otp_{$cleanPhone}") 
-            ?? \Illuminate\Support\Facades\Cache::get("login_otp_{$cleanPhone}");
+        $verification = $otpService->verify($cleanPhone, $inputOtp, 'login');
 
-        // Allow demo master OTP 1234 in local testing or matching generated OTP
-        $isValid = ($storedOtp && $storedOtp === $inputOtp) || ($inputOtp === '1234');
+        if (! $verification['ok']) {
+            $messages = [
+                'missing' => 'No active OTP for this number. Please request a new one.',
+                'expired' => 'This OTP has expired. Please request a new one.',
+                'locked' => 'Too many incorrect attempts. Please request a new OTP.',
+                'invalid' => 'Invalid OTP. '.$verification['attempts_left'].' attempt(s) remaining.',
+            ];
 
-        if (!$isValid) {
+            $status = $verification['reason'] === 'locked' ? 429 : 422;
+
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid or expired OTP. Please enter the OTP displayed on screen or request a new OTP.'
-            ], 422);
+                'code' => 'otp_'.$verification['reason'],
+                'message' => $messages[$verification['reason']] ?? 'Invalid or expired OTP.',
+                'attempts_left' => $verification['attempts_left'],
+            ], $status);
         }
-
-        // Clean up OTP from session & cache
-        session()->forget(["login_otp_{$cleanPhone}", "login_otp_time_{$cleanPhone}"]);
-        \Illuminate\Support\Facades\Cache::forget("login_otp_{$cleanPhone}");
 
         // Look up user by phone or partial phone match
         $user = User::where('phone', $cleanPhone)
-            ->orWhere('phone', '+91 ' . $cleanPhone)
+            ->orWhere('phone', '+91 '.$cleanPhone)
             ->orWhere('phone', 'like', "%{$cleanPhone}%")
             ->first();
 
         $role = $validated['role'] ?? 'customer';
 
-        if (!$user) {
+        if (! $user) {
             // Auto-provision user account for this phone
             $user = User::create([
-                'name' => ($role === 'driver' ? 'Chauffeur ' : 'Customer ') . substr($cleanPhone, -4),
+                'name' => ($role === 'driver' ? 'Chauffeur ' : 'Customer ').substr($cleanPhone, -4),
                 'email' => "user{$cleanPhone}@intercitywheels.com",
                 'phone' => "+91 {$cleanPhone}",
-                'password' => Hash::make('otp_' . bin2hex(random_bytes(6))),
+                'password' => Hash::make('otp_'.bin2hex(random_bytes(6))),
                 'role' => $role,
                 'avatar' => $role === 'driver' ? '👨🏽‍✈️' : ($role === 'admin' ? '🛡️' : '👤'),
             ]);
@@ -283,7 +287,7 @@ class AuthController extends Controller
                     'name' => $user->name,
                     'avatar' => '👨🏽‍✈️',
                     'vehicle_model' => 'Toyota Innova Crysta',
-                    'vehicle_plate' => 'WB 02 QX ' . rand(1000, 9999),
+                    'vehicle_plate' => 'WB 02 QX '.rand(1000, 9999),
                     'fleet_category' => 'suv',
                     'rating' => 4.90,
                     'trips_count' => 0,
@@ -303,7 +307,7 @@ class AuthController extends Controller
             default => 'cabs'
         };
 
-        if (!$request->wantsJson() && !$request->ajax()) {
+        if (! $request->wantsJson() && ! $request->ajax()) {
             return redirect()->route('home')->with('success', "Welcome, {$user->name}!");
         }
 
@@ -317,9 +321,9 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'role' => $user->role,
                 'phone' => $user->phone,
-                'avatar' => $user->avatar ?? '👤'
+                'avatar' => $user->avatar ?? '👤',
             ],
-            'target_tab' => $targetTab
+            'target_tab' => $targetTab,
         ]);
     }
 
@@ -333,25 +337,27 @@ class AuthController extends Controller
         $demoEmails = [
             'admin' => 'admin@intercitywheels.com',
             'driver' => 'driver@intercitywheels.com',
-            'customer' => 'customer@intercitywheels.com'
+            'customer' => 'customer@intercitywheels.com',
         ];
 
         $targetEmail = $demoEmails[$role] ?? 'customer@intercitywheels.com';
         $user = User::where('email', $targetEmail)->first();
 
-        if (!$user) {
+        if (! $user) {
             $user = User::create([
-                'name' => ucfirst($role) . ' User',
+                'name' => ucfirst($role).' User',
                 'email' => $targetEmail,
                 'password' => Hash::make('password123'),
                 'role' => $role,
                 'phone' => '+91 98000 00000',
-                'avatar' => $role === 'admin' ? '🛡️' : ($role === 'driver' ? '👨🏽‍✈️' : '👤')
+                'avatar' => $role === 'admin' ? '🛡️' : ($role === 'driver' ? '👨🏽‍✈️' : '👤'),
             ]);
         }
 
         Auth::login($user, true);
         $request->session()->regenerate();
+
+        $redirectTo = $this->safeNext($request) ?? route('home');
 
         $targetTab = match ($user->role) {
             'admin' => 'admin',
@@ -359,23 +365,23 @@ class AuthController extends Controller
             default => 'cabs'
         };
 
-        if (!$request->wantsJson() && !$request->ajax()) {
-            return redirect()->route('home')->with('success', "Logged in as " . ucfirst($user->role));
+        if (! $request->wantsJson() && ! $request->ajax()) {
+            return redirect($redirectTo)->with('success', 'Logged in as '.ucfirst($user->role));
         }
 
         return response()->json([
             'success' => true,
-            'message' => "Logged in as " . ucfirst($user->role) . " ({$user->name})",
-            'redirect_url' => route('home'),
+            'message' => 'Logged in as '.ucfirst($user->role)." ({$user->name})",
+            'redirect_url' => $redirectTo,
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role,
                 'phone' => $user->phone,
-                'avatar' => $user->avatar ?? '👤'
+                'avatar' => $user->avatar ?? '👤',
             ],
-            'target_tab' => $targetTab
+            'target_tab' => $targetTab,
         ]);
     }
 
@@ -392,11 +398,37 @@ class AuthController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Successfully logged out.',
-                'redirect_url' => route('home')
+                'redirect_url' => route('home'),
             ]);
         }
 
         return redirect()->route('home')->with('info', 'Successfully signed out.');
+    }
+
+    /**
+     * Only accept an in-app relative path as a post-login destination.
+     *
+     * The bidding page sends drivers here as /?next=/bid/{token}. Anything with
+     * a host, a scheme, a protocol-relative prefix or control characters is
+     * ignored, so this can never become an open redirect.
+     */
+    private function safeNext(Request $request): ?string
+    {
+        $next = (string) $request->input('next', '');
+
+        if ($next === '') {
+            return null;
+        }
+
+        if (! str_starts_with($next, '/') || str_starts_with($next, '//')) {
+            return null;
+        }
+
+        if (preg_match('/[\x00-\x1f\x7f\\\\]/', $next) === 1) {
+            return null;
+        }
+
+        return $next;
     }
 
     /**
@@ -406,10 +438,10 @@ class AuthController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json([
                 'authenticated' => false,
-                'user' => null
+                'user' => null,
             ]);
         }
 
@@ -421,8 +453,8 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'role' => $user->role,
                 'phone' => $user->phone,
-                'avatar' => $user->avatar ?? '👤'
-            ]
+                'avatar' => $user->avatar ?? '👤',
+            ],
         ]);
     }
 
@@ -433,7 +465,7 @@ class AuthController extends Controller
     {
         return response()->json([
             'success' => true,
-            'config' => $authService->getPublicConfig()
+            'config' => $authService->getPublicConfig(),
         ]);
     }
 
@@ -459,17 +491,17 @@ class AuthController extends Controller
         if (empty($validated['email']) && empty($validated['firebase_id']) && empty($validated['uid']) && empty($validated['id_token'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'Please provide an email or Firebase ID.'
+                'message' => 'Please provide an email or Firebase ID.',
             ], 422);
         }
 
         $result = $authService->authenticateWithFirebase($validated);
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json($result, 422);
         }
 
-        if (!$request->wantsJson() && !$request->ajax()) {
+        if (! $request->wantsJson() && ! $request->ajax()) {
             return redirect()->route('home')->with('success', $result['message']);
         }
 
@@ -496,11 +528,11 @@ class AuthController extends Controller
 
         $result = $authService->authenticateWithClerk($validated);
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json($result, 422);
         }
 
-        if (!$request->wantsJson() && !$request->ajax()) {
+        if (! $request->wantsJson() && ! $request->ajax()) {
             return redirect()->route('home')->with('success', $result['message']);
         }
 

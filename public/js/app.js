@@ -2,6 +2,50 @@
 // Intercity Wheels - Interactive Platform Engine
 // ==========================================
 
+// ------------------------------------------------------------------
+// CSRF protection for every state-changing request.
+//
+// Laravel now enforces CSRF on /api/* and the auth endpoints (see
+// bootstrap/app.php). Rather than threading a token through ~70 fetch() calls,
+// wrap fetch once: unsafe methods get the token from the <meta> tag that
+// layouts/app.blade.php renders into every page.
+// ------------------------------------------------------------------
+(function installCsrfFetchWrapper() {
+  if (typeof window.fetch !== 'function') return;
+
+  const originalFetch = window.fetch.bind(window);
+  const SAFE_METHODS = ['GET', 'HEAD', 'OPTIONS'];
+
+  function csrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : null;
+  }
+
+  window.fetch = function (input, init) {
+    const options = Object.assign({}, init || {});
+    const method = String(
+      options.method || (typeof input === 'object' && input && input.method) || 'GET'
+    ).toUpperCase();
+
+    if (!SAFE_METHODS.includes(method)) {
+      const token = csrfToken();
+
+      if (token) {
+        const headers = new Headers(
+          options.headers || (typeof input === 'object' && input ? input.headers : undefined)
+        );
+
+        if (!headers.has('X-CSRF-TOKEN')) headers.set('X-CSRF-TOKEN', token);
+        if (!headers.has('X-Requested-With')) headers.set('X-Requested-With', 'XMLHttpRequest');
+
+        options.headers = headers;
+      }
+    }
+
+    return originalFetch(input, options);
+  };
+})();
+
 // Pre-defined Cities & Route Matrix (mutable — synced from DB at runtime)
 let CITY_DATABASE = {
   "pune": { name: "Pune", state: "Maharashtra", lat: 18.5204, lng: 73.8567 },
@@ -439,10 +483,19 @@ function initNavigation() {
 }
 
 function switchTab(tabId) {
-  // Role-based navigation guard
+  // Role-based navigation guard & Feature Flag guard
   const userRole = window.CURRENT_USER?.role;
+  const isSchedulesEnabled = window.PLATFORM_SETTINGS?.enable_schedules_and_berths == '1' || window.PLATFORM_SETTINGS?.enable_schedules_and_berths === true;
+
+  if (tabId === 'schedules' && !isSchedulesEnabled && userRole !== 'admin') {
+    tabId = 'cabs';
+    if (typeof showToast === 'function') {
+      showToast('Schedules & Berths option is currently disabled.', 'info');
+    }
+  }
+
   if (userRole === 'customer') {
-    const customerTabs = ['cabs', 'schedules', 'my-bookings'];
+    const customerTabs = isSchedulesEnabled ? ['cabs', 'schedules', 'my-bookings'] : ['cabs', 'my-bookings'];
     if (!customerTabs.includes(tabId)) {
       tabId = 'cabs';
     }
@@ -452,7 +505,7 @@ function switchTab(tabId) {
       tabId = 'driver-trips';
     }
   } else if (!userRole) {
-    const guestTabs = ['cabs', 'schedules'];
+    const guestTabs = isSchedulesEnabled ? ['cabs', 'schedules'] : ['cabs'];
     if (!guestTabs.includes(tabId)) {
       tabId = 'cabs';
     }
@@ -583,14 +636,16 @@ function initCabsModule() {
   const nightCheck = document.getElementById('addon-night');
   const luggageCheck = document.getElementById('addon-luggage');
 
-  if (tollCheck) tollCheck.addEventListener('change', (e) => { state.cab.includeTolls = e.target.checked; updateTotalCabFare(); });
+  // Every option below changes what the server charges, so re-quote rather
+  // than recomputing locally.
+  if (tollCheck) tollCheck.addEventListener('change', (e) => { state.cab.includeTolls = e.target.checked; refreshCabQuote(); });
   if (petCheck) petCheck.addEventListener('change', (e) => { 
     state.cab.petFriendly = e.target.checked; 
     if (typeof updateDynamicFieldsVisibility === 'function') updateDynamicFieldsVisibility();
-    updateTotalCabFare(); 
+    refreshCabQuote(); 
   });
-  if (nightCheck) nightCheck.addEventListener('change', (e) => { state.cab.nightAllowance = e.target.checked; updateTotalCabFare(); });
-  if (luggageCheck) luggageCheck.addEventListener('change', (e) => { state.cab.luggageCarrier = e.target.checked; updateTotalCabFare(); });
+  if (nightCheck) nightCheck.addEventListener('change', (e) => { state.cab.nightAllowance = e.target.checked; refreshCabQuote(); });
+  if (luggageCheck) luggageCheck.addEventListener('change', (e) => { state.cab.luggageCarrier = e.target.checked; refreshCabQuote(); });
 
   // Coupon Application
   const couponBtn = document.getElementById('apply-coupon-btn');
@@ -1128,27 +1183,129 @@ function updateRentalRouteStats() {
   updateRouteRecapTexts();
   updateTotalCabFare();
 
-  // Async server-side route calculation sync
-  const queryFrom = document.getElementById('rental-from-city')?.value || from;
-  const queryTo = document.getElementById('rental-to-city')?.value || to;
-  if (queryFrom && queryTo && queryFrom.trim().toLowerCase() !== queryTo.trim().toLowerCase()) {
-    fetch(`/api/routes/calculate?from=${encodeURIComponent(queryFrom.trim())}&to=${encodeURIComponent(queryTo.trim())}&trip_type=${state.cab.tripType || 'oneway'}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data && data.success && data.route) {
-          state.cab.distance = data.route.distance_km;
-          state.cab.travelTime = data.route.estimated_time;
-          state.cab.tollEstimate = data.route.base_toll;
-          updateRouteRecapTexts();
-          if (state.cab.currentStep === 2) {
-            renderRentalVehicles(activeRentalFilter, activeRentalSort);
-          } else if (state.cab.currentStep === 3) {
-            updateTotalCabFare();
-          }
-        }
-      })
-      .catch(() => {});
+  // Server-side route + price calculation (single source of truth, P1-2)
+  refreshCabQuote();
+}
+
+// ------------------------------------------------------------------
+// Server-quoted pricing (P1-2).
+//
+// The browser no longer decides what a trip costs. It asks
+// /api/routes/calculate for the same itemisation the booking endpoint will
+// charge (base, tolls, add-ons, coupon) and renders those numbers. If the
+// server cannot measure the route it says so, and no fare is shown.
+// ------------------------------------------------------------------
+function cabQuoteParams() {
+  const tripType = state.cab.tripType || 'oneway';
+  const params = new URLSearchParams();
+
+  let from = '';
+  let to = '';
+
+  if (tripType === 'local') {
+    from = document.getElementById('rental-local-city')?.value.trim() || 'Kolkata';
+    to = from;
+    params.set('local_package', document.getElementById('rental-local-package')?.value || '8_80');
+  } else if (tripType === 'roundtrip') {
+    from = document.getElementById('rental-rt-from')?.value.trim() || '';
+    to = document.getElementById('rental-rt-to')?.value.trim() || '';
+  } else if (tripType === 'airport') {
+    const dir = document.querySelector('input[name="airport_direction"]:checked')?.value || 'pickup';
+    const apt = document.getElementById('rental-airport-name')?.value || 'Airport';
+    const city = document.getElementById('rental-airport-address')?.value || 'City Area';
+    from = dir === 'pickup' ? city : apt;
+    to = dir === 'pickup' ? apt : city;
+    params.set('airport_type', dir);
+  } else {
+    from = document.getElementById('rental-from-city')?.value.trim() || '';
+    to = document.getElementById('rental-to-city')?.value.trim() || '';
   }
+
+  if (!from || !to) return null;
+
+  params.set('from', from);
+  params.set('to', to);
+  params.set('trip_type', tripType);
+  params.set('fleet', state.cab.selectedFleet || 'suv');
+  params.set('include_tolls', state.cab.includeTolls ? '1' : '0');
+  if (state.cab.petFriendly) params.set('pet_friendly', '1');
+  if (state.cab.nightAllowance) params.set('night_allowance', '1');
+  if (state.cab.luggageCarrier) params.set('luggage_carrier', '1');
+  if (state.cab.appliedCoupon) params.set('coupon', state.cab.appliedCoupon);
+
+  return params;
+}
+
+let cabQuoteRequestId = 0;
+
+async function refreshCabQuote() {
+  const params = cabQuoteParams();
+
+  if (!params) {
+    state.cab.serverQuote = null;
+    state.cab.quoteError = null;
+    return;
+  }
+
+  const requestId = ++cabQuoteRequestId;
+
+  try {
+    const res = await fetch('/api/routes/calculate?' + params.toString());
+    const data = await res.json();
+
+    // A later request supersedes this one (fast typing must not flicker).
+    if (requestId !== cabQuoteRequestId) return;
+
+    if (data && data.success) {
+      state.cab.serverQuote = data;
+      state.cab.quoteError = null;
+
+      if (data.route) {
+        state.cab.distance = data.route.distance_km;
+        state.cab.travelTime = data.route.estimated_time;
+        state.cab.tollEstimate = data.route.base_toll;
+        updateRouteRecapTexts();
+      }
+
+      // The coupon may have been rejected by the server: reflect that.
+      if (state.cab.appliedCoupon && data.quote && data.quote.coupon && !data.quote.coupon.applied) {
+        state.cab.appliedCoupon = null;
+        const msgEl = document.getElementById('coupon-msg');
+        if (msgEl) {
+          msgEl.textContent = '❌ ' + (data.quote.coupon.message || 'Coupon could not be applied.');
+          msgEl.style.color = '#dc2626';
+        }
+      }
+    } else {
+      state.cab.serverQuote = null;
+      state.cab.quoteError = (data && data.message) || 'We could not price this trip.';
+      const msgEl = document.getElementById('coupon-msg');
+      if (msgEl && state.cab.appliedCoupon) {
+        msgEl.textContent = '❌ ' + state.cab.quoteError;
+        msgEl.style.color = '#dc2626';
+      }
+    }
+  } catch (err) {
+    if (requestId === cabQuoteRequestId) {
+      state.cab.serverQuote = null;
+    }
+  }
+
+  if (state.cab.currentStep === 2) {
+    renderRentalVehicles(activeRentalFilter, activeRentalSort);
+  } else if (state.cab.currentStep === 3) {
+    updateTotalCabFare();
+  }
+}
+
+function serverFleetTotal(fleetKey) {
+  const breakdown = state.cab.serverQuote && state.cab.serverQuote.itemized_breakdown;
+
+  if (breakdown && breakdown[fleetKey] && typeof breakdown[fleetKey].total === 'number') {
+    return breakdown[fleetKey].total;
+  }
+
+  return null;
 }
 
 // Explore Cabs Validation & Results Navigation
@@ -1219,11 +1376,15 @@ window.renderRentalVehicles = function (filterCat = 'all', sortBy = 'recommended
   }
 
   let fleets = Object.entries(FLEET_TYPES).map(([key, f]) => {
+    // Prefer the server's itemised quote for this fleet; fall back to a local
+    // estimate only when the quote is unavailable (offline / mid-flight).
+    const quotedTotal = serverFleetTotal(key);
+
     let baseFare = Math.round(dist * f.ratePerKm);
     let tollFare = state.cab.includeTolls ? (state.cab.tollEstimate || 120) : 0;
     if (state.cab.tripType === 'roundtrip') tollFare = Math.round(tollFare * 1.8);
     if (state.cab.tripType === 'local') tollFare = 0;
-    let totalFare = baseFare + tollFare;
+    let totalFare = quotedTotal !== null ? quotedTotal : (baseFare + tollFare);
 
     return {
       key,
@@ -1328,7 +1489,9 @@ window.selectRentalVehicle = function (fleetKey) {
   if (pInput) pInput.value = fromVal.includes('Sector') || fromVal.includes('Bay') || fromVal.includes('Terminal') ? fromVal : `${fromVal} Area`;
   if (dInput) dInput.value = toVal.includes('Sector') || toVal.includes('Bay') || toVal.includes('Terminal') ? toVal : `${toVal} Landmark`;
 
-  updateTotalCabFare();
+  // The selected fleet is part of the quote request, so refresh it before the
+  // summary is shown.
+  refreshCabQuote();
   goToCabStep(3);
 
   const s3 = document.getElementById('cab-step-3');
@@ -1365,35 +1528,51 @@ window.updateDynamicFieldsVisibility = function () {
 };
 
 window.applyRentalCoupon = function () {
+  applyCouponCode();
+};
+
+// Coupons are validated and priced by the server. The browser used to hardcode
+// FIRSTWHEELS / INTERCITY100 and invent the discount (P1-2) — a coupon added in
+// the admin panel never worked, and an expired one still "applied".
+async function applyCouponCode() {
   const input = document.getElementById('cab-coupon-input');
   const val = input ? input.value.trim().toUpperCase() : '';
-  const msg = document.getElementById('coupon-msg');
-  if (msg) msg.style.display = 'block';
+  const msgEl = document.getElementById('coupon-msg');
 
-  if (val === 'FIRSTWHEELS') {
-    state.cab.appliedCoupon = 'FIRSTWHEELS';
-    if (msg) {
-      msg.textContent = '🎉 Coupon FIRSTWHEELS applied! 15% discount saved.';
-      msg.style.color = '#16a34a';
+  if (msgEl) msgEl.style.display = 'block';
+
+  if (!val) {
+    state.cab.appliedCoupon = null;
+    if (msgEl) {
+      msgEl.textContent = 'Enter a promo code to apply.';
+      msgEl.style.color = '#64748b';
     }
-    showToast('Promo code FIRSTWHEELS applied successfully!', 'success');
-  } else if (val === 'INTERCITY100') {
-    state.cab.appliedCoupon = 'INTERCITY100';
-    if (msg) {
-      msg.textContent = '🎉 Coupon INTERCITY100 applied! Flat ₹100 off.';
-      msg.style.color = '#16a34a';
+    refreshCabQuote();
+    return;
+  }
+
+  state.cab.appliedCoupon = val;
+  await refreshCabQuote();
+
+  const applied = state.cab.serverQuote && state.cab.serverQuote.quote && state.cab.serverQuote.quote.coupon;
+
+  if (applied && applied.applied) {
+    if (msgEl) {
+      msgEl.textContent = `🎉 Coupon ${val} applied — ₹${Number(applied.discount).toLocaleString('en-IN')} off.`;
+      msgEl.style.color = '#16a34a';
     }
-    showToast('Promo code INTERCITY100 applied successfully!', 'success');
+    showToast(`Promo code ${val} applied successfully!`, 'success');
   } else {
     state.cab.appliedCoupon = null;
-    if (msg) {
-      msg.textContent = '❌ Invalid coupon. Try FIRSTWHEELS or INTERCITY100';
-      msg.style.color = '#dc2626';
+    const reason = (applied && applied.message) || state.cab.quoteError || 'Coupon could not be applied.';
+    if (msgEl) {
+      msgEl.textContent = '❌ ' + reason;
+      msgEl.style.color = '#dc2626';
     }
-    showToast('Invalid coupon code.', 'warning');
+    showToast(reason, 'warning');
+    refreshCabQuote();
   }
-  updateTotalCabFare();
-};
+}
 
 // ==========================================
 // Stepper Flow Navigation Engine
@@ -1678,12 +1857,12 @@ async function handleConfirmCabBooking() {
       id: b.booking_reference,
       type: 'Outstation Cab',
       route: `${fromCityName} → ${toCityName}`,
-      date: 'Scheduled, Confirmed',
+      date: 'Scheduled',
       operator: `${FLEET_TYPES[state.cab.selectedFleet]?.name || 'Executive SUV'} (Intercity Wheels)`,
       berths: ['Private Car Rental'],
       passengers: [customerName],
-      amount: b.total_amount,
-      status: 'Confirmed & Reserved',
+      amount: Number(b.total_amount),
+      status: b.status || 'Requested',
       otp: String(b.start_otp)
     };
 
@@ -1702,8 +1881,11 @@ async function handleConfirmCabBooking() {
     showToast(data.message || 'Booking validation error. Please verify input.', 'danger');
   }
 } catch (err) {
+  // Previously this opened the payment sheet and then minted a ticket with a
+  // random reference, so a failed request still looked like a successful
+  // booking. A booking only exists once the server says so.
   console.warn('Booking submission error:', err);
-  openPaymentModal('cab');
+  showToast('We could not reach the booking service. Please try again — no booking has been created.', 'danger');
 } finally {
   if (btn) {
     btn.disabled = false;
@@ -1745,29 +1927,40 @@ function handleCityChange() {
 
 function updateTotalCabFare() {
   const fleet = FLEET_TYPES[state.cab.selectedFleet] || FLEET_TYPES.suv;
+  const serverQuote = state.cab.serverQuote && state.cab.serverQuote.quote;
+
   let dist = state.cab.distance;
   if (state.cab.tripType === 'roundtrip') dist = dist * 2;
 
-  let baseFare = dist * fleet.ratePerKm;
-  let tolls = state.cab.includeTolls ? (ROUTE_MATRIX[`${state.cab.fromCity}-${state.cab.toCity}`]?.toll || 400) : 0;
-  if (state.cab.tripType === 'roundtrip') tolls = tolls * 1.8;
+  let baseFare;
+  let tolls;
+  let addons;
+  let discount;
+  let total;
 
-  let addons = 0;
-  if (state.cab.petFriendly) addons += state.admin.pricingRules.petCharge;
-  if (state.cab.nightAllowance) addons += state.admin.pricingRules.nightCharge;
-  if (state.cab.luggageCarrier) addons += state.admin.pricingRules.luggageCharge;
+  if (serverQuote) {
+    // Authoritative numbers straight from FareCalculatorService.
+    baseFare = Number(serverQuote.base_fare) || 0;
+    tolls = Number(serverQuote.toll_fare) || 0;
+    addons = Number(serverQuote.addon_fare) || 0;
+    discount = Number(serverQuote.discount_fare) || 0;
+    total = Number(serverQuote.total_amount) || 0;
+  } else {
+    baseFare = dist * fleet.ratePerKm;
+    tolls = state.cab.includeTolls ? (ROUTE_MATRIX[`${state.cab.fromCity}-${state.cab.toCity}`]?.toll || 400) : 0;
+    if (state.cab.tripType === 'roundtrip') tolls = tolls * 1.8;
 
-  let subtotal = Math.round(baseFare + tolls + addons);
-  let discount = 0;
+    addons = 0;
+    if (state.cab.petFriendly) addons += state.admin.pricingRules.petCharge;
+    if (state.cab.nightAllowance) addons += state.admin.pricingRules.nightCharge;
+    if (state.cab.luggageCarrier) addons += state.admin.pricingRules.luggageCharge;
 
-  if (state.cab.appliedCoupon === 'FIRSTWHEELS') {
-    discount = Math.min(Math.round(subtotal * 0.15), 500);
-  } else if (state.cab.appliedCoupon === 'INTERCITY100') {
-    discount = 100;
+    const subtotal = Math.round(baseFare + tolls + addons);
+    discount = 0;
+    total = Math.max(subtotal - discount, 0);
   }
-  state.cab.discountAmount = discount;
 
-  const total = Math.max(subtotal - discount, 0);
+  state.cab.discountAmount = discount;
 
   // Update UI breakdown
   const elBase = document.getElementById('fare-base');
@@ -1776,45 +1969,25 @@ function updateTotalCabFare() {
   const elDiscount = document.getElementById('fare-discount');
   const elTotal = document.getElementById('fare-grand-total');
 
-  if (elBase) elBase.textContent = `₹${Math.round(baseFare)}`;
-  if (elTolls) elTolls.textContent = `₹${Math.round(tolls)}`;
-  if (elAddons) elAddons.textContent = `₹${addons}`;
-  if (elDiscount) elDiscount.textContent = `-₹${discount}`;
-  if (elTotal) elTotal.textContent = `₹${total.toLocaleString('en-IN')}`;
+  if (elBase) elBase.textContent = `₹${Math.round(baseFare).toLocaleString('en-IN')}`;
+  if (elTolls) elTolls.textContent = `₹${Math.round(tolls).toLocaleString('en-IN')}`;
+  if (elAddons) elAddons.textContent = `₹${Math.round(addons).toLocaleString('en-IN')}`;
+  if (elDiscount) elDiscount.textContent = `-₹${Math.round(discount).toLocaleString('en-IN')}`;
+  if (elTotal) elTotal.textContent = `₹${Math.round(total).toLocaleString('en-IN')}`;
 
-  // Update fleet prices
-  for (const [key, fData] of Object.entries(FLEET_TYPES)) {
+  // Update fleet prices on the comparison cards from the same source.
+  for (const key of Object.keys(FLEET_TYPES)) {
     const fPriceEl = document.getElementById(`fleet-price-${key}`);
     if (fPriceEl) {
-      let fTotal = Math.round(dist * fData.ratePerKm + (state.cab.includeTolls ? 400 : 0));
+      const quoted = serverFleetTotal(key);
+      const fTotal = quoted !== null ? quoted : Math.round(dist * FLEET_TYPES[key].ratePerKm + (state.cab.includeTolls ? 400 : 0));
       fPriceEl.textContent = `₹${fTotal.toLocaleString('en-IN')}`;
     }
   }
 }
 
-function applyCouponCode() {
-  const input = document.getElementById('cab-coupon-input');
-  const val = input.value.trim().toUpperCase();
-  const msgEl = document.getElementById('coupon-msg');
-
-  if (val === 'FIRSTWHEELS') {
-    state.cab.appliedCoupon = 'FIRSTWHEELS';
-    msgEl.textContent = '🎉 Coupon FIRSTWHEELS applied! 15% discount saved.';
-    msgEl.className = 'text-xs font-semibold text-emerald-600 mt-1';
-    showToast('Promo code FIRSTWHEELS applied successfully!', 'success');
-  } else if (val === 'INTERCITY100') {
-    state.cab.appliedCoupon = 'INTERCITY100';
-    msgEl.textContent = '🎉 Coupon INTERCITY100 applied! Flat ₹100 off.';
-    msgEl.className = 'text-xs font-semibold text-emerald-600 mt-1';
-    showToast('Promo code INTERCITY100 applied successfully!', 'success');
-  } else {
-    msgEl.textContent = '❌ Invalid coupon code. Try FIRSTWHEELS or INTERCITY100';
-    msgEl.className = 'text-xs font-semibold text-rose-600 mt-1';
-    state.cab.appliedCoupon = null;
-    showToast('Invalid coupon code entered.', 'warning');
-  }
-  updateTotalCabFare();
-}
+// Legacy alias kept because older markup binds applyCouponCode directly.
+// The implementation above validates the code server-side.
 
 // Leaflet OpenStreetMap Route Display
 function initMap() {
@@ -1969,6 +2142,7 @@ function toggleBerthSelection(cellElement, seatCode, price) {
     }
     state.schedules.selectedSeats.push({
       id: seatCode,
+      coach: cellElement.dataset.coach || null,
       price: price,
       type: state.schedules.activeDeck,
       window: ['L1', 'L4', 'L7', 'U1', 'U4'].includes(seatCode)
@@ -2489,6 +2663,7 @@ window.switchAdminSection = function (sectionId) {
     'locations': 'Service Locations & Network Hubs',
     'cab-routes': 'Outstation Cab Routes & Highway Matrix',
     'booking-types': 'Booking Types & Packages Management',
+    'bidding': 'Driver Bidding Marketplace',
     'berth-routes': 'Berth Routes & Sleeper Schedules',
     'berth-layouts': 'Vehicle Berth & Seat Customizer',
     'vehicles': 'Driver Vehicles & Fleet Approvals',
@@ -2497,6 +2672,11 @@ window.switchAdminSection = function (sectionId) {
   const crumbTitle = document.getElementById('admin-crumb-title');
   if (crumbTitle && titles[sectionId]) {
     crumbTitle.textContent = titles[sectionId];
+  }
+
+  // Lazily refresh the auction board the first time it is opened.
+  if (sectionId === 'bidding' && typeof window.renderAdminBiddings === 'function') {
+    window.renderAdminBiddings();
   }
 
   // 4. On mobile, automatically close sidebar after choosing item
@@ -2698,8 +2878,16 @@ function openPaymentModal(sourceType) {
     amount = state.schedules.selectedSeats.reduce((sum, s) => sum + s.price, 0);
     summary = `${state.schedules.selectedSeats.length} Bus Berths (${state.schedules.route})`;
   } else {
-    const fleet = FLEET_TYPES[state.cab.selectedFleet];
-    amount = Math.round(state.cab.distance * fleet.ratePerKm + (state.cab.includeTolls ? 400 : 0) - state.cab.discountAmount);
+    // Charge exactly what the server quoted (P1-2). No local arithmetic.
+    const serverQuote = state.cab.serverQuote && state.cab.serverQuote.quote;
+
+    if (serverQuote) {
+      amount = Number(serverQuote.total_amount) || 0;
+    } else {
+      const fleet = FLEET_TYPES[state.cab.selectedFleet];
+      amount = Math.round(state.cab.distance * fleet.ratePerKm + (state.cab.includeTolls ? 400 : 0) - state.cab.discountAmount);
+    }
+
     const fromName = CITY_DATABASE[state.cab.fromCity]?.name || state.cab.fromCity || 'Origin';
     const toName = CITY_DATABASE[state.cab.toCity]?.name || state.cab.toCity || 'Destination';
     summary = `Outstation Cab: ${fromName} → ${toName}`;
@@ -2717,64 +2905,79 @@ window.confirmMockPayment = async function (method) {
   modal.classList.remove('active');
 
   const source = modal.dataset.source;
-  const amount = parseInt(modal.dataset.amount, 10);
-  let otp = Math.floor(1000 + Math.random() * 9000);
-  let bookingRef = `ICW-${Math.floor(10000 + Math.random() * 90000)}`;
 
+  // The ticket must always reflect a real server-side booking (P0-7 / honesty).
+  // Nothing is fabricated any more: no random reference, no random OTP.
   if (source === 'bus') {
+    const route = state.schedules.route || '';
+    const [routeFrom, routeTo] = route.split('→').map(part => (part || '').trim());
+
+    const busPayload = {
+      service_type: 'bus',
+      from_city: routeFrom || 'Pune',
+      to_city: routeTo || 'Goa',
+      pickup_location: state.schedules.pickup || `${routeFrom || 'Pune'} Bus Terminal`,
+      drop_location: state.schedules.dropoff || `${routeTo || 'Goa'} Bus Stand`,
+      customer_name: (state.schedules.passengers[0]?.name) || window.CURRENT_USER?.name || 'Passenger',
+      customer_phone: window.CURRENT_USER?.phone || '+91 98220 11920',
+      customer_email: window.CURRENT_USER?.email || 'traveller@intercitywheels.com',
+      selected_units: state.schedules.selectedSeats.map(s => s.id),
+      coach_code: state.schedules.selectedSeats[0]?.coach || state.schedules.coachCode || null,
+      passengers: state.schedules.passengers
+    };
+
+    let booked = null;
+
     try {
-      const csrfMeta = document.querySelector('meta[name="csrf-token"]');
-      const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
-      const busPayload = {
-        service_type: 'bus',
-        from_city: 'Pune',
-        to_city: 'Goa',
-        pickup_location: 'Swargate Bay 4, Pune',
-        drop_location: 'Panjim KTC, Goa',
-        customer_name: (state.schedules.passengers[0]?.name) || window.CURRENT_USER?.name || 'Passenger',
-        customer_phone: window.CURRENT_USER?.phone || '+91 98220 11920',
-        customer_email: window.CURRENT_USER?.email || 'traveller@intercitywheels.com',
-        selected_units: state.schedules.selectedSeats.map(s => s.id),
-        passengers: state.schedules.passengers
-      };
       const res = await fetch('/api/bookings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': csrfToken
+          'Accept': 'application/json'
         },
         body: JSON.stringify(busPayload)
       });
+
       const data = await res.json();
-      if (data.success && data.booking) {
-        bookingRef = data.booking.booking_reference;
-        otp = data.booking.start_otp;
+
+      if (res.ok && data.success && data.booking) {
+        booked = data.booking;
+      } else {
+        showToast(data.message || 'Those berths could not be booked. Please pick again.', 'danger');
+        return;
       }
     } catch (err) {
-      console.warn('Bus booking API sync:', err);
+      console.warn('Bus booking API error:', err);
+      showToast('We could not reach the booking service. No berths were booked.', 'danger');
+      return;
     }
+
+    const booking = {
+      id: booked.booking_reference,
+      type: 'Volvo AC Sleeper',
+      route: booked.route_summary,
+      date: 'Today, Scheduled',
+      operator: state.schedules.operator || 'Intercity Sleeper',
+      berths: (booked.selected_units || []).map(String),
+      passengers: state.schedules.passengers.map(p => p.name || 'Passenger'),
+      amount: Number(booked.total_amount),
+      status: 'Requested',
+      otp: String(booked.start_otp)
+    };
+
+    state.bookings.unshift(booking);
+    showToast(`Payment of ₹${booking.amount.toLocaleString('en-IN')} via ${method} recorded. Reference ${booking.id}.`, 'success');
+
+    setTimeout(() => {
+      showTicketModal(booking);
+    }, 400);
+
+    return;
   }
 
-  const booking = {
-    id: bookingRef,
-    type: source === 'bus' ? 'Volvo AC Sleeper' : 'Outstation Cab',
-    route: source === 'bus' ? state.schedules.route : `${CITY_DATABASE[state.cab.fromCity].name} → ${CITY_DATABASE[state.cab.toCity].name}`,
-    date: 'Today, Scheduled',
-    operator: source === 'bus' ? state.schedules.operator : `${FLEET_TYPES[state.cab.selectedFleet].name} (Intercity Fleet)`,
-    berths: source === 'bus' ? state.schedules.selectedSeats.map(s => s.id) : ['Private Cab'],
-    passengers: source === 'bus' ? state.schedules.passengers.map(p => p.name || 'Passenger') : ['Verified Traveller'],
-    amount: amount,
-    status: 'Confirmed & Paid',
-    otp: String(otp)
-  };
-
-  state.bookings.unshift(booking);
-  showToast(`Payment of ₹${amount} via ${method} Successful!`, 'success');
-
-  setTimeout(() => {
-    showTicketModal(booking);
-  }, 400);
+  // Cab bookings are created by the booking form; there is nothing to create
+  // here, so never invent one.
+  showToast('No pending booking to pay for. Please complete the booking form first.', 'warning');
 };
 
 function showTicketModal(booking) {
@@ -7059,6 +7262,87 @@ window.toggleCabRouteStatus = async function (id) {
     }
   };
 
+  window.toggleAdminSchedulesAndBerths = async function(enable) {
+    const toggle = document.getElementById('setting-schedules-berths-toggle');
+    const badge = document.getElementById('setting-schedules-berths-badge');
+    const btn = document.getElementById('setting-schedules-berths-btn');
+    const previewBadge = document.getElementById('admin-preview-berths-badge');
+    const berthAlert = document.getElementById('berth-routes-feature-alert');
+    const schedulesContainer = document.getElementById('schedules-booking-container');
+    const disabledCard = document.getElementById('schedules-disabled-notice-card');
+
+    try {
+      const res = await fetch('/api/admin/settings/toggle-feature', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getAdminCsrfToken()
+        },
+        body: JSON.stringify({
+          feature: 'schedules_and_berths',
+          enabled: enable
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const isNowOn = data.enabled;
+        if (toggle) toggle.checked = isNowOn;
+        if (badge) {
+          badge.className = 'badge ' + (isNowOn ? 'badge-success' : 'badge-danger');
+          badge.textContent = isNowOn ? 'ON (Active)' : 'OFF (Disabled)';
+        }
+        if (btn) {
+          btn.className = 'btn btn-sm ' + (isNowOn ? 'btn-outline-danger' : 'btn-primary');
+          btn.innerHTML = `<span class="material-symbols-outlined" style="font-size:15px;">${isNowOn ? 'power_settings_new' : 'check_circle'}</span><span>${isNowOn ? 'Turn OFF' : 'Turn ON'}</span>`;
+        }
+        if (previewBadge) {
+          previewBadge.className = 'badge ' + (isNowOn ? 'badge-success' : 'badge-gold');
+          previewBadge.textContent = isNowOn ? 'LIVE' : 'OFF';
+        }
+        if (berthAlert) {
+          berthAlert.style.display = isNowOn ? 'none' : 'flex';
+        }
+        // Update slider visually
+        const slider = toggle?.nextElementSibling;
+        if (slider) {
+          slider.style.backgroundColor = isNowOn ? '#10b981' : '#cbd5e1';
+          const knob = slider.querySelector('span');
+          if (knob) knob.style.left = isNowOn ? '28px' : '4px';
+        }
+
+        // Update global platform settings in memory
+        if (!window.PLATFORM_SETTINGS) window.PLATFORM_SETTINGS = {};
+        window.PLATFORM_SETTINGS.enable_schedules_and_berths = isNowOn ? '1' : '0';
+
+        // Toggle visibility of navigation buttons if present
+        const navBtn = document.getElementById('nav-tab-btn-schedules');
+        if (navBtn) navBtn.style.display = isNowOn ? '' : 'none';
+        const dockBtn = document.getElementById('mobile-dock-btn-schedules');
+        if (dockBtn) dockBtn.style.display = isNowOn ? '' : 'none';
+        const dropdownItem = document.getElementById('dropdown-item-schedules');
+        if (dropdownItem) dropdownItem.style.display = isNowOn ? '' : 'none';
+
+        if (schedulesContainer && (!window.CURRENT_USER || window.CURRENT_USER.role === 'customer')) {
+          schedulesContainer.style.display = isNowOn ? '' : 'none';
+        }
+        if (disabledCard) {
+          disabledCard.style.display = isNowOn ? 'none' : 'block';
+        }
+
+        showToast(data.message || (isNowOn ? 'Schedules & Berths option enabled!' : 'Schedules & Berths option disabled!'), isNowOn ? 'success' : 'warning');
+      } else {
+        if (toggle) toggle.checked = !enable;
+        showToast(data.message || 'Failed to update feature setting.', 'danger');
+      }
+    } catch (err) {
+      console.error('Toggle feature error:', err);
+      if (toggle) toggle.checked = !enable;
+      showToast('Network error while updating feature setting.', 'warning');
+    }
+  };
+
   // ==========================================
   // DRIVER PROFILE & DUTY STATUS CONTROLS
   // ==========================================
@@ -7159,3 +7443,412 @@ window.toggleCabRouteStatus = async function (id) {
       showToast('Network error while toggling duty status.', 'warning');
     }
   };
+
+// ==========================================
+// DRIVER BIDDING MARKETPLACE (Admin)
+// ==========================================
+window.biddingState = {
+  bookingId: null,
+  fare: 0,
+  session: null,
+  detail: null,
+};
+
+function biddingEscape(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function biddingMoney(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—';
+}
+
+function biddingStatusBadge(status) {
+  const map = {
+    open: ['badge-success', 'OPEN'],
+    closed: ['badge-secondary', 'CLOSED'],
+    awarded: ['badge-gold', 'AWARDED'],
+    cancelled: ['badge-danger', 'CANCELLED'],
+  };
+  const entry = map[status] || ['badge-secondary', String(status || '').toUpperCase()];
+  return `<span class="admin-badge ${entry[0]}">${entry[1]}</span>`;
+}
+
+function biddingShowError(id, message) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (!message) { el.style.display = 'none'; el.textContent = ''; return; }
+  el.style.display = 'block';
+  el.textContent = message;
+}
+
+window.openBiddingForBooking = async function (bookingId) {
+  window.biddingState.bookingId = bookingId;
+  window.biddingState.session = null;
+
+  document.getElementById('bidding-open-form').style.display = 'block';
+  document.getElementById('bidding-share-panel').style.display = 'none';
+  biddingShowError('bidding-open-error', '');
+
+  try {
+    const res = await fetch(`/api/admin/bookings/${bookingId}`);
+    const data = await res.json();
+    if (!data.success || !data.booking) {
+      showToast('Could not load that booking.', 'danger');
+      return;
+    }
+
+    const b = data.booking;
+    window.biddingState.fare = Number(b.total_amount) || 0;
+
+    document.getElementById('bidding-info-ref').textContent = b.booking_reference;
+    document.getElementById('bidding-info-fare').textContent = biddingMoney(b.total_amount);
+    document.getElementById('bidding-info-route').textContent = b.route_summary || '';
+    document.getElementById('bidding-info-customer').textContent =
+      `${b.customer_name || ''} · ${b.customer_phone || ''} · ${(b.status || '').toUpperCase()}`;
+
+    const closesInput = document.getElementById('bidding-closes-at');
+    if (closesInput && !closesInput.value) {
+      const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      closesInput.value = d.toISOString().slice(0, 16);
+    }
+
+    document.getElementById('bidding-notes').value = '';
+    window.recalculateBiddingCeiling();
+
+    const modal = document.getElementById('admin-bidding-open-modal');
+    if (modal) modal.classList.add('active');
+  } catch (err) {
+    console.error('openBiddingForBooking', err);
+    showToast('Could not load that booking.', 'danger');
+  }
+};
+
+window.recalculateBiddingCeiling = function () {
+  const fare = Number(window.biddingState.fare || 0);
+  const pct = Number(document.getElementById('bidding-fee-pct')?.value || 0);
+  const max = Math.max(0, Math.floor(fare * (1 - pct / 100)));
+
+  const hint = document.getElementById('bidding-ceiling-hint');
+  if (hint) {
+    hint.textContent = `Max allowed: ${biddingMoney(max)} (fare ${biddingMoney(fare)} − ${pct}% margin)`;
+  }
+
+  const start = document.getElementById('bidding-start-amount');
+  if (start) {
+    start.max = max;
+    if (!start.value || Number(start.value) > max) {
+      start.value = max;
+    }
+  }
+};
+
+window.submitOpenBidding = async function () {
+  const btn = document.getElementById('bidding-open-submit');
+  const bookingId = window.biddingState.bookingId;
+
+  if (!bookingId) return;
+
+  const payload = {
+    start_amount: Number(document.getElementById('bidding-start-amount').value),
+    admin_fee_pct: Number(document.getElementById('bidding-fee-pct').value),
+    closes_at: document.getElementById('bidding-closes-at').value || null,
+    admin_notes: document.getElementById('bidding-notes').value || null,
+  };
+
+  if (!payload.start_amount || payload.start_amount < 1) {
+    biddingShowError('bidding-open-error', 'Enter a start price greater than zero.');
+    return;
+  }
+
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.textContent = 'Opening…';
+  biddingShowError('bidding-open-error', '');
+
+  try {
+    const res = await fetch(`/api/admin/bookings/${bookingId}/bidding`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      biddingShowError('bidding-open-error', data.message || 'Could not open bidding.');
+      return;
+    }
+
+    window.biddingState.session = data.session;
+
+    document.getElementById('bidding-share-url').value = data.share.url;
+    document.getElementById('bidding-share-text').textContent = data.share.text;
+    document.getElementById('bidding-whatsapp-link').href = data.share.whatsapp_url;
+
+    document.getElementById('bidding-open-form').style.display = 'none';
+    document.getElementById('bidding-share-panel').style.display = 'block';
+
+    showToast('Bidding opened. Share the link with your drivers.', 'success');
+  } catch (err) {
+    console.error('submitOpenBidding', err);
+    biddingShowError('bidding-open-error', 'Network error while opening bidding.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+};
+
+window.copyBiddingShare = async function () {
+  const input = document.getElementById('bidding-share-url');
+  if (!input) return;
+  try {
+    await navigator.clipboard.writeText(input.value);
+    showToast('Bidding link copied.', 'success');
+  } catch (err) {
+    input.select();
+    showToast('Press Ctrl/Cmd+C to copy the link.', 'info');
+  }
+};
+
+window.copyBiddingDetailLink = async function () {
+  const detail = window.biddingState.detail;
+  if (!detail) return;
+  const url = `${window.location.origin}/bid/${detail.token}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Driver link copied.', 'success');
+  } catch (err) {
+    showToast(url, 'info');
+  }
+};
+
+window.renderAdminBiddings = async function () {
+  const tbody = document.getElementById('admin-biddings-tbody');
+  if (!tbody) return;
+
+  const status = document.getElementById('admin-bidding-filter-status')?.value || 'all';
+
+  try {
+    const res = await fetch(`/api/admin/biddings?status=${encodeURIComponent(status)}`);
+    const data = await res.json();
+
+    if (!data.success) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:24px; color:#b91c1c;">Could not load auctions.</td></tr>';
+      return;
+    }
+
+    if (!data.sessions.length) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:28px; color:#94a3b8;">No auctions yet. Open one from the gavel icon in Bookings Management.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.sessions.map((s) => {
+      const profit = s.admin_profit_at_lowest === null ? '—' : biddingMoney(s.admin_profit_at_lowest);
+      const closes = s.closes_at ? new Date(s.closes_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+
+      return `
+        <tr>
+          <td>
+            <a href="javascript:void(0)" onclick="openViewBookingModal(${s.booking_id})" class="booking-ref-link">${biddingEscape(s.booking_reference || '')}</a>
+            <div style="font-size:11px; color:#64748b;">${biddingEscape(s.customer_name || '')}</div>
+          </td>
+          <td>
+            <div style="font-size:12px; font-weight:600;">${biddingEscape(s.pickup_city)} → ${biddingEscape(s.drop_city)}</div>
+            <div style="font-size:11px; color:#64748b;">${s.distance_km ? s.distance_km + ' km' : ''}</div>
+          </td>
+          <td>${biddingStatusBadge(s.status)}</td>
+          <td style="font-weight:700;">${biddingMoney(s.start_amount)}</td>
+          <td style="font-weight:700; color:${s.lowest_bid !== null ? '#16a34a' : '#94a3b8'};">${s.lowest_bid !== null ? biddingMoney(s.lowest_bid) : '—'}</td>
+          <td style="font-weight:700; color:#0f172a;">${profit}</td>
+          <td>${s.bid_count}</td>
+          <td style="font-size:11.5px; color:#475569;">${biddingEscape(closes)}</td>
+          <td style="text-align:right; white-space:nowrap;">
+            <button type="button" class="btn-action-icon btn-action-view" title="View bids & approve winner" onclick="openBiddingDetail(${s.id})">
+              <span class="material-symbols-outlined">format_list_numbered</span>
+            </button>
+            ${s.status === 'open' ? `
+              <button type="button" class="btn-action-icon" title="Close bidding" onclick="closeBiddingSession(${s.id})">
+                <span class="material-symbols-outlined">lock</span>
+              </button>` : ''}
+          </td>
+        </tr>`;
+    }).join('');
+  } catch (err) {
+    console.error('renderAdminBiddings', err);
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:24px; color:#b91c1c;">Network error while loading auctions.</td></tr>';
+  }
+};
+
+window.openBiddingDetail = async function (sessionId) {
+  try {
+    const res = await fetch(`/api/admin/biddings/${sessionId}`);
+    const data = await res.json();
+
+    if (!data.success) {
+      showToast('Could not load that auction.', 'danger');
+      return;
+    }
+
+    const session = data.session;
+    window.biddingState.detail = session;
+    biddingShowError('bidding-detail-error', '');
+
+    const booking = session.booking;
+
+    document.getElementById('bidding-detail-summary').innerHTML = `
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; font-size:12.5px; line-height:1.8;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <strong style="font-family:monospace; color:var(--primary);">${biddingEscape(booking.booking_reference)}</strong>
+          ${biddingStatusBadge(session.status)}
+        </div>
+        <div><strong>${biddingEscape(session.pickup_city)} → ${biddingEscape(session.drop_city)}</strong>${session.distance_km ? ' · ' + session.distance_km + ' km' : ''}</div>
+        <div style="color:#475569;">Customer: ${biddingEscape(booking.customer_name)} · ${biddingEscape(booking.customer_phone)}</div>
+        <div style="color:#475569;">${biddingEscape(booking.pickup_location)} → ${biddingEscape(booking.drop_location)}</div>
+        <div style="margin-top:6px;">
+          Fare <strong>${biddingMoney(booking.total_amount)}</strong> ·
+          Start price <strong>${biddingMoney(session.start_amount)}</strong> ·
+          Max driver price <strong>${biddingMoney(session.max_driver_price)}</strong> ·
+          Margin <strong>${session.admin_fee_pct}%</strong>
+        </div>
+        <div>
+          Lowest bid <strong style="color:#16a34a;">${session.lowest_bid !== null ? biddingMoney(session.lowest_bid) : '—'}</strong> ·
+          Admin profit <strong>${session.admin_profit_at_lowest !== null ? biddingMoney(session.admin_profit_at_lowest) : '—'}</strong>
+        </div>
+      </div>`;
+
+    const tbody = document.getElementById('bidding-detail-bids');
+
+    if (!session.bids.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">No bids yet — share the link with your drivers.</td></tr>';
+    } else {
+      tbody.innerHTML = session.bids.map((bid) => `
+        <tr style="${bid.is_lowest ? 'background:#f0fdf4;' : ''}">
+          <td>
+            <strong>${biddingEscape(bid.driver_name || 'Driver')}</strong>
+            ${bid.is_lowest ? '<span class="admin-badge badge-success" style="margin-left:6px; font-size:9px;">LOWEST</span>' : ''}
+            ${bid.flagged ? '<span class="admin-badge badge-gold" style="margin-left:6px; font-size:9px;" title="' + biddingEscape(bid.flag_reason || '') + '">FLAGGED</span>' : ''}
+            <div style="font-size:11px; color:#64748b;">${biddingEscape(bid.driver_phone || '')} · ★${bid.driver_rating || '—'}</div>
+          </td>
+          <td style="font-size:11.5px;">${biddingEscape(bid.vehicle_model || '')}<br><span style="color:#64748b;">${biddingEscape(bid.vehicle_plate || '')}</span></td>
+          <td style="font-weight:800;">${biddingMoney(bid.bid_amount)}</td>
+          <td style="font-size:11.5px; color:#475569;">${bid.placed_at ? new Date(bid.placed_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
+          <td style="font-size:11px; color:#64748b;">${biddingEscape(bid.ip_address || '—')}</td>
+          <td style="text-align:right;">
+            ${(session.status === 'open' || session.status === 'closed')
+              ? `<button type="button" class="btn btn-xs btn-outline-gold" onclick="awardWinningBid(${bid.id})">Assign</button>`
+              : ''}
+          </td>
+        </tr>`).join('');
+    }
+
+    const awardBtn = document.getElementById('bidding-detail-award');
+    if (awardBtn) {
+      awardBtn.disabled = session.bids.length === 0 || session.status === 'awarded' || session.status === 'cancelled';
+      awardBtn.dataset.bidId = session.lowest_bid !== null ? (session.bids.find((b) => b.is_lowest) || {}).id || '' : '';
+    }
+
+    const modal = document.getElementById('admin-bidding-detail-modal');
+    if (modal) modal.classList.add('active');
+  } catch (err) {
+    console.error('openBiddingDetail', err);
+    showToast('Network error while loading the auction.', 'danger');
+  }
+};
+
+window.awardWinningBid = async function (bidId) {
+  const detail = window.biddingState.detail;
+  if (!detail) return;
+
+  const explicitId = bidId || Number(document.getElementById('bidding-detail-award')?.dataset.bidId) || null;
+
+  const body = explicitId ? { bid_id: explicitId } : {};
+
+  biddingShowError('bidding-detail-error', '');
+
+  try {
+    const res = await fetch(`/api/admin/biddings/${detail.id}/award`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      biddingShowError('bidding-detail-error', data.message || 'Could not award this bid.');
+      return;
+    }
+
+    showToast(`Approved. ${data.driver ? data.driver.name : 'Driver'} assigned — ₹${Number(data.booking.driver_payout_amount).toLocaleString('en-IN')} payout, ₹${Number(data.booking.admin_profit).toLocaleString('en-IN')} margin.`, 'success');
+
+    await window.openBiddingDetail(detail.id);
+    window.renderAdminBiddings();
+
+    if (typeof window.renderAdminBookings === 'function') {
+      window.renderAdminBookings();
+    }
+  } catch (err) {
+    console.error('awardWinningBid', err);
+    biddingShowError('bidding-detail-error', 'Network error while awarding the bid.');
+  }
+};
+
+window.closeBiddingSession = async function (sessionId) {
+  const id = sessionId || window.biddingState.detail?.id;
+  if (!id) return;
+
+  try {
+    const res = await fetch(`/api/admin/biddings/${id}/close`, { method: 'POST', headers: { 'Accept': 'application/json' } });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      const target = sessionId ? 'bidding-detail-error' : 'bidding-open-error';
+      biddingShowError(target, data.message || 'Could not close bidding.');
+      return;
+    }
+
+    showToast('Bidding closed.', 'success');
+
+    if (window.biddingState.detail && window.biddingState.detail.id === id) {
+      await window.openBiddingDetail(id);
+    }
+
+    window.renderAdminBiddings();
+  } catch (err) {
+    console.error('closeBiddingSession', err);
+    showToast('Network error while closing bidding.', 'danger');
+  }
+};
+
+window.cancelBiddingSession = async function () {
+  const detail = window.biddingState.detail;
+  if (!detail) return;
+
+  if (!window.confirm('Cancel this auction? The booking returns to the confirmed pool and the driver link stops accepting bids.')) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/admin/biddings/${detail.id}/cancel`, { method: 'POST', headers: { 'Accept': 'application/json' } });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      biddingShowError('bidding-detail-error', data.message || 'Could not cancel this auction.');
+      return;
+    }
+
+    showToast('Auction cancelled.', 'success');
+    await window.openBiddingDetail(detail.id);
+    window.renderAdminBiddings();
+  } catch (err) {
+    console.error('cancelBiddingSession', err);
+    biddingShowError('bidding-detail-error', 'Network error while cancelling the auction.');
+  }
+};
