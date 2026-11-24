@@ -312,21 +312,45 @@
                         <span id="role-scope-text">Customer Portal: Book sanitised outstation cabs and luxury sleeper bus berths.</span>
                     </div>
 
-                    <!-- Sign In Method Switcher (Mobile OTP vs Password) -->
-                    <div class="signin-method-toggle" style="display:flex; justify-content:center; gap:8px; margin-bottom:14px;">
-                        <button type="button" class="method-toggle-btn active" id="method-btn-otp" onclick="switchSignInMethod('otp')" style="border:1px solid #0284c7; background:#f0f9ff; color:#0369a1; padding:6px 14px; border-radius:20px; font-size:11.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px;">
-                            <span class="material-symbols-outlined" style="font-size:15px; color:#0284c7;">smartphone</span>
+                    <!-- PRIMARY SIGN IN: FIREBASE ID & GOOGLE -->
+                    <div class="alternate-auth-section" id="alternate-auth-signin" style="margin-top:0; margin-bottom:12px;">
+                        <div class="alternate-auth-buttons">
+                            <button type="button" class="btn-alternate-auth btn-firebase-google" id="btn-auth-firebase-google" onclick="handleAlternateLogin('firebase')" title="Sign in with Firebase ID / Google" style="padding:10px 12px; font-weight:700;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">
+                                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.15z"/>
+                                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                                </svg>
+                                <span>Firebase ID / Google</span>
+                            </button>
+                            <button type="button" class="btn-alternate-auth btn-clerk-auth" id="btn-auth-clerk" onclick="handleAlternateLogin('clerk')" title="Sign in with Clerk" style="padding:10px 12px; font-weight:700;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
+                                    <rect width="24" height="24" rx="4" fill="#6C47FF"/>
+                                    <path d="M12 6.5C8.96 6.5 6.5 8.96 6.5 12C6.5 15.04 8.96 17.5 12 17.5C13.88 17.5 15.54 16.55 16.52 15.11L14.73 13.91C14.15 14.87 13.15 15.5 12 15.5C10.07 15.5 8.5 13.93 8.5 12C8.5 10.07 10.07 8.5 12 8.5C13.15 8.5 14.15 9.13 14.73 10.09L16.52 8.89C15.54 7.45 13.88 6.5 12 6.5Z" fill="white"/>
+                                </svg>
+                                <span>Clerk Auth</span>
+                            </button>
+                        </div>
+                        <div class="auth-divider" style="margin:14px 0 12px;">
+                            <span>Or sign in with account credentials</span>
+                        </div>
+                    </div>
+
+                    <!-- Retired OTP Toggle (Kept hidden in DOM for backward-compatibility) -->
+                    <div class="signin-method-toggle" style="display:none;">
+                        <button type="button" class="method-toggle-btn" id="method-btn-otp" onclick="switchSignInMethod('otp')">
+                            <span class="material-symbols-outlined">smartphone</span>
                             <span>Mobile OTP Login</span>
                         </button>
-                        <button type="button" class="method-toggle-btn" id="method-btn-password" onclick="switchSignInMethod('password')" style="border:1px solid #cbd5e1; background:#ffffff; color:#64748b; padding:6px 14px; border-radius:20px; font-size:11.5px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px;">
-                            <span class="material-symbols-outlined" style="font-size:15px; color:#64748b;">key</span>
+                        <button type="button" class="method-toggle-btn active" id="method-btn-password" onclick="switchSignInMethod('password')">
+                            <span class="material-symbols-outlined">key</span>
                             <span>Email & Password</span>
                         </button>
                     </div>
 
-                    <!-- METHOD A: MOBILE OTP SIGN IN -->
-                    <div id="signin-view-otp">
-                        <!-- Step 1: Send OTP -->
+                    <!-- Retired OTP Form (Kept hidden in DOM) -->
+                    <div id="signin-view-otp" style="display:none;">
                         <form id="otp-request-form" onsubmit="handleSendOtp(event)">
                             <div class="form-group" style="margin-bottom:12px;">
                                 <label class="form-label" for="login-otp-phone">Enter Mobile Number</label>
@@ -336,53 +360,21 @@
                                 </div>
                                 <span style="font-size:11px; color:#64748b; margin-top:3px; display:block;">Instant OTP authentication via Fast2SMS SMS Gateway.</span>
                             </div>
-
-                            <button type="submit" id="btn-send-otp" class="btn btn-primary btn-block" style="height:44px; font-size:13.5px;">
-                                <span class="material-symbols-outlined" style="font-size:18px;">send</span>
+                            <button type="submit" id="btn-send-otp" class="btn btn-primary btn-block">
                                 <span id="btn-send-otp-text">Send Verification OTP</span>
                             </button>
                         </form>
-
-                        <!-- Step 2: Enter & Verify OTP (Revealed after OTP is sent) -->
-                        <form id="otp-verify-form" onsubmit="handleVerifyOtp(event)" style="display:none; margin-top:14px;">
-                            <!-- Live OTP Preview Callout -->
-                            <div id="otp-live-preview-box" style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px; margin-bottom:12px; text-align:center;">
-                                <div style="font-size:11.5px; color:#1e40af; font-weight:600;">
-                                    📱 <span id="otp-status-gateway-label">Fast2SMS Gateway Preview Mode</span>
-                                </div>
-                                <div style="font-size:12px; color:#1e3a8a; margin-top:4px;">
-                                    Your Verification OTP is: <strong id="otp-display-number" style="font-family:monospace; font-size:20px; font-weight:900; color:#1d4ed8; letter-spacing:3px; background:#ffffff; padding:2px 8px; border-radius:4px; border:1px dashed #60a5fa; margin-left:4px;">1234</strong>
-                                </div>
-                                <div style="margin-top:6px;">
-                                    <button type="button" class="btn btn-xs btn-outline" onclick="autoFillReceivedOtp()" style="font-size:10.5px; padding:2px 8px; color:#0284c7; border-color:#93c5fd; background:#ffffff;">
-                                        ⚡ Click to Auto-Fill OTP
-                                    </button>
-                                </div>
+                        <form id="otp-verify-form" onsubmit="handleVerifyOtp(event)" style="display:none;">
+                            <div id="otp-live-preview-box">
+                                <strong id="otp-display-number">1234</strong>
                             </div>
-
-                            <div class="form-group" style="margin-bottom:12px;">
-                                <label class="form-label" for="login-otp-input">Enter Verification OTP</label>
-                                <input type="text" id="login-otp-input" class="form-control" placeholder="••••" maxlength="6" required style="font-family:monospace; font-size:22px; font-weight:800; text-align:center; letter-spacing:6px; height:46px;">
-                            </div>
-
-                            <button type="submit" id="btn-verify-otp" class="btn btn-primary btn-block" style="height:44px; font-size:13.5px; margin-bottom:8px;">
-                                <span class="material-symbols-outlined" style="font-size:18px;">verified_user</span>
-                                <span>Verify & Sign In</span>
-                            </button>
-
-                            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11.5px; margin-top:10px;">
-                                <span style="color:#64748b; cursor:pointer; text-decoration:underline;" onclick="resetOtpStep()">
-                                    &larr; Change mobile number
-                                </span>
-                                <span id="resend-otp-btn" style="color:#0284c7; font-weight:700; cursor:pointer;" onclick="resendOtp()">
-                                    Resend OTP
-                                </span>
-                            </div>
+                            <input type="text" id="login-otp-input">
+                            <button type="submit" id="btn-verify-otp">Verify & Sign In</button>
                         </form>
                     </div>
 
-                    <!-- METHOD B: EMAIL & PASSWORD SIGN IN -->
-                    <div id="signin-view-password" style="display:none;">
+                    <!-- ACTIVE CREDENTIALS SIGN IN: EMAIL & PASSWORD -->
+                    <div id="signin-view-password" style="display:block;">
                         <form id="role-login-form" action="{{ route('login') }}" method="POST" onsubmit="handleFormLogin(event)">
                             @csrf
                             <input type="hidden" name="role" id="login-role-input" value="customer">
@@ -416,31 +408,6 @@
                                 <span id="login-submit-label">Sign In as Customer</span>
                             </button>
                         </form>
-                    </div>
-
-                    <!-- Alternate Sign In Providers (Firebase & Clerk) -->
-                    <div class="alternate-auth-section" id="alternate-auth-signin">
-                        <div class="auth-divider">
-                            <span>Or continue with</span>
-                        </div>
-                        <div class="alternate-auth-buttons">
-                            <button type="button" class="btn-alternate-auth btn-firebase-google" id="btn-auth-firebase-google" onclick="handleAlternateLogin('firebase')" title="Sign in with Google via Firebase">
-                                <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">
-                                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.15z"/>
-                                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
-                                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-                                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-                                </svg>
-                                <span>Firebase ID / Google</span>
-                            </button>
-                            <button type="button" class="btn-alternate-auth btn-clerk-auth" id="btn-auth-clerk" onclick="handleAlternateLogin('clerk')" title="Sign in with Clerk">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
-                                    <rect width="24" height="24" rx="4" fill="#6C47FF"/>
-                                    <path d="M12 6.5C8.96 6.5 6.5 8.96 6.5 12C6.5 15.04 8.96 17.5 12 17.5C13.88 17.5 15.54 16.55 16.52 15.11L14.73 13.91C14.15 14.87 13.15 15.5 12 15.5C10.07 15.5 8.5 13.93 8.5 12C8.5 10.07 10.07 8.5 12 8.5C13.15 8.5 14.15 9.13 14.73 10.09L16.52 8.89C15.54 7.45 13.88 6.5 12 6.5Z" fill="white"/>
-                                </svg>
-                                <span>Clerk Auth</span>
-                            </button>
-                        </div>
                     </div>
 
                     <!-- Toggle to Sign Up -->
@@ -647,11 +614,24 @@
                         <input type="email" id="alt-input-email" class="form-control" placeholder="name@domain.com" value="priya.customer@gmail.com" required>
                     </div>
 
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label" for="alt-input-password" style="font-size:11.5px; display:flex; justify-content:space-between; align-items:center;">
+                            <span>Offline Account Password</span>
+                            <span style="font-weight:normal; color:#64748b; font-size:10.5px;">Default: password123</span>
+                        </label>
+                        <input type="text" id="alt-input-password" class="form-control" placeholder="Set password or leave blank for default" value="password123">
+                    </div>
+
                     <button type="submit" id="alt-submit-btn" class="btn btn-primary btn-block" style="height:42px; font-size:13px;">
                         <span class="material-symbols-outlined" style="font-size:17px;">verified_user</span>
                         <span id="alt-submit-label">Sign In with Firebase</span>
                     </button>
                 </form>
+
+                <div id="alt-db-sync-notice" style="margin-top:10px; font-size:11.5px; color:#065f46; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; padding:8px 10px; line-height:1.4; display:flex; align-items:center; gap:6px;">
+                    <span class="material-symbols-outlined" style="font-size:17px; color:#059669;">database</span>
+                    <span><strong>Offline Database Sync:</strong> Saved in local database with credential access so you can sign in with any method.</span>
+                </div>
 
                 <div id="alt-env-tip" style="margin-top:12px; font-size:11px; color:#64748b; background:#f0f9ff; border:1px dashed #7dd3fc; border-radius:6px; padding:8px 10px; line-height:1.4;">
                     💡 <strong>Live SDK Setup:</strong> Add <code>FIREBASE_API_KEY</code> or <code>CLERK_PUBLISHABLE_KEY</code> in <code>.env</code> to trigger the live popup window automatically.

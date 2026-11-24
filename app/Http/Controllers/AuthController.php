@@ -31,7 +31,15 @@ class AuthController extends Controller
 
         $user = User::where('email', $credentials['email'])->first();
 
-        if (!$user || !Hash::check($credentials['password'], $user->password)) {
+        $passwordMatches = $user && Hash::check($credentials['password'], $user->password);
+
+        // If user was created via Firebase/SSO and enters a new custom password (6+ chars) while default password is set
+        if ($user && !$passwordMatches && $user->auth_provider === 'firebase' && Hash::check('password123', $user->password) && strlen($credentials['password']) >= 6) {
+            $user->update(['password' => Hash::make($credentials['password'])]);
+            $passwordMatches = true;
+        }
+
+        if (!$user || !$passwordMatches) {
             if (!$request->wantsJson() && !$request->ajax()) {
                 return back()->withErrors(['email' => 'Invalid email or password. Please verify your credentials.'])->withInput();
             }
@@ -442,6 +450,7 @@ class AuthController extends Controller
             'name' => 'nullable|string|max:100',
             'photo_url' => 'nullable|string|max:500',
             'phone' => 'nullable|string|max:20',
+            'password' => 'nullable|string|min:6',
             'role' => 'nullable|string|in:customer,driver,admin',
             'vehicle_model' => 'nullable|string|max:100',
             'vehicle_plate' => 'nullable|string|max:30',

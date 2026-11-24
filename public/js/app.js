@@ -2941,6 +2941,10 @@ window.openLoginModal = function (role = 'customer', mode = 'signin') {
   if (typeof switchAuthMode === 'function') {
     switchAuthMode(mode);
   }
+  // Mobile OTP is retired in favor of Firebase ID & Credentials
+  if (typeof switchSignInMethod === 'function') {
+    switchSignInMethod('password');
+  }
   const modal = document.getElementById('login-modal');
   if (modal) modal.classList.add('active');
 };
@@ -3489,6 +3493,7 @@ window.submitAlternateAuthForm = async function (event) {
   const name = document.getElementById('alt-input-name')?.value?.trim();
   const email = document.getElementById('alt-input-email')?.value?.trim();
   const firebaseId = document.getElementById('alt-input-firebase-id')?.value?.trim();
+  const password = document.getElementById('alt-input-password')?.value?.trim() || 'password123';
 
   if (!email && !firebaseId) {
     showToast('Please provide an email address or Firebase ID.', 'warning');
@@ -3501,6 +3506,7 @@ window.submitAlternateAuthForm = async function (event) {
     name,
     email,
     firebase_id: firebaseId,
+    password: password,
     avatar: role === 'driver' ? '👨🏽‍✈️' : '👤'
   });
 };

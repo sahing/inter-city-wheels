@@ -102,6 +102,7 @@ class AlternateAuthService
             'role' => $role,
             'phone' => $phone,
             'avatar' => $avatar,
+            'password' => $payload['password'] ?? null,
             'vehicle_model' => $payload['vehicle_model'] ?? null,
             'vehicle_plate' => $payload['vehicle_plate'] ?? null,
         ]);
@@ -198,17 +199,21 @@ class AlternateAuthService
             if ((empty($user->avatar) || $user->avatar === '👤') && !empty($userData['avatar'])) {
                 $user->avatar = $userData['avatar'];
             }
+            if (!empty($userData['password'])) {
+                $user->password = Hash::make($userData['password']);
+            }
             $user->save();
         } else {
-            // Auto-provision new user
+            // Auto-provision new user in local database with usable credentials
             $role = $userData['role'];
             $phone = $userData['phone'] ?? '+91 ' . rand(7000000000, 9999999999);
+            $rawPassword = !empty($userData['password']) ? trim($userData['password']) : 'password123';
 
             $user = User::create([
                 'name' => $userData['name'],
                 'email' => $email,
                 'phone' => $phone,
-                'password' => Hash::make($provider . '_' . bin2hex(random_bytes(10))),
+                'password' => Hash::make($rawPassword),
                 'role' => $role,
                 'avatar' => $userData['avatar'],
                 'auth_provider' => $provider,

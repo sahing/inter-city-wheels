@@ -268,5 +268,97 @@ class AlternateLoginTest extends TestCase
 
         // Assert Global Javascript state has alternate config
         $response->assertSee('window.ALTERNATE_AUTH_CONFIG =', false);
+
+        // Assert OTP is stopped in active view, credentials view is displayed
+        $response->assertSee('id="signin-view-password" style="display:block;"', false);
+        $response->assertSee('id="signin-view-otp" style="display:none;"', false);
+    }
+
+    public function test_user_created_via_firebase_can_switch_login_method_and_login_with_local_credentials(): void
+    {
+        $payload = [
+            'provider' => 'firebase',
+            'firebase_id' => 'fb_switch_test_123',
+            'email' => 'firebase.switcher@example.com',
+            'name' => 'Firebase Switcher',
+            'role' => 'customer',
+        ];
+
+        // 1. Initial login via Firebase
+        $fbRes = $this->postJson('/auth/firebase-login', $payload);
+        $fbRes->assertStatus(200);
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'firebase.switcher@example.com',
+            'firebase_id' => 'fb_switch_test_123',
+        ]);
+
+        // Logout
+        $this->post('/logout');
+        $this->assertGuest();
+
+        // 2. Switch login method to offline Email & Password
+        $localLoginRes = $this->postJson('/login', [
+            'email' => 'firebase.switcher@example.com',
+            'password' => 'password123', // Standard local credential created during Firebase signup
+            'role' => 'customer',
+        ]);
+
+        $localLoginRes->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'user' => [
+                    'email' => 'firebase.switcher@example.com',
+                ],
+            ]);
+
+        $this->assertAuthenticated();
+    }
+
+    public function test_user_created_via_standard_registration_can_subsequently_login_with_firebase_without_losing_credentials(): void
+    {
+        // 1. Register with local database credentials
+        $regRes = $this->postJson('/register', [
+            'name' => 'Local Registrant',
+            'email' => 'local.registrant@example.com',
+            'phone' => '9888112233',
+            'password' => 'mySecretPassword99',
+            'role' => 'customer',
+        ]);
+        $regRes->assertStatus(200);
+
+        // Logout
+        $this->post('/logout');
+        $this->assertGuest();
+
+        // 2. Later login via Firebase with same email
+        $fbRes = $this->postJson('/auth/firebase-login', [
+            'provider' => 'firebase',
+            'firebase_id' => 'fb_uid_local_linked_77',
+            'email' => 'local.registrant@example.com',
+        ]);
+        $fbRes->assertStatus(200);
+
+        // Verify account is linked without losing password
+        $user = User::where('email', 'local.registrant@example.com')->first();
+        $this->assertEquals('fb_uid_local_linked_77', $user->firebase_id);
+
+        // Logout
+        $this->post('/logout');
+        $this->assertGuest();
+
+        // 3. Switch login method back to Email & Password - original password STILL works!
+        $localLoginRes = $this->postJson('/login', [
+            'email' => 'local.registrant@example.com',
+            'password' => 'mySecretPassword99',
+            'role' => 'customer',
+        ]);
+
+        $localLoginRes->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+            ]);
+
+        $this->assertAuthenticated();
     }
 }
