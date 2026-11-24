@@ -290,8 +290,8 @@
 
                 <!-- ================= SECTION 1: SIGN IN ================= -->
                 <div id="auth-signin-container">
-                    <!-- Role Selector Tabs -->
-                    <div class="role-selector-pills">
+                    <!-- Compact Role Selector Tabs -->
+                    <div class="role-selector-pills simple-role-pills" style="margin-bottom:8px;">
                         <button type="button" class="role-pill active" data-role="customer" onclick="selectLoginRole('customer')">
                             <span class="role-icon">👤</span>
                             <span class="role-label">Customer</span>
@@ -306,16 +306,16 @@
                         </button>
                     </div>
 
-                    <!-- Scope Explanation Notice -->
-                    <div class="role-scope-notice" id="role-scope-notice">
-                        <span class="material-symbols-outlined" id="role-scope-icon" style="color:#38bdf8;">directions_car</span>
-                        <span id="role-scope-text">Customer Portal: Book sanitised outstation cabs and luxury sleeper bus berths.</span>
+                    <!-- Subtle Scope Caption -->
+                    <div class="role-scope-notice" id="role-scope-notice" style="display:flex; align-items:center; gap:6px; padding:5px 8px; border-radius:6px; background:#f8fafc; border:1px solid #e2e8f0; font-size:11px; color:#475569; margin-bottom:12px;">
+                        <span class="material-symbols-outlined" id="role-scope-icon" style="color:var(--primary); font-size:15px;">directions_car</span>
+                        <span id="role-scope-text">Sanitised outstation cabs and luxury sleeper bus berths.</span>
                     </div>
 
                     <!-- PRIMARY SIGN IN: FIREBASE ID & GOOGLE -->
-                    <div class="alternate-auth-section" id="alternate-auth-signin" style="margin-top:0; margin-bottom:12px;">
+                    <div class="alternate-auth-section" id="alternate-auth-signin" style="margin-top:0; margin-bottom:10px;">
                         <div class="alternate-auth-buttons">
-                            <button type="button" class="btn-alternate-auth btn-firebase-google" id="btn-auth-firebase-google" onclick="handleAlternateLogin('firebase')" title="Sign in with Firebase ID / Google" style="padding:10px 12px; font-weight:700;">
+                            <button type="button" class="btn-alternate-auth btn-firebase-google" id="btn-auth-firebase-google" onclick="handleAlternateLogin('firebase')" title="Sign in with Firebase ID / Google" style="padding:9px 12px; font-weight:700;">
                                 <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">
                                     <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.15z"/>
                                     <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
@@ -324,7 +324,7 @@
                                 </svg>
                                 <span>Firebase ID / Google</span>
                             </button>
-                            <button type="button" class="btn-alternate-auth btn-clerk-auth" id="btn-auth-clerk" onclick="handleAlternateLogin('clerk')" title="Sign in with Clerk" style="padding:10px 12px; font-weight:700;">
+                            <button type="button" class="btn-alternate-auth btn-clerk-auth" id="btn-auth-clerk" onclick="handleAlternateLogin('clerk')" title="Sign in with Clerk" style="padding:9px 12px; font-weight:700;">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
                                     <rect width="24" height="24" rx="4" fill="#6C47FF"/>
                                     <path d="M12 6.5C8.96 6.5 6.5 8.96 6.5 12C6.5 15.04 8.96 17.5 12 17.5C13.88 17.5 15.54 16.55 16.52 15.11L14.73 13.91C14.15 14.87 13.15 15.5 12 15.5C10.07 15.5 8.5 13.93 8.5 12C8.5 10.07 10.07 8.5 12 8.5C13.15 8.5 14.15 9.13 14.73 10.09L16.52 8.89C15.54 7.45 13.88 6.5 12 6.5Z" fill="white"/>
@@ -332,8 +332,8 @@
                                 <span>Clerk Auth</span>
                             </button>
                         </div>
-                        <div class="auth-divider" style="margin:14px 0 12px;">
-                            <span>Or sign in with account credentials</span>
+                        <div class="auth-divider" style="margin:12px 0 10px;">
+                            <span>or sign in with email</span>
                         </div>
                     </div>
 
@@ -379,23 +379,23 @@
                             @csrf
                             <input type="hidden" name="role" id="login-role-input" value="customer">
 
-                            <div class="form-group">
-                                <label class="form-label" for="login-email">Account Email</label>
+                            <div class="form-group" style="margin-bottom:10px;">
+                                <label class="form-label" for="login-email" style="font-size:12px; margin-bottom:4px;">Account Email</label>
                                 <div class="input-with-icon">
                                     <span class="material-symbols-outlined">mail</span>
                                     <input type="email" name="email" id="login-email" class="form-control" placeholder="user@intercitywheels.com" required value="customer@intercitywheels.com">
                                 </div>
                             </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="login-password">Password</label>
+                            <div class="form-group" style="margin-bottom:10px;">
+                                <label class="form-label" for="login-password" style="font-size:12px; margin-bottom:4px;">Password</label>
                                 <div class="input-with-icon">
                                     <span class="material-symbols-outlined">lock</span>
                                     <input type="password" name="password" id="login-password" class="form-control" placeholder="••••••••" required value="password123">
                                 </div>
                             </div>
 
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; font-size:12px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; font-size:11.5px;">
                                 <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#475569;">
                                     <input type="checkbox" name="remember" id="login-remember" value="1" checked>
                                     <span>Remember session</span>
@@ -403,15 +403,23 @@
                                 <span style="color:#0284c7; font-weight:600; cursor:pointer;" onclick="showToast('Password recovery token sent to your email.', 'info')">Forgot?</span>
                             </div>
 
-                            <button type="submit" id="login-submit-btn" class="btn btn-primary btn-block" style="height:44px; font-size:13.5px;">
-                                <span class="material-symbols-outlined" style="font-size:18px;">lock_open</span>
+                            <button type="submit" id="login-submit-btn" class="btn btn-primary btn-block" style="height:42px; font-size:13px; font-weight:700;">
+                                <span class="material-symbols-outlined" style="font-size:17px;">lock_open</span>
                                 <span id="login-submit-label">Sign In as Customer</span>
                             </button>
                         </form>
                     </div>
 
+                    <!-- Quick 1-Click Demo Helper -->
+                    <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top:10px; font-size:11px; color:#64748b;">
+                        <span>Demo Accounts:</span>
+                        <button type="button" class="btn btn-xs btn-outline" onclick="quickFillDemo('customer')" style="font-size:10px; padding:2px 7px; border-radius:10px; background:#ffffff;">Passenger</button>
+                        <button type="button" class="btn btn-xs btn-outline" onclick="quickFillDemo('driver')" style="font-size:10px; padding:2px 7px; border-radius:10px; background:#ffffff;">Driver</button>
+                        <button type="button" class="btn btn-xs btn-outline" onclick="quickFillDemo('admin')" style="font-size:10px; padding:2px 7px; border-radius:10px; background:#ffffff;">Admin</button>
+                    </div>
+
                     <!-- Toggle to Sign Up -->
-                    <div style="text-align:center; font-size:12px; color:#475569; margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;">
+                    <div style="text-align:center; font-size:12px; color:#475569; margin-top:12px; padding-top:10px; border-top:1px dashed #e2e8f0;">
                         Don't have an account yet? 
                         <a href="javascript:void(0)" onclick="switchAuthMode('signup')" style="color:var(--primary); font-weight:700; text-decoration:none;">Create Account (Sign Up)</a>
                     </div>
@@ -420,15 +428,40 @@
                 <!-- ================= SECTION 2: SIGN UP ================= -->
                 <div id="auth-signup-container" style="display:none;">
                     <!-- Role Switcher for Registration (Customer vs Driver Partner) -->
-                    <div class="role-selector-pills" style="grid-template-columns: 1fr 1fr; margin-bottom:12px;">
+                    <div class="role-selector-pills simple-role-pills" style="margin-bottom:12px;">
                         <button type="button" class="role-pill active" id="signup-role-btn-customer" onclick="selectSignupRole('customer')">
                             <span class="role-icon">👤</span>
-                            <span class="role-label">Passenger / Customer</span>
+                            <span class="role-label">Passenger</span>
                         </button>
                         <button type="button" class="role-pill" id="signup-role-btn-driver" onclick="selectSignupRole('driver')">
                             <span class="role-icon">👨🏽‍✈️</span>
-                            <span class="role-label">Driver / Fleet Partner</span>
+                            <span class="role-label">Driver Partner</span>
                         </button>
+                    </div>
+
+                    <!-- Instant Alternate Registration at top -->
+                    <div class="alternate-auth-section" id="alternate-auth-signup" style="margin-top:0; margin-bottom:10px;">
+                        <div class="alternate-auth-buttons">
+                            <button type="button" class="btn-alternate-auth btn-firebase-google" id="btn-signup-firebase-google" onclick="handleAlternateLogin('firebase')" title="Sign up with Google via Firebase" style="padding:9px 12px; font-weight:700;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">
+                                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.15z"/>
+                                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                                </svg>
+                                <span>Firebase ID / Google</span>
+                            </button>
+                            <button type="button" class="btn-alternate-auth btn-clerk-auth" id="btn-signup-clerk" onclick="handleAlternateLogin('clerk')" title="Sign up with Clerk" style="padding:9px 12px; font-weight:700;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
+                                    <rect width="24" height="24" rx="4" fill="#6C47FF"/>
+                                    <path d="M12 6.5C8.96 6.5 6.5 8.96 6.5 12C6.5 15.04 8.96 17.5 12 17.5C13.88 17.5 15.54 16.55 16.52 15.11L14.73 13.91C14.15 14.87 13.15 15.5 12 15.5C10.07 15.5 8.5 13.93 8.5 12C8.5 10.07 10.07 8.5 12 8.5C13.15 8.5 14.15 9.13 14.73 10.09L16.52 8.89C15.54 7.45 13.88 6.5 12 6.5Z" fill="white"/>
+                                </svg>
+                                <span>Clerk Auth</span>
+                            </button>
+                        </div>
+                        <div class="auth-divider" style="margin:12px 0 10px;">
+                            <span>or register with email</span>
+                        </div>
                     </div>
 
                     <form id="auth-signup-form" onsubmit="handleFormRegister(event)">
