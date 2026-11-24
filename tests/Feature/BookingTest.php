@@ -156,6 +156,7 @@ class BookingTest extends TestCase
     public function test_driver_bidding_counter_offer(): void
     {
         $driver = Driver::first();
+        $this->actingAs(\App\Models\User::where('role', 'driver')->firstOrFail());
         $response = $this->postJson('/api/bids/counter', [
             'driver_id' => $driver->id,
             'counter_amount' => 4600
@@ -171,6 +172,7 @@ class BookingTest extends TestCase
     public function test_driver_conclusive_ride_bid_submission(): void
     {
         $driver = Driver::first();
+        $this->actingAs(\App\Models\User::where('role', 'driver')->firstOrFail());
         $response = $this->postJson('/api/bids/submit', [
             'trip_id' => 'trip-wb-101',
             'from_location' => 'Baharampur (Mohona Central Bus Stand)',
@@ -196,6 +198,7 @@ class BookingTest extends TestCase
 
     public function test_admin_dynamic_form_field_creation(): void
     {
+        $this->actingAs(\App\Models\User::where('role', 'admin')->firstOrFail());
         $response = $this->postJson('/api/admin/dynamic-fields', [
             'label' => 'Child Booster Seat Needed',
             'field_type' => 'checkbox',
@@ -400,6 +403,7 @@ class BookingTest extends TestCase
         ]);
 
         // Admin updates the location
+        $this->actingAs(\App\Models\User::where('role', 'admin')->firstOrFail());
         $updateResponse = $this->putJson("/api/admin/locations/{$loc->id}", [
             'name' => 'Chandigarh City',
             'state' => 'Punjab & Haryana',
@@ -433,6 +437,7 @@ class BookingTest extends TestCase
         ]);
 
         // Toggle to inactive
+        $this->actingAs(\App\Models\User::where('role', 'admin')->firstOrFail());
         $toggleResponse = $this->postJson("/api/admin/locations/{$loc->id}/toggle");
         $toggleResponse->assertStatus(200);
         $this->assertFalse(\App\Models\ServiceLocation::find($loc->id)->is_active);

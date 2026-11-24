@@ -3364,15 +3364,66 @@ window.quickDemoLogin = async function (role) {
 /* ======================================================== */
 /* ALTERNATE AUTHENTICATION: FIREBASE & CLERK               */
 /* ======================================================== */
+window.quickFillDemo = function (role) {
+  if (typeof selectLoginRole === 'function') {
+    selectLoginRole(role);
+  }
+};
+
+window.getRoleFirebaseProfile = function (role, customEmail = '', customName = '') {
+  if (customEmail && customEmail.includes('@') && !customEmail.includes('customer@intercitywheels.com') && !customEmail.includes('driver@intercitywheels.com') && !customEmail.includes('admin@intercitywheels.com')) {
+    const rawName = customName || customEmail.split('@')[0];
+    const cleanId = 'fb_' + rawName.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Math.floor(1000 + Math.random() * 9000);
+    return {
+      name: rawName.charAt(0).toUpperCase() + rawName.slice(1),
+      email: customEmail,
+      firebase_id: cleanId
+    };
+  }
+
+  if (role === 'driver') {
+    return {
+      name: 'Rajesh Chauffeur',
+      email: 'rajesh.driver@gmail.com',
+      firebase_id: 'fb_driver_rajesh_9922'
+    };
+  } else if (role === 'admin') {
+    return {
+      name: 'Admin Supervisor',
+      email: 'admin@intercitywheels.com',
+      firebase_id: 'fb_admin_supervisor_1001'
+    };
+  }
+  return {
+    name: 'Priya Sharma',
+    email: 'priya.customer@gmail.com',
+    firebase_id: 'fb_cust_priya_sharma_9876'
+  };
+};
+
 window.handleAlternateLogin = async function (provider = 'firebase') {
   let role = 'customer';
+  let email = '';
+  let name = '';
+  let vehicleModel = '';
+  let vehiclePlate = '';
   const isSignIn = document.getElementById('auth-signin-container')?.style.display !== 'none';
   if (isSignIn) {
     const roleInput = document.getElementById('login-role-input');
     if (roleInput && roleInput.value) role = roleInput.value;
+    const emailInput = document.getElementById('login-email');
+    if (emailInput && emailInput.value) email = emailInput.value.trim();
   } else {
     const signupRoleInput = document.getElementById('signup-role-input');
     if (signupRoleInput && signupRoleInput.value) role = signupRoleInput.value;
+    const signupEmailInput = document.getElementById('signup-email');
+    if (signupEmailInput && signupEmailInput.value) email = signupEmailInput.value.trim();
+    const signupNameInput = document.getElementById('signup-name');
+    if (signupNameInput && signupNameInput.value) name = signupNameInput.value.trim();
+    const vehModelInput = document.getElementById('signup-veh-model');
+    if (vehModelInput && vehModelInput.value) vehicleModel = vehModelInput.value.trim();
+    const vehPlateInput = document.getElementById('signup-veh-plate');
+    if (vehPlateInput && vehPlateInput.value) vehiclePlate = vehPlateInput.value.trim();
   }
 
   if (!window.ALTERNATE_AUTH_CONFIG) {
@@ -3393,12 +3444,37 @@ window.handleAlternateLogin = async function (provider = 'firebase') {
     if (altConfig.firebase && altConfig.firebase.is_configured) {
       return window.loginWithFirebaseLive(role);
     }
-    return window.openAlternateAuthModal('firebase', role);
+    // Seamless 1-click Firebase ID sign-in in offline/local mode:
+    const profile = window.getRoleFirebaseProfile(role, email, name);
+    showToast(`Signing in via Firebase ID as ${role.toUpperCase()}...`, 'info');
+    return window.submitAlternateAuth({
+      provider: 'firebase',
+      role: role,
+      name: profile.name,
+      email: profile.email,
+      firebase_id: profile.firebase_id,
+      password: 'password123',
+      vehicle_model: vehicleModel || (role === 'driver' ? 'Maruti Suzuki Ertiga' : null),
+      vehicle_plate: vehiclePlate || (role === 'driver' ? 'WB 02 AB 9988' : null),
+      avatar: role === 'driver' ? '👨🏽‍✈️' : (role === 'admin' ? '🛡️' : '👤')
+    });
   } else if (provider === 'clerk') {
     if (altConfig.clerk && altConfig.clerk.is_configured) {
       return window.loginWithClerkLive(role);
     }
-    return window.openAlternateAuthModal('clerk', role);
+    const profile = window.getRoleFirebaseProfile(role, email, name);
+    showToast(`Signing in via Clerk Auth as ${role.toUpperCase()}...`, 'info');
+    return window.submitAlternateAuth({
+      provider: 'clerk',
+      role: role,
+      name: profile.name,
+      email: profile.email,
+      clerk_user_id: 'user_clerk_' + (profile.firebase_id ? profile.firebase_id.replace('fb_', '') : Date.now()),
+      password: 'password123',
+      vehicle_model: vehicleModel || (role === 'driver' ? 'Maruti Suzuki Ertiga' : null),
+      vehicle_plate: vehiclePlate || (role === 'driver' ? 'WB 02 AB 9988' : null),
+      avatar: role === 'driver' ? '👨🏽‍✈️' : '👤'
+    });
   }
 };
 
@@ -3513,11 +3589,27 @@ window.submitAlternateAuthForm = async function (event) {
 
 window.submitAlternateAuth = async function (payload) {
   const submitBtn = document.getElementById('alt-submit-btn');
+  const fbBtn = document.getElementById('btn-auth-firebase-google');
+  const clerkBtn = document.getElementById('btn-auth-clerk');
+  const signupFbBtn = document.getElementById('btn-signup-firebase-google');
+  const signupClerkBtn = document.getElementById('btn-signup-clerk');
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
+  const activeBtns = [submitBtn, fbBtn, clerkBtn, signupFbBtn, signupClerkBtn].filter(Boolean);
+  const origContents = new Map();
+  activeBtns.forEach(btn => {
+    origContents.set(btn, btn.innerHTML);
+    btn.disabled = true;
+  });
+
   if (submitBtn) {
-    submitBtn.disabled = true;
     submitBtn.innerHTML = '<span class="material-symbols-outlined spin" style="font-size:18px;">autorenew</span> Authenticating...';
+  }
+  if (fbBtn && payload.provider === 'firebase') {
+    fbBtn.innerHTML = '<span class="material-symbols-outlined spin" style="font-size:16px;">autorenew</span> Authenticating Firebase ID...';
+  }
+  if (clerkBtn && payload.provider === 'clerk') {
+    clerkBtn.innerHTML = '<span class="material-symbols-outlined spin" style="font-size:16px;">autorenew</span> Authenticating Clerk...';
   }
 
   try {
@@ -3542,18 +3634,18 @@ window.submitAlternateAuth = async function (payload) {
       window.location.replace(targetUrl + sep + 'auth=' + Date.now());
     } else {
       showToast(data.message || 'Alternate authentication failed.', 'warning');
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:17px;">verified_user</span> Try Again';
-      }
+      activeBtns.forEach(btn => {
+        btn.disabled = false;
+        btn.innerHTML = origContents.get(btn) || 'Try Again';
+      });
     }
   } catch (err) {
     console.error('Alternate login error:', err);
     showToast('An error occurred during authentication. Please retry.', 'error');
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:17px;">verified_user</span> Try Again';
-    }
+    activeBtns.forEach(btn => {
+      btn.disabled = false;
+      btn.innerHTML = origContents.get(btn) || 'Try Again';
+    });
   }
 };
 

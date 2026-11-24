@@ -16,6 +16,9 @@ class AdminBookingManagementTest extends TestCase
     {
         parent::setUp();
         $this->seed();
+
+        // Admin endpoints now require an authenticated admin (role middleware).
+        $this->actingAs(User::where('role', 'admin')->firstOrFail());
     }
 
     public function test_admin_can_list_all_bookings(): void

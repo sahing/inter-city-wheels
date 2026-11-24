@@ -138,23 +138,28 @@ class BookingController extends Controller
         if ($request->boolean('night_allowance')) $addonFare += 400;
         if ($request->boolean('luggage_carrier')) $addonFare += 200;
 
-        // Coupon calculation
+        // Coupon calculation (honours the minimum spend threshold)
         $discountFare = 0;
+        $subtotal = $baseFare + $baseToll + $addonFare;
+
         if (!empty($validated['coupon_code'])) {
-            $coupon = Coupon::where('code', strtoupper($validated['coupon_code']))->where('is_active', true)->first();
-            if ($coupon) {
+            $coupon = Coupon::where('code', strtoupper($validated['coupon_code']))
+                ->where('is_active', true)
+                ->first();
+
+            if ($coupon && $subtotal >= (float) ($coupon->min_spend ?? 0)) {
                 if ($coupon->type === 'percentage') {
-                    $calc = ($baseFare + $baseToll + $addonFare) * ($coupon->value / 100);
-                    $discountFare = min($calc, $coupon->max_discount ?? $calc);
+                    $calc = $subtotal * ($coupon->value / 100);
+                    $discountFare = min($calc, (float) ($coupon->max_discount ?? $calc));
                 } else {
-                    $discountFare = $coupon->value;
+                    $discountFare = (float) $coupon->value;
                 }
             }
         }
 
         $totalAmount = max(0, round($baseFare + $baseToll + $addonFare - $discountFare));
-        $otp = str_pad(mt_rand(1000, 9999), 4, '0', STR_PAD_LEFT);
-        $bookingRef = 'ICW-' . mt_rand(10000, 99999);
+        $otp = str_pad((string) random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
+        $bookingRef = 'ICW-' . random_int(10000, 99999);
 
         $booking = Booking::create([
             'booking_reference' => $bookingRef,
