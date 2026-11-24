@@ -1088,6 +1088,7 @@
             </div>
         </section>
 
+        @if($userRole === 'driver' || $userRole === 'admin')
         <!-- ======================================================== -->
         <!-- TAB 3: DRIVER BIDDING MARKETPLACE & AUCTION              -->
         <!-- ======================================================== -->
@@ -1455,7 +1456,9 @@
                 </div>
             </div>
         </section>
+        @endif
 
+        @if($userRole === 'admin')
         <!-- ======================================================== -->
         <!-- TAB 4: BOOTSTRAP ADMIN 3 / ADMINLTE 3 SIDE PANEL & PORTAL -->
         <!-- ======================================================== -->
@@ -3641,6 +3644,7 @@
                 </main>
             </div>
         </section>
+        @endif
 
         <!-- Clean Mobile Bottom Tab Navigation (Role Filtered) -->
         <nav class="fixed-bottom-bar" id="mobile-bottom-dock">
@@ -3730,6 +3734,7 @@
     </div>
 </div>
 
+@if($userRole === 'driver' || $userRole === 'admin')
 <!-- ======================================================== -->
 <!-- MODAL: CONCLUSIVE DRIVER BID & COMMITMENT POPUP          -->
 <!-- ======================================================== -->
@@ -3834,6 +3839,7 @@
         </div>
     </div>
 </div>
+@endif
 
 <!-- ======================================================== -->
 <!-- MODAL: DRIVER COUNTER OFFER                              -->
@@ -3931,6 +3937,7 @@
     </div>
 </div>
 
+@if($userRole === 'admin')
 <!-- ======================================================== -->
 <!-- MODAL: ADD DYNAMIC CUSTOM FORM FIELD (AdminLTE 3)       -->
 <!-- ======================================================== -->
@@ -4474,6 +4481,7 @@
         </div>
     </div>
 </div>
+@endif
 
 <!-- ======================================================== -->
 <!-- MODAL: FINAL GST TAX INVOICE (Printable / PDF)          -->
@@ -4662,6 +4670,7 @@
     </div>
 </div>
 
+@if($userRole === 'admin')
 <!-- ======================================================== -->
 <!-- MODAL: ADD REGISTERED USER / DRIVER (AdminLTE 3)        -->
 <!-- ======================================================== -->
@@ -5222,7 +5231,9 @@
         </div>
     </div>
 </div>
+@endif
 
+@if($userRole === 'driver' || $userRole === 'admin')
 <!-- ======================================================== -->
 <!-- MODAL: DRIVER LIST / REGISTER NEW VEHICLE               -->
 <!-- ======================================================== -->
@@ -5387,7 +5398,9 @@
         </div>
     </div>
 </div>
+@endif
 
+@if($userRole === 'admin')
 <!-- ======================================================== -->
 <!-- MODAL: ADMIN SETUP / EDIT OUTSTATION CAB ROUTE          -->
 <!-- ======================================================== -->
@@ -5807,4 +5820,5 @@
         </div>
     </div>
 </div>
+@endif
 @endsection

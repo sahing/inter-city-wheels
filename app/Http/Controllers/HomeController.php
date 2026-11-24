@@ -47,26 +47,39 @@ class HomeController extends Controller
         // Role-Specific Datasets
         $customerBookings = collect();
         if ($currentUser && $currentUser->role === 'customer') {
+            $cleanPhone = preg_replace('/[^0-9]/', '', (string)$currentUser->phone);
+            $last10 = strlen($cleanPhone) >= 10 ? substr($cleanPhone, -10) : $cleanPhone;
+
             $customerBookings = Booking::with('driver')
-                ->where(function ($q) use ($currentUser) {
-                    $q->where('customer_phone', $currentUser->phone)
-                      ->orWhere('customer_email', $currentUser->email)
-                      ->orWhere('customer_name', 'like', '%' . explode(' ', $currentUser->name)[0] . '%');
+                ->where(function ($q) use ($currentUser, $last10) {
+                    if (!empty($currentUser->phone)) {
+                        $q->where('customer_phone', $currentUser->phone);
+                    }
+                    if (!empty($last10)) {
+                        $q->orWhere('customer_phone', 'like', '%' . $last10);
+                    }
+                    if (!empty($currentUser->email)) {
+                        $q->orWhere('customer_email', $currentUser->email);
+                    }
+                    if (!empty($currentUser->name)) {
+                        $firstName = explode(' ', trim($currentUser->name))[0];
+                        if (strlen($firstName) >= 3) {
+                            $q->orWhere('customer_name', 'like', '%' . $firstName . '%');
+                        }
+                    }
                 })
                 ->latest()
                 ->get();
-            if ($customerBookings->isEmpty()) {
-                $customerBookings = Booking::with('driver')->latest()->take(3)->get();
-            }
         }
 
-        $driverProfile = Driver::first();
+        $driverProfile = null;
         $driverTrips = collect();
         $driverMyVehicles = collect();
+
         if ($currentUser && $currentUser->role === 'driver') {
             $driverProfile = Driver::where('phone', $currentUser->phone)
                 ->orWhere('name', 'like', '%' . explode(' ', $currentUser->name)[0] . '%')
-                ->first() ?: ($driverProfile ?: Driver::first());
+                ->first() ?: Driver::first();
 
             $driverMyVehicles = DriverVehicle::where('driver_phone', $currentUser->phone)
                 ->orWhere('driver_name', 'like', '%' . explode(' ', $currentUser->name)[0] . '%')
@@ -94,7 +107,8 @@ class HomeController extends Controller
                     }
                 }
             }
-        } else {
+        } elseif ($currentUser && $currentUser->role === 'admin') {
+            $driverProfile = Driver::first();
             if ($driverProfile) {
                 $driverMyVehicles = DriverVehicle::where('driver_id', $driverProfile->id)->latest()->get();
                 $driverTrips = Booking::with('driver')->where('assigned_driver_id', $driverProfile->id)->latest()->get();

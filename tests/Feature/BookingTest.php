@@ -26,16 +26,8 @@ class BookingTest extends TestCase
         $response->assertStatus(200);
         $response->assertSee('INTERCITY WHEELS');
         $response->assertSee('Choose Berths', false);
-        $response->assertSee('admin-sidebar', false);
-        $response->assertSee('admin-kpi-grid', false);
-        $response->assertSee('admin-sec-bookings', false);
-        $response->assertSee('admin-table-compact', false);
-        $response->assertSee('admin-allot-driver-modal', false);
-        $response->assertSee('admin-view-booking-modal', false);
-        $response->assertSee('admin-edit-booking-modal', false);
-        $response->assertSee('admin-add-booking-modal', false);
+        $response->assertSee('Outstation Cabs', false);
         $response->assertSee('admin-invoice-modal', false);
-        $response->assertSee('add-dynamic-field-modal', false);
     }
 
     public function test_admin_user_gets_desktop_full_admin_panel_by_default(): void
@@ -47,6 +39,15 @@ class BookingTest extends TestCase
         $response->assertSee('admin-active-view', false);
         $response->assertSee('id="tab-admin" class="tab-pane active"', false);
         $response->assertSee('nav-tab-btn active" data-target="admin"', false);
+        $response->assertSee('admin-sidebar', false);
+        $response->assertSee('admin-kpi-grid', false);
+        $response->assertSee('admin-sec-bookings', false);
+        $response->assertSee('admin-table-compact', false);
+        $response->assertSee('admin-allot-driver-modal', false);
+        $response->assertSee('admin-view-booking-modal', false);
+        $response->assertSee('admin-edit-booking-modal', false);
+        $response->assertSee('admin-add-booking-modal', false);
+        $response->assertSee('add-dynamic-field-modal', false);
     }
 
     public function test_health_check_endpoint(): void

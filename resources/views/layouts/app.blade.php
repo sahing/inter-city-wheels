@@ -142,37 +142,85 @@
                                 </div>
                             </div>
                             <div class="dropdown-divider"></div>
-                            <div class="dropdown-section-title">Quick Role Perspective Switch</div>
-                            <button type="button" class="dropdown-item-btn {{ Auth::user()->role === 'customer' ? 'active-role' : '' }}" onclick="quickDemoLogin('customer')">
-                                <span class="dropdown-item-icon">👤</span>
-                                <div class="dropdown-item-text">
-                                    <span class="dropdown-item-title">Customer</span>
-                                    <span class="dropdown-item-sub">Book Cabs & Berths</span>
-                                </div>
-                                @if(Auth::user()->role === 'customer')
-                                    <span class="material-symbols-outlined dropdown-check">check</span>
-                                @endif
-                            </button>
-                            <button type="button" class="dropdown-item-btn {{ Auth::user()->role === 'driver' ? 'active-role' : '' }}" onclick="quickDemoLogin('driver')">
-                                <span class="dropdown-item-icon">👨🏽‍✈️</span>
-                                <div class="dropdown-item-text">
-                                    <span class="dropdown-item-title">Chauffeur Partner</span>
-                                    <span class="dropdown-item-sub">Live Bids, Trips & Wallet</span>
-                                </div>
-                                @if(Auth::user()->role === 'driver')
-                                    <span class="material-symbols-outlined dropdown-check">check</span>
-                                @endif
-                            </button>
-                            <button type="button" class="dropdown-item-btn {{ Auth::user()->role === 'admin' ? 'active-role' : '' }}" onclick="quickDemoLogin('admin')">
-                                <span class="dropdown-item-icon">🛡️</span>
-                                <div class="dropdown-item-text">
-                                    <span class="dropdown-item-title">Platform Admin</span>
-                                    <span class="dropdown-item-sub">Full Management & Dispatch</span>
-                                </div>
-                                @if(Auth::user()->role === 'admin')
-                                    <span class="material-symbols-outlined dropdown-check">check</span>
-                                @endif
-                            </button>
+                            @if(Auth::user()->role === 'customer')
+                                <div class="dropdown-section-title">Customer Menu</div>
+                                <button type="button" class="dropdown-item-btn" onclick="switchTab('my-bookings'); toggleUserMenu();">
+                                    <span class="material-symbols-outlined dropdown-item-icon" style="font-size:18px; color:var(--primary);">confirmation_number</span>
+                                    <div class="dropdown-item-text">
+                                        <span class="dropdown-item-title">My Trips & Tickets</span>
+                                        <span class="dropdown-item-sub">Live passes, receipts & OTPs</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="dropdown-item-btn" onclick="switchTab('cabs'); toggleUserMenu();">
+                                    <span class="material-symbols-outlined dropdown-item-icon" style="font-size:18px; color:#2563eb;">directions_car</span>
+                                    <div class="dropdown-item-text">
+                                        <span class="dropdown-item-title">Book Outstation Cab</span>
+                                        <span class="dropdown-item-sub">One-way, round trip & airport</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="dropdown-item-btn" onclick="switchTab('schedules'); toggleUserMenu();">
+                                    <span class="material-symbols-outlined dropdown-item-icon" style="font-size:18px; color:#0d9488;">directions_bus</span>
+                                    <div class="dropdown-item-text">
+                                        <span class="dropdown-item-title">Luxury Sleeper Berths</span>
+                                        <span class="dropdown-item-sub">Reserve AC sleeper coach</span>
+                                    </div>
+                                </button>
+                            @elseif(Auth::user()->role === 'driver')
+                                <div class="dropdown-section-title">Chauffeur Console</div>
+                                <button type="button" class="dropdown-item-btn" onclick="switchTab('driver-trips'); toggleUserMenu();">
+                                    <span class="material-symbols-outlined dropdown-item-icon" style="font-size:18px; color:#16a34a;">local_taxi</span>
+                                    <div class="dropdown-item-text">
+                                        <span class="dropdown-item-title">Assigned Trips</span>
+                                        <span class="dropdown-item-sub">Active rides & route duty</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="dropdown-item-btn" onclick="switchTab('bidding'); toggleUserMenu();">
+                                    <span class="material-symbols-outlined dropdown-item-icon" style="font-size:18px; color:var(--primary);">local_offer</span>
+                                    <div class="dropdown-item-text">
+                                        <span class="dropdown-item-title">Live Bids & Auctions</span>
+                                        <span class="dropdown-item-sub">Bid on customer ride requests</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="dropdown-item-btn" onclick="switchTab('driver-wallet'); toggleUserMenu();">
+                                    <span class="material-symbols-outlined dropdown-item-icon" style="font-size:18px; color:#0284c7;">account_balance_wallet</span>
+                                    <div class="dropdown-item-text">
+                                        <span class="dropdown-item-title">Chauffeur Wallet</span>
+                                        <span class="dropdown-item-sub">Earnings & instant payout</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="dropdown-item-btn" onclick="switchTab('driver-profile'); toggleUserMenu();">
+                                    <span class="material-symbols-outlined dropdown-item-icon" style="font-size:18px; color:#64748b;">badge</span>
+                                    <div class="dropdown-item-text">
+                                        <span class="dropdown-item-title">Driver Profile & Fleet</span>
+                                        <span class="dropdown-item-sub">KYC, documents & vehicles</span>
+                                    </div>
+                                </button>
+                            @elseif(Auth::user()->role === 'admin')
+                                <div class="dropdown-section-title">Platform Administration</div>
+                                <button type="button" class="dropdown-item-btn active-role" onclick="switchTab('admin'); toggleUserMenu();">
+                                    <span class="material-symbols-outlined dropdown-item-icon" style="font-size:18px; color:#0284c7;">admin_panel_settings</span>
+                                    <div class="dropdown-item-text">
+                                        <span class="dropdown-item-title">AdminLTE 3 Portal</span>
+                                        <span class="dropdown-item-sub">Fleet, dispatch & financial audit</span>
+                                    </div>
+                                </button>
+                                <div class="dropdown-divider"></div>
+                                <div class="dropdown-section-title">Role Perspective Preview</div>
+                                <button type="button" class="dropdown-item-btn" onclick="quickDemoLogin('customer')">
+                                    <span class="dropdown-item-icon">👤</span>
+                                    <div class="dropdown-item-text">
+                                        <span class="dropdown-item-title">Customer Preview</span>
+                                        <span class="dropdown-item-sub">Book Cabs & Berths</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="dropdown-item-btn" onclick="quickDemoLogin('driver')">
+                                    <span class="dropdown-item-icon">👨🏽‍✈️</span>
+                                    <div class="dropdown-item-text">
+                                        <span class="dropdown-item-title">Driver Preview</span>
+                                        <span class="dropdown-item-sub">Live Bids, Trips & Wallet</span>
+                                    </div>
+                                </button>
+                            @endif
                             <div class="dropdown-divider"></div>
                             <form id="logout-form" action="{{ route('logout') }}" method="POST" style="display:none;">
                                 @csrf

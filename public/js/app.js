@@ -439,6 +439,25 @@ function initNavigation() {
 }
 
 function switchTab(tabId) {
+  // Role-based navigation guard
+  const userRole = window.CURRENT_USER?.role;
+  if (userRole === 'customer') {
+    const customerTabs = ['cabs', 'schedules', 'my-bookings'];
+    if (!customerTabs.includes(tabId)) {
+      tabId = 'cabs';
+    }
+  } else if (userRole === 'driver') {
+    const driverTabs = ['bidding', 'driver-trips', 'driver-wallet', 'driver-profile'];
+    if (!driverTabs.includes(tabId)) {
+      tabId = 'driver-trips';
+    }
+  } else if (!userRole) {
+    const guestTabs = ['cabs', 'schedules'];
+    if (!guestTabs.includes(tabId)) {
+      tabId = 'cabs';
+    }
+  }
+
   state.activeTab = tabId;
 
   // Full-width desktop admin panel layout toggle
@@ -2403,6 +2422,9 @@ window.acceptDriverBid = function (driverId) {
 // 4. AdminLTE 3 Module & Dynamic Form Builder
 // ==========================================
 function initAdminModule() {
+  const adminApp = document.getElementById('admin-lte-app');
+  if (!adminApp) return;
+
   renderFormBuilderFields();
   renderWorkflowStages();
 
