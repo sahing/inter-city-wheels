@@ -1171,62 +1171,66 @@
             <!-- Chauffeur Master Header & Navigation -->
             @include('partials.driver_header', ['activeDriverTab' => 'bidding'])
 
-            <!-- Driver Registered Vehicles & Approval Status Card -->
-            <div class="card driver-panel-card animate-load stagger-2" style="margin-bottom:16px; padding:14px 18px; border:1px solid rgba(212,155,76,0.3); background:#ffffff;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+                <div>
+                    <h3 style="font-family:var(--font-display); font-size:15.5px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                        <span class="material-symbols-outlined" style="color:var(--primary); font-size:21px;">hail</span>
+                        <span>Available Outstation Trips</span>
+                    </h3>
+                    <p style="font-size:11.5px; color:#64748b; margin:2px 0 0;">Review route, distance &amp; submit your bid.</p>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="admin-badge badge-success" style="font-size:11px;">🟢 Live</span>
+                    <button type="button" class="btn btn-sm btn-outline" onclick="renderBiddingList()" title="Refresh live auctions">
+                        <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
+                        <span>Refresh</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="bidding-cards-list animate-load stagger-2" id="bidding-cards-stream"></div>
+
+            <!-- Driver Registered Vehicles & Approval Status -->
+            <div class="card driver-panel-card animate-load stagger-3" style="margin-top:16px; margin-bottom:16px; padding:14px 16px; border:1px solid #e2e8f0; background:#ffffff;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
                     <div style="display:flex; align-items:center; gap:8px;">
                         <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">garage</span>
-                        <span style="font-family:var(--font-display); font-weight:700; font-size:14px; color:#0f172a;">My Registered Cars & Fleet Status</span>
+                        <span style="font-family:var(--font-display); font-weight:800; font-size:14px; color:#0f172a;">My Registered Cars ({{ count($driverMyVehicles) }})</span>
                     </div>
                     <button type="button" class="btn btn-sm btn-outline" onclick="openDriverListVehicleModal()">
                         <span class="material-symbols-outlined" style="font-size:14px;">add</span>
-                        <span>List Another Car</span>
+                        <span>Add Car</span>
                     </button>
                 </div>
 
-                <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:10px;" id="driver-my-vehicles-grid">
+                <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:10px;" id="driver-my-vehicles-grid">
                     @forelse($driverMyVehicles as $v)
-                        <div id="driver-my-veh-card-{{ $v->id }}" style="border:1px solid #e2e8f0; border-radius:8px; padding:12px; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;">
-                            <div>
-                                <div style="font-weight:700; font-size:13px; color:#0f172a;" id="driver-veh-title-{{ $v->id }}">{{ $v->vehicle_model }}</div>
-                                <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
-                                    <span style="font-family:monospace; font-weight:700; color:#8c5d1e;">{{ $v->vehicle_plate }}</span> &bull; 
-                                    <span>{{ ucfirst($v->fleet_category) }} ({{ $v->seating_capacity }} Seats{{ $v->berth_capacity > 0 ? ', ' . $v->berth_capacity . ' Berths' : '' }})</span>
+                        <div id="driver-my-veh-card-{{ $v->id }}" class="driver-compact-item-card">
+                            <div style="min-width:0; flex:1;">
+                                <div style="font-weight:700; font-size:13px; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" id="driver-veh-title-{{ $v->id }}">{{ $v->vehicle_model }}</div>
+                                <div style="font-size:11.5px; color:#64748b; margin-top:2px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                    <span style="font-family:monospace; font-weight:700; color:#8c5d1e;">{{ $v->vehicle_plate }}</span>
+                                    @if($v->status === 'Approved')
+                                        <span class="admin-badge badge-success" style="font-size:10px; padding:2px 7px;">Approved</span>
+                                    @elseif($v->status === 'Pending')
+                                        <span class="admin-badge badge-warning" style="font-size:10px; padding:2px 7px;">Pending</span>
+                                    @else
+                                        <span class="admin-badge badge-danger" style="font-size:10px; padding:2px 7px;">Rejected</span>
+                                    @endif
                                 </div>
-                                <div id="driver-veh-notes-{{ $v->id }}" style="font-size:10.5px; color:#64748b; margin-top:4px; font-style:italic; {{ $v->admin_notes ? '' : 'display:none;' }}">Admin Note: {{ $v->admin_notes }}</div>
                             </div>
-                            <div id="driver-my-veh-badge-{{ $v->id }}">
-                                @if($v->status === 'Approved')
-                                    <span class="admin-badge badge-success" style="font-size:10.5px; padding:4px 8px;">✅ Approved</span>
-                                @elseif($v->status === 'Pending')
-                                    <span class="admin-badge badge-warning" style="font-size:10.5px; padding:4px 8px;">⏳ Pending Approval</span>
-                                @else
-                                    <span class="admin-badge badge-danger" style="font-size:10.5px; padding:4px 8px;">❌ Rejected</span>
-                                @endif
-                            </div>
+                            <button type="button" class="btn btn-sm btn-outline driver-item-details-btn"
+                                onclick='openDriverVehicleDetails(@json($v))'>
+                                <span>Details</span>
+                            </button>
                         </div>
                     @empty
                         <div style="grid-column: 1 / -1; text-align:center; padding:16px; color:#94a3b8; font-size:12px;">
-                            No cars registered yet. Click <strong>"Register Car"</strong> to submit your vehicle for admin approval.
+                            No cars registered yet. Click <strong>"Add Car"</strong> to submit your vehicle for admin approval.
                         </div>
                     @endforelse
                 </div>
             </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
-                <div>
-                    <h3 style="font-family:var(--font-display); font-size:16px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
-                        <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px;">hail</span>
-                        <span>Available Outstation Trips for Driver Bidding</span>
-                    </h3>
-                    <p style="font-size:11.5px; color:#64748b; margin:2px 0 0;">Review passenger pickup (From), destination (To), highway distance (KM), and submit your conclusive ride commitment bid.</p>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span class="admin-badge badge-success" style="font-size:11px;">🟢 Live Trip Requests</span>
-                </div>
-            </div>
-
-            <div class="bidding-cards-list animate-load stagger-3" id="bidding-cards-stream"></div>
         </section>
 
         <!-- ======================================================== -->
@@ -1252,49 +1256,40 @@
 
                 <div class="driver-trips-list" style="display:flex; flex-direction:column; gap:14px; padding:16px 0;">
                     @forelse($driverTrips ?? [] as $dt)
-                    <div class="driver-trip-card" id="driver-trip-box-{{ $dt->id }}" style="border:1px solid #e2e8f0; border-radius:10px; padding:16px; background:#ffffff; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:12px; margin-bottom:12px;">
-                            <div>
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <span style="font-family:monospace; font-weight:800; color:var(--primary); font-size:14px;">{{ $dt->booking_reference }}</span>
+                    <div class="driver-trip-card" id="driver-trip-box-{{ $dt->id }}" style="border:1px solid #e2e8f0; border-radius:12px; padding:16px; background:#ffffff; box-shadow:0 2px 8px rgba(15,23,42,0.04);">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:10px; margin-bottom:12px;">
+                            <div style="min-width:0; flex:1;">
+                                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                    <span style="font-family:monospace; font-weight:800; color:var(--primary); font-size:13px;">{{ $dt->booking_reference }}</span>
                                     <span class="admin-badge @if($dt->status === 'Confirmed') badge-success @elseif($dt->status === 'Driver Assigned') badge-gold @elseif($dt->status === 'Started') badge-info @elseif($dt->status === 'Completed') badge-primary @else badge-secondary @endif" id="driver-trip-status-badge-{{ $dt->id }}">
                                         {{ $dt->status }}
                                     </span>
                                 </div>
-                                <div style="font-size:16px; font-weight:800; color:#0f172a; margin-top:4px;">{{ $dt->route_summary }}</div>
-                                <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
-                                    Passenger: <strong style="color:#0f172a;">{{ $dt->customer_name }}</strong> &bull; 
-                                    <a href="tel:{{ $dt->customer_phone }}" style="color:#0284c7; text-decoration:none; font-weight:600;">📞 {{ $dt->customer_phone }}</a>
+                                <div style="font-size:15.5px; font-weight:800; color:#0f172a; margin-top:4px; line-height:1.25;">{{ $dt->route_summary }}</div>
+                                <div style="font-size:12px; color:#64748b; margin-top:3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                    <strong style="color:#0f172a;">{{ $dt->customer_name }}</strong>
+                                    <span>&bull;</span>
+                                    <a href="tel:{{ $dt->customer_phone }}" style="color:#0284c7; text-decoration:none; font-weight:700;">📞 {{ $dt->customer_phone }}</a>
                                 </div>
                             </div>
-                            <div style="text-align:right;">
-                                <div style="font-size:18px; font-weight:800; color:#16a34a;">₹{{ number_format($dt->total_amount) }}</div>
-                                <div style="font-size:10.5px; color:#64748b;">Tolls & Taxes Included</div>
+                            <div style="text-align:right; flex-shrink:0;">
+                                <div style="font-size:18px; font-weight:800; color:#16a34a; line-height:1.1;">₹{{ number_format($dt->total_amount) }}</div>
+                                <div style="font-size:10px; color:#64748b; margin-top:2px;">All-inclusive</div>
                             </div>
                         </div>
 
-                        <!-- Route & Addresses -->
-                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:14px; font-size:12px; background:#f8fafc; padding:10px 12px; border-radius:6px;">
-                            <div>
-                                <div style="font-size:10.5px; font-weight:700; color:#64748b; text-transform:uppercase;">📍 Passenger Pickup Location</div>
-                                <div style="color:#0f172a; font-weight:600; margin-top:2px;">{{ $dt->pickup_location }}</div>
-                            </div>
-                            <div>
-                                <div style="font-size:10.5px; font-weight:700; color:#64748b; text-transform:uppercase;">🏁 Destination Drop Location</div>
-                                <div style="color:#0f172a; font-weight:600; margin-top:2px;">{{ $dt->drop_location }}</div>
-                            </div>
-                        </div>
-
-                        <!-- OTP Start Verification & Actions -->
-                        <div id="driver-trip-actions-{{ $dt->id }}" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-top:1px dashed #e2e8f0; padding-top:12px;">
+                        <!-- OTP Start Verification & Primary Action -->
+                        <div id="driver-trip-actions-{{ $dt->id }}" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                             @if($dt->status === 'Driver Assigned' || $dt->status === 'Confirmed')
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <label style="font-size:11.5px; font-weight:700; color:#475569;">Enter Customer OTP:</label>
-                                <input type="text" id="driver-otp-input-{{ $dt->id }}" placeholder="4-digit OTP" maxlength="4" style="width:110px; padding:5px 8px; font-family:monospace; font-size:13px; font-weight:700; text-align:center; border:1px solid #cbd5e1; border-radius:4px;">
-                                <button type="button" class="btn btn-sm btn-primary" onclick="verifyDriverStartOtp({{ $dt->id }})">
-                                    <span class="material-symbols-outlined" style="font-size:15px;">check_circle</span>
-                                    <span>Verify & Start Ride</span>
-                                </button>
+                            <div class="driver-otp-row" style="display:flex; align-items:center; gap:8px; width:100%;">
+                                <label for="driver-otp-input-{{ $dt->id }}" style="font-size:11.5px; font-weight:700; color:#475569; white-space:nowrap;">Customer Ride OTP</label>
+                                <div class="driver-otp-controls" style="display:flex; align-items:center; gap:8px; flex:1;">
+                                    <input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" id="driver-otp-input-{{ $dt->id }}" placeholder="4-digit" maxlength="4" style="width:96px; padding:6px 8px; font-family:monospace; font-size:14px; font-weight:800; text-align:center; border:1px solid #cbd5e1; border-radius:6px; letter-spacing:2px;">
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="verifyDriverStartOtp({{ $dt->id }})">
+                                        <span class="material-symbols-outlined" style="font-size:15px;">check_circle</span>
+                                        <span>Verify &amp; Start</span>
+                                    </button>
+                                </div>
                             </div>
                             @elseif($dt->status === 'Started')
                             <div style="display:flex; align-items:center; gap:6px; color:#0284c7; font-size:12px; font-weight:700;">
@@ -1303,18 +1298,22 @@
                             </div>
                             <button type="button" class="btn btn-sm btn-accent" onclick="completeDriverTrip({{ $dt->id }})">
                                 <span class="material-symbols-outlined" style="font-size:15px;">flag</span>
-                                <span>Complete Trip & Settle Payout</span>
+                                <span>Complete Trip &amp; Settle</span>
                             </button>
                             @else
                             <div style="color:#16a34a; font-size:12px; font-weight:700; display:flex; align-items:center; gap:4px;">
                                 <span class="material-symbols-outlined" style="font-size:16px;">verified</span>
-                                <span>Trip completed & payout credited.</span>
+                                <span>Trip completed &amp; payout credited.</span>
                             </div>
                             @endif
+                        </div>
 
-                            <button type="button" class="btn btn-sm btn-outline" onclick="openInvoiceModal({{ $dt->id }})">
-                                <span class="material-symbols-outlined" style="font-size:14px;">receipt</span>
-                                <span>View Invoice</span>
+                        <!-- Secondary Details Screen Trigger -->
+                        <div style="display:flex; justify-content:flex-end; border-top:1px solid #f1f5f9; padding-top:10px; margin-top:10px;">
+                            <button type="button" class="btn btn-sm btn-outline driver-item-details-btn"
+                                onclick='openDriverTripDetails(@json($dt))'>
+                                <span class="material-symbols-outlined" style="font-size:14px;">visibility</span>
+                                <span>Trip Details</span>
                             </button>
                         </div>
                     </div>
@@ -1475,29 +1474,26 @@
                             </button>
                         </div>
 
-                        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px;" id="driver-profile-vehicles-grid">
+                        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:10px;" id="driver-profile-vehicles-grid">
                             @forelse($driverMyVehicles as $v)
-                                <div style="border:1px solid #e2e8f0; border-radius:8px; padding:12px; background:#f8fafc; display:flex; justify-content:space-between; align-items:flex-start;">
-                                    <div>
-                                        <div style="font-weight:700; font-size:13.5px; color:#0f172a;">{{ $v->vehicle_model }}</div>
-                                        <div style="font-size:11.5px; color:#64748b; margin-top:3px;">
-                                            <span style="font-family:monospace; font-weight:700; color:var(--primary);">{{ $v->vehicle_plate }}</span> &bull; 
-                                            <span>{{ ucfirst($v->fleet_category) }}</span>
-                                        </div>
-                                        <div style="font-size:11px; color:#64748b; margin-top:2px;">
-                                            <span>{{ $v->seating_capacity }} Seats{{ $v->berth_capacity > 0 ? ', ' . $v->berth_capacity . ' Berths' : '' }}</span> &bull; 
-                                            <span>{{ $v->fuel_type ?? 'Diesel' }}</span>
+                                <div class="driver-compact-item-card">
+                                    <div style="min-width:0; flex:1;">
+                                        <div style="font-weight:700; font-size:13px; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ $v->vehicle_model }}</div>
+                                        <div style="font-size:11.5px; color:#64748b; margin-top:2px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                            <span style="font-family:monospace; font-weight:700; color:#8c5d1e;">{{ $v->vehicle_plate }}</span>
+                                            @if($v->status === 'Approved')
+                                                <span class="admin-badge badge-success" style="font-size:10px; padding:2px 7px;">Approved</span>
+                                            @elseif($v->status === 'Pending')
+                                                <span class="admin-badge badge-warning" style="font-size:10px; padding:2px 7px;">Pending</span>
+                                            @else
+                                                <span class="admin-badge badge-danger" style="font-size:10px; padding:2px 7px;">Rejected</span>
+                                            @endif
                                         </div>
                                     </div>
-                                    <div>
-                                        @if($v->status === 'Approved')
-                                            <span class="admin-badge badge-success" style="font-size:10px; padding:3px 7px;">✅ Approved</span>
-                                        @elseif($v->status === 'Pending')
-                                            <span class="admin-badge badge-warning" style="font-size:10px; padding:3px 7px;">⏳ Pending</span>
-                                        @else
-                                            <span class="admin-badge badge-danger" style="font-size:10px; padding:3px 7px;">❌ Rejected</span>
-                                        @endif
-                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline driver-item-details-btn"
+                                        onclick='openDriverVehicleDetails(@json($v))'>
+                                        <span>Details</span>
+                                    </button>
                                 </div>
                             @empty
                                 <div style="grid-column:1 / -1; text-align:center; padding:24px 16px; color:#94a3b8; font-size:12.5px;">
@@ -3815,6 +3811,10 @@
                     <span class="material-symbols-outlined">account_balance_wallet</span>
                     <span>Wallet</span>
                 </button>
+                <button type="button" class="mobile-dock-btn {{ $defaultTab === 'driver-profile' ? 'active' : '' }}" data-target="driver-profile">
+                    <span class="material-symbols-outlined">badge</span>
+                    <span>Profile</span>
+                </button>
             @elseif($userRole === 'admin')
                 <button type="button" class="mobile-dock-btn {{ $defaultTab === 'admin' ? 'active' : '' }}" data-target="admin">
                     <span class="material-symbols-outlined">tune</span>
@@ -5392,7 +5392,7 @@
             </div>
 
             <form id="driver-list-vehicle-form" onsubmit="submitDriverNewVehicle(event)">
-                <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:12px; margin-bottom:12px;">
+                <div class="driver-modal-grid-2" style="display:grid; grid-template-columns: 1.4fr 1fr; gap:12px; margin-bottom:12px;">
                     <div class="form-group">
                         <label class="form-label" for="driver-new-veh-model">Vehicle Make & Model *</label>
                         <input type="text" id="driver-new-veh-model" class="form-control" placeholder="e.g. Toyota Innova Crysta, Maruti Ertiga" required>
@@ -5403,7 +5403,7 @@
                     </div>
                 </div>
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div class="driver-modal-grid-3" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
                     <div class="form-group">
                         <label class="form-label" for="driver-new-veh-category">Fleet Class *</label>
                         <select id="driver-new-veh-category" class="form-control">
@@ -5424,7 +5424,7 @@
                     </div>
                 </div>
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div class="driver-modal-grid-2" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
                     <div class="form-group">
                         <label class="form-label" for="driver-new-veh-fuel">Fuel Type *</label>
                         <select id="driver-new-veh-fuel" class="form-control">
@@ -5487,7 +5487,7 @@
                     </div>
                 </div>
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div class="driver-modal-grid-2" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
                     <div class="form-group">
                         <label class="form-label" for="driver-edit-name">Full Name *</label>
                         <input type="text" id="driver-edit-name" class="form-control" value="{{ $driverProfile->name ?? 'Ramesh Patil' }}" required>
@@ -5498,7 +5498,7 @@
                     </div>
                 </div>
 
-                <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:12px; margin-bottom:12px;">
+                <div class="driver-modal-grid-2" style="display:grid; grid-template-columns: 1.4fr 1fr; gap:12px; margin-bottom:12px;">
                     <div class="form-group">
                         <label class="form-label" for="driver-edit-model">Primary Vehicle Model *</label>
                         <input type="text" id="driver-edit-model" class="form-control" value="{{ $driverProfile->vehicle_model ?? 'Toyota Innova Crysta' }}" required>
@@ -5509,7 +5509,7 @@
                     </div>
                 </div>
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:16px;">
+                <div class="driver-modal-grid-2" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:16px;">
                     <div class="form-group">
                         <label class="form-label" for="driver-edit-category">Fleet Class *</label>
                         <select id="driver-edit-category" class="form-control">
@@ -5534,6 +5534,23 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: DRIVER ITEM DETAILS SCREEN                        -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="driver-item-details-modal">
+    <div class="modal-dialog" style="max-width: 480px;">
+        <div class="modal-header">
+            <h3 class="modal-title" style="display:flex; align-items:center; gap:8px;">
+                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;" id="driver-details-icon">info</span>
+                <span id="driver-details-title">Details</span>
+            </h3>
+            <button type="button" class="modal-close-btn" onclick="closeModal('driver-item-details-modal')">×</button>
+        </div>
+        <div class="modal-body" style="padding:16px 20px;" id="driver-details-body">
         </div>
     </div>
 </div>

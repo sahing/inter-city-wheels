@@ -2521,10 +2521,14 @@ async function renderBiddingList() {
 
     if (!auctions.length) {
       container.innerHTML = verificationBanner
-        + '<div style="text-align:center; padding:38px 20px; color:#94a3b8; background:#f8fafc; border-radius:8px;">'
-        + '<span class="material-symbols-outlined" style="font-size:38px; color:#cbd5e1; display:block; margin-bottom:6px;">gavel</span>'
-        + '<div style="font-weight:700; font-size:14px; color:#475569;">No auctions are open right now</div>'
-        + '<p style="font-size:12px; margin:4px 0 0;">New bidding links are sent on WhatsApp when operations publishes a trip. Press Refresh to check again.</p>'
+        + '<div style="text-align:center; padding:32px 18px; color:#64748b; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;">'
+        + '<span class="material-symbols-outlined" style="font-size:36px; color:#cbd5e1; display:block; margin-bottom:6px;">gavel</span>'
+        + '<div style="font-weight:700; font-size:14px; color:#334155;">No auctions are open right now</div>'
+        + '<p style="font-size:12px; margin:4px 0 14px; color:#64748b;">New bidding links are sent on WhatsApp when operations publishes a trip.</p>'
+        + '<button type="button" class="btn btn-sm btn-outline" onclick="renderBiddingList()">'
+        + '<span class="material-symbols-outlined" style="font-size:15px;">refresh</span>'
+        + '<span>Refresh Auctions</span>'
+        + '</button>'
         + '</div>';
       return;
     }
@@ -2535,51 +2539,50 @@ async function renderBiddingList() {
         : auctionMoney(auction.current_lowest);
 
       const badge = auction.you_are_lowest
-        ? '<span class="admin-badge badge-success" style="font-size:10.5px;">✓ You hold the lowest bid</span>'
-        : '<span class="admin-badge badge-gold" style="font-size:10.5px;">⚡ Bidding live</span>';
+        ? '<span class="admin-badge badge-success" style="font-size:10.5px;">✓ Lowest</span>'
+        : '<span class="admin-badge badge-gold" style="font-size:10.5px;">⚡ Live</span>';
 
       const distance = auction.distance_km
         ? '<span style="color:#d49b4c;">' + auction.distance_km + ' KM</span>'
-        : '<span style="color:#94a3b8;">distance on request</span>';
+        : '<span style="color:#94a3b8;">On request</span>';
 
-      const departure = auction.departure_at ? auctionDateTime(auction.departure_at) : 'date to be confirmed';
-      const action = auction.my_bids > 0 ? 'Improve your bid' : 'Open bidding page';
+      const departure = auction.departure_at ? auctionDateTime(auction.departure_at) : 'TBD';
+      const action = auction.my_bids > 0 ? 'Improve Bid' : 'Place Bid';
 
-      return '<div class="bid-card" style="display:flex; flex-direction:column; gap:12px; padding:16px 18px; border:1px solid #e2e8f0; background:#ffffff; border-radius:10px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">'
+      return '<div class="bid-card" style="display:flex; flex-direction:column; gap:10px; padding:14px 16px; border:1px solid #e2e8f0; background:#ffffff; border-radius:12px; margin-bottom:12px; box-shadow:0 2px 8px rgba(15,23,42,0.04);">'
         + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">'
-        + '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">'
+        + '<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">'
         + '<span class="admin-badge badge-primary" style="font-size:10.5px; font-family:monospace;">' + auctionEscape(auction.booking_reference) + '</span>'
         + badge
         + '</div>'
-        + '<span style="font-size:11.5px; color:#64748b; font-weight:700;">⏳ ' + auctionEscape(auctionTimeLeft(auction.closes_at)) + '</span>'
+        + '<span style="font-size:11px; color:#64748b; font-weight:700;">⏳ ' + auctionEscape(auctionTimeLeft(auction.closes_at)) + '</span>'
         + '</div>'
-        + '<div style="display:grid; grid-template-columns: 1fr auto 1fr; gap:12px; align-items:center; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px;">'
-        + '<div>'
-        + '<div style="font-size:10px; font-weight:800; color:#0284c7; text-transform:uppercase; letter-spacing:0.04em;">Pickup (From)</div>'
-        + '<div style="font-size:13.5px; font-weight:700; color:#0f172a; margin-top:2px;">' + auctionEscape(auction.pickup_city) + '</div>'
+        + '<div class="bid-route-grid" style="display:grid; grid-template-columns: 1fr auto 1fr; gap:10px; align-items:center; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">'
+        + '<div style="min-width:0;">'
+        + '<div style="font-size:10px; font-weight:800; color:#0284c7; text-transform:uppercase; letter-spacing:0.04em;">Pickup</div>'
+        + '<div style="font-size:13.5px; font-weight:700; color:#0f172a; margin-top:1px;">' + auctionEscape(auction.pickup_city) + '</div>'
         + '</div>'
-        + '<div style="text-align:center; padding:0 8px;">'
-        + '<div style="background:#0b0f19; border:1px solid rgba(212,155,76,0.4); border-radius:20px; padding:4px 12px; font-size:12px; font-weight:800; font-family:monospace; display:inline-flex; align-items:center; gap:4px;">🛣️ ' + distance + '</div>'
-        + '<div style="font-size:10.5px; color:#64748b; margin-top:3px; font-weight:600;">🗓️ ' + auctionEscape(departure) + '</div>'
+        + '<div class="bid-route-mid" style="text-align:center; padding:0 6px;">'
+        + '<div style="background:#0b0f19; border:1px solid rgba(212,155,76,0.4); border-radius:20px; padding:3px 10px; font-size:11.5px; font-weight:800; font-family:monospace; display:inline-flex; align-items:center; gap:4px;">🛣️ ' + distance + '</div>'
+        + '<div style="font-size:10.5px; color:#64748b; margin-top:2px; font-weight:600;">🗓️ ' + auctionEscape(departure) + '</div>'
         + '</div>'
-        + '<div>'
-        + '<div style="font-size:10px; font-weight:800; color:#16a34a; text-transform:uppercase; letter-spacing:0.04em;">Drop (To)</div>'
-        + '<div style="font-size:13.5px; font-weight:700; color:#0f172a; margin-top:2px;">' + auctionEscape(auction.drop_city) + '</div>'
+        + '<div style="min-width:0;">'
+        + '<div style="font-size:10px; font-weight:800; color:#16a34a; text-transform:uppercase; letter-spacing:0.04em;">Drop</div>'
+        + '<div style="font-size:13.5px; font-weight:700; color:#0f172a; margin-top:1px;">' + auctionEscape(auction.drop_city) + '</div>'
         + '</div>'
         + '</div>'
-        + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-top:1px dashed #e2e8f0; padding-top:10px;">'
+        + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-top:1px solid #f1f5f9; padding-top:10px;">'
         + '<div style="font-size:12px; color:#475569;">'
-        + 'Start price <strong style="color:#0f172a;">' + auctionMoney(auction.start_amount) + '</strong>'
-        + ' &bull; Current lowest <strong style="color:#16a34a;">' + lowest + '</strong>'
-        + '<div style="font-size:10.5px; color:#64748b; margin-top:3px; display:flex; align-items:center; gap:4px;">'
-        + '<span class="material-symbols-outlined" style="font-size:13px; color:#10b981;">lock</span>'
-        + '<span>Passenger name, mobile and exact addresses unlock only if you win.</span>'
+        + 'Start <strong style="color:#0f172a;">' + auctionMoney(auction.start_amount) + '</strong>'
+        + ' &bull; Lowest <strong style="color:#16a34a;">' + lowest + '</strong>'
         + '</div>'
-        + '</div>'
-        + '<a class="btn btn-sm btn-outline-gold" style="text-decoration:none;" href="' + auctionEscape(auction.bid_url) + '">'
+        + '<div style="display:flex; align-items:center; gap:8px;">'
+        + '<button type="button" class="btn btn-sm btn-outline driver-item-details-btn" onclick="openDriverAuctionDetails(' + Number(auction.id || 0) + ')">Details</button>'
+        + '<a class="btn btn-sm btn-primary" style="text-decoration:none;" href="' + auctionEscape(auction.bid_url) + '">'
         + '<span class="material-symbols-outlined" style="font-size:15px;">gavel</span>'
         + '<span>' + action + '</span>'
         + '</a>'
+        + '</div>'
         + '</div>'
         + '</div>';
     }).join('');
@@ -2587,6 +2590,70 @@ async function renderBiddingList() {
     console.error('renderBiddingList', err);
     container.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">Could not load live auctions. Check your connection, then press Refresh.</div>';
   }
+}
+
+function showDriverDetailsScreen(title, icon, rows, note) {
+  const modal = document.getElementById('driver-item-details-modal');
+  const titleEl = document.getElementById('driver-details-title');
+  const iconEl = document.getElementById('driver-details-icon');
+  const bodyEl = document.getElementById('driver-details-body');
+  if (!modal || !bodyEl) return;
+  if (titleEl) titleEl.textContent = title || 'Details';
+  if (iconEl) iconEl.textContent = icon || 'info';
+  const rowsHtml = (rows || []).map(r =>
+    '<div class="driver-details-row">'
+    + '<span class="driver-details-label">' + auctionEscape(r.label) + '</span>'
+    + '<span class="driver-details-value">' + auctionEscape(r.value) + '</span>'
+    + '</div>'
+  ).join('');
+  const noteHtml = note
+    ? '<div style="margin-top:10px; padding:10px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; font-size:11.5px; color:#92400e;">' + auctionEscape(note) + '</div>'
+    : '';
+  bodyEl.innerHTML = '<div class="driver-details-grid">' + rowsHtml + '</div>' + noteHtml
+    + '<div style="display:flex; justify-content:flex-end; margin-top:14px;">'
+    + '<button type="button" class="btn btn-sm btn-secondary" onclick="closeModal(\'driver-item-details-modal\')">Close</button>'
+    + '</div>';
+  modal.classList.add('active');
+}
+
+function openDriverVehicleDetails(v) {
+  if (!v) return;
+  const berths = Number(v.berth_capacity || 0) > 0 ? ', ' + v.berth_capacity + ' Berths' : '';
+  showDriverDetailsScreen(v.vehicle_model || 'Vehicle Details', 'directions_car', [
+    { label: 'Registration Plate', value: v.vehicle_plate || '—' },
+    { label: 'Approval Status', value: v.status || 'Pending' },
+    { label: 'Fleet Class', value: (v.fleet_category || '—').toUpperCase() },
+    { label: 'Capacity', value: (v.seating_capacity || 0) + ' Seats' + berths },
+    { label: 'Fuel Type', value: v.fuel_type || 'Diesel' },
+    { label: 'Year', value: v.manufacturing_year || '—' },
+    { label: 'RC Number', value: v.rc_number || '—' }
+  ], v.admin_notes ? 'Admin Note: ' + v.admin_notes : '');
+}
+
+function openDriverTripDetails(dt) {
+  if (!dt) return;
+  showDriverDetailsScreen('Trip ' + (dt.booking_reference || ''), 'local_taxi', [
+    { label: 'Status', value: dt.status || '—' },
+    { label: 'Route', value: dt.route_summary || '—' },
+    { label: 'Passenger', value: (dt.customer_name || '—') + (dt.customer_phone ? ' (' + dt.customer_phone + ')' : '') },
+    { label: 'Pickup Location', value: dt.pickup_location || '—' },
+    { label: 'Drop Location', value: dt.drop_location || '—' },
+    { label: 'Total Fare', value: '₹' + Number(dt.total_amount || 0).toLocaleString('en-IN') + ' (Tolls & taxes included)' }
+  ], '');
+}
+
+function openDriverAuctionDetails(auctionId) {
+  const list = (state && state.bidding && Array.isArray(state.bidding.availableTrips)) ? state.bidding.availableTrips : [];
+  const a = list.find(item => Number(item.id) === Number(auctionId));
+  if (!a) return;
+  showDriverDetailsScreen('Auction ' + (a.booking_reference || ''), 'gavel', [
+    { label: 'Route', value: (a.pickup_city || '—') + ' → ' + (a.drop_city || '—') },
+    { label: 'Distance', value: a.distance_km ? a.distance_km + ' KM' : 'On request' },
+    { label: 'Departure', value: a.departure_at ? auctionDateTime(a.departure_at) : 'TBD' },
+    { label: 'Start Price', value: auctionMoney(a.start_amount) },
+    { label: 'Current Lowest', value: a.current_lowest != null ? auctionMoney(a.current_lowest) : 'No bids yet' },
+    { label: 'Closes', value: auctionTimeLeft(a.closes_at) }
+  ], 'Passenger name, mobile and exact addresses unlock only if you win.');
 }
 
 // ==========================================
