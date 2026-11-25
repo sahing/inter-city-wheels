@@ -4007,7 +4007,8 @@ window.submitAlternateAuth = async function (payload) {
   }
 
   try {
-    const res = await fetch('/auth/alternate-login', {
+    const endpoint = payload.provider === 'firebase' ? '/auth/firebase-login' : '/auth/alternate-login';
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
