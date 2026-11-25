@@ -68,7 +68,7 @@
             </div>
             <div class="notice-right">
                 <span style="display:flex; align-items:center; gap:4px; font-weight:600; color:#f5d061;">
-                    <span class="material-symbols-outlined" style="font-size:15px;">support_agent</span> 24/7 Helpline: 1800-209-WHEELS
+                    <span class="material-symbols-outlined" style="font-size:15px;">support_agent</span> 24/7 Helpline: 700 3434 088
                 </span>
                 <span>•</span>
                 <button type="button" onclick="showToast('Emergency SOS dispatch ready for active rides.', 'warning')">

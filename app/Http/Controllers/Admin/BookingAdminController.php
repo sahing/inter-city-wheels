@@ -333,7 +333,7 @@ class BookingAdminController extends Controller
                 'gstin' => '27AAACI9912K1Z8',
                 'hsn_sac' => '996412 (Passenger Transport Service)',
                 'address' => 'Floor 4, Tech Vista Towers, Senapati Bapat Road, Pune - 411016, Maharashtra, India',
-                'support_phone' => '1800-209-WHEELS',
+                'support_phone' => '700 3434 088',
                 'support_email' => 'billing@intercitywheels.com',
                 'website' => 'https://intercitywheels.com',
             ],

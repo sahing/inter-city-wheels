@@ -24,7 +24,7 @@
         </div>
 
         <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; display:flex; justify-content:space-between; align-items:center; font-size: 12px; color: #64748b;">
-            <div>IntercityWheels Mobility Services Pvt. Ltd. &bull; Helpline: 1800-209-WHEELS</div>
+            <div>IntercityWheels Mobility Services Pvt. Ltd. &bull; Helpline: 700 3434 088</div>
             <a href="mailto:support@intercitywheels.com" style="color:var(--primary); font-weight:600; text-decoration:none;">support@intercitywheels.com</a>
         </div>
     </div>
