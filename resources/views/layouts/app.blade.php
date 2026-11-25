@@ -403,7 +403,7 @@
                                 <label class="form-label" for="login-email" style="font-size:12px; margin-bottom:4px;">Account Email</label>
                                 <div class="input-with-icon">
                                     <span class="material-symbols-outlined">mail</span>
-                                    <input type="email" name="email" id="login-email" class="form-control" placeholder="user@intercitywheels.com" required value="customer@intercitywheels.com">
+                                    <input type="email" name="email" id="login-email" class="form-control" placeholder="user@intercitywheels.com" required value="{{ config('demo.enabled') ? 'customer@intercitywheels.com' : '' }}">
                                 </div>
                             </div>
 
@@ -411,7 +411,7 @@
                                 <label class="form-label" for="login-password" style="font-size:12px; margin-bottom:4px;">Password</label>
                                 <div class="input-with-icon">
                                     <span class="material-symbols-outlined">lock</span>
-                                    <input type="password" name="password" id="login-password" class="form-control" placeholder="••••••••" required value="password123">
+                                    <input type="password" name="password" id="login-password" class="form-control" placeholder="••••••••" required value="{{ config('demo.enabled') ? 'password123' : '' }}">
                                 </div>
                             </div>
 
@@ -599,6 +599,7 @@
                     <span style="color:#64748b; font-weight:600;">Target Role: <strong id="alt-role-name" style="color:var(--primary); text-transform:capitalize;">Customer</strong></span>
                 </div>
 
+                @if(config('demo.enabled'))
                 <!-- 1-Click Fast Profiles -->
                 <div style="margin-bottom:14px;">
                     <label class="form-label" style="font-size:11.5px; font-weight:700; color:#475569; margin-bottom:6px; display:block;">Quick Simulated Accounts</label>
@@ -626,6 +627,7 @@
                 <div class="auth-divider" style="margin:10px 0;">
                     <span>Or specify account credentials</span>
                 </div>
+                @endif
 
                 <!-- Custom Account Input Form -->
                 <form id="alt-auth-form" onsubmit="submitAlternateAuthForm(event)">
@@ -637,25 +639,25 @@
                             <span>Firebase User ID (UID)</span>
                             <span style="font-weight:normal; color:#64748b; font-size:10.5px;">Auto-generated or custom</span>
                         </label>
-                        <input type="text" id="alt-input-firebase-id" class="form-control" placeholder="e.g. fb_usr_9876543210" value="fb_usr_priya_sharma_9876" style="font-family:monospace; font-size:12px;">
+                        <input type="text" id="alt-input-firebase-id" class="form-control" placeholder="e.g. fb_usr_9876543210" value="{{ config('demo.enabled') ? 'fb_usr_priya_sharma_9876' : '' }}" style="font-family:monospace; font-size:12px;">
                     </div>
 
                     <div class="form-group" style="margin-bottom:10px;">
                         <label class="form-label" for="alt-input-name" style="font-size:11.5px;">Full Name</label>
-                        <input type="text" id="alt-input-name" class="form-control" placeholder="e.g. Ananya Sen" value="Priya Sharma" required>
+                        <input type="text" id="alt-input-name" class="form-control" placeholder="Your full name" value="{{ config('demo.enabled') ? 'Priya Sharma' : '' }}" required>
                     </div>
 
                     <div class="form-group" style="margin-bottom:12px;">
                         <label class="form-label" for="alt-input-email" style="font-size:11.5px;">Email Address</label>
-                        <input type="email" id="alt-input-email" class="form-control" placeholder="name@domain.com" value="priya.customer@gmail.com" required>
+                        <input type="email" id="alt-input-email" class="form-control" placeholder="name@domain.com" value="{{ config('demo.enabled') ? 'priya.customer@gmail.com' : '' }}" required>
                     </div>
 
                     <div class="form-group" style="margin-bottom:12px;">
                         <label class="form-label" for="alt-input-password" style="font-size:11.5px; display:flex; justify-content:space-between; align-items:center;">
                             <span>Offline Account Password</span>
-                            <span style="font-weight:normal; color:#64748b; font-size:10.5px;">Default: password123</span>
+                            <span style="font-weight:normal; color:#64748b; font-size:10.5px;">{{ config('demo.enabled') ? 'Default: password123' : 'Enter password' }}</span>
                         </label>
-                        <input type="text" id="alt-input-password" class="form-control" placeholder="Set password or leave blank for default" value="password123">
+                        <input type="text" id="alt-input-password" class="form-control" placeholder="Set password" value="{{ config('demo.enabled') ? 'password123' : '' }}">
                     </div>
 
                     <button type="submit" id="alt-submit-btn" class="btn btn-primary btn-block" style="height:42px; font-size:13px;">

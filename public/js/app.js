@@ -3531,11 +3531,16 @@ window.selectLoginRole = function (role) {
   if (scopeText) scopeText.textContent = cfg.desc;
   if (scopeIcon) scopeIcon.textContent = cfg.icon;
 
-  // Preset demo credentials for that role
+  // Preset demo credentials for that role only when demo mode is enabled
   const emailInput = document.getElementById('login-email');
   const passInput = document.getElementById('login-password');
-  if (emailInput) emailInput.value = cfg.email;
-  if (passInput) passInput.value = 'password123';
+  if (window.INTERCITY_CONFIG && window.INTERCITY_CONFIG.demo) {
+    if (emailInput) emailInput.value = cfg.email;
+    if (passInput) passInput.value = 'password123';
+  } else {
+    if (emailInput) emailInput.value = '';
+    if (passInput) passInput.value = '';
+  }
 
   // Update button label
   const btnLabel = document.getElementById('login-submit-label');
@@ -3897,18 +3902,24 @@ window.openAlternateAuthModal = function (provider = 'firebase', role = 'custome
 
   const nameInput = document.getElementById('alt-input-name');
   const emailInput = document.getElementById('alt-input-email');
-  if (role === 'driver') {
-    if (nameInput) nameInput.value = 'Rajesh Chauffeur';
-    if (emailInput) emailInput.value = 'rajesh.driver@gmail.com';
-    if (fbIdInput) fbIdInput.value = 'fb_driver_rajesh_9922';
-  } else if (role === 'admin') {
-    if (nameInput) nameInput.value = 'Admin Supervisor';
-    if (emailInput) emailInput.value = 'admin@intercitywheels.com';
-    if (fbIdInput) fbIdInput.value = 'fb_admin_supervisor_1001';
+  if (window.INTERCITY_CONFIG && window.INTERCITY_CONFIG.demo) {
+    if (role === 'driver') {
+      if (nameInput) nameInput.value = 'Rajesh Chauffeur';
+      if (emailInput) emailInput.value = 'rajesh.driver@gmail.com';
+      if (fbIdInput) fbIdInput.value = 'fb_driver_rajesh_9922';
+    } else if (role === 'admin') {
+      if (nameInput) nameInput.value = 'Admin Supervisor';
+      if (emailInput) emailInput.value = 'admin@intercitywheels.com';
+      if (fbIdInput) fbIdInput.value = 'fb_admin_supervisor_1001';
+    } else {
+      if (nameInput) nameInput.value = 'Priya Sharma';
+      if (emailInput) emailInput.value = 'priya.customer@gmail.com';
+      if (fbIdInput) fbIdInput.value = 'fb_cust_priya_sharma_9876';
+    }
   } else {
-    if (nameInput) nameInput.value = 'Priya Sharma';
-    if (emailInput) emailInput.value = 'priya.customer@gmail.com';
-    if (fbIdInput) fbIdInput.value = 'fb_cust_priya_sharma_9876';
+    if (nameInput) nameInput.value = '';
+    if (emailInput) emailInput.value = '';
+    if (fbIdInput) fbIdInput.value = '';
   }
 
   closeModal('login-modal');
