@@ -470,4 +470,53 @@ class RegionalLocationService
             'base_toll' => $baseToll,
         ];
     }
+
+    /**
+     * Find the closest active ServiceLocation or curated regional city within $maxKm.
+     *
+     * @return array{name: string, state: ?string, lat: float, lng: float, distance_km: float}|null
+     */
+    public static function nearestTo(float $lat, float $lng, float $maxKm = 250.0): ?array
+    {
+        $candidates = [];
+
+        foreach (ServiceLocation::where('is_active', true)->get() as $loc) {
+            if ($loc->latitude !== null && $loc->longitude !== null) {
+                $candidates[] = [
+                    'name' => $loc->name,
+                    'state' => $loc->state,
+                    'lat' => (float) $loc->latitude,
+                    'lng' => (float) $loc->longitude,
+                ];
+            }
+        }
+
+        foreach (self::$regionalCatalog as $item) {
+            $candidates[] = [
+                'name' => $item['name'],
+                'state' => $item['state'],
+                'lat' => (float) $item['lat'],
+                'lng' => (float) $item['lng'],
+            ];
+        }
+
+        $best = null;
+        $bestKm = $maxKm;
+
+        foreach ($candidates as $candidate) {
+            $dLat = deg2rad($candidate['lat'] - $lat);
+            $dLng = deg2rad($candidate['lng'] - $lng);
+            $a = sin($dLat / 2) * sin($dLat / 2)
+                + cos(deg2rad($lat)) * cos(deg2rad($candidate['lat']))
+                * sin($dLng / 2) * sin($dLng / 2);
+            $km = 6371.0 * 2.0 * atan2(sqrt($a), sqrt(1 - $a));
+
+            if ($km <= $bestKm) {
+                $bestKm = $km;
+                $best = $candidate + ['distance_km' => round($km, 1)];
+            }
+        }
+
+        return $best;
+    }
 }

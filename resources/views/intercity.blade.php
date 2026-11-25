@@ -3,30 +3,11 @@
 @section('content')
 @php
     $userRole = Auth::check() ? Auth::user()->role : null;
-
-    // Deep links such as /?tab=my-bookings (used after sign-in from the trips
-    // screen) select a tab, but only one this role is allowed to see.
-    $allowedTabs = match($userRole) {
-        'admin' => ['admin'],
-        'driver' => ['bidding', 'driver-trips', 'driver-wallet', 'driver-profile'],
-        default => ['cabs', 'schedules', 'my-bookings'],
+    $defaultTab = match($userRole) {
+        'admin' => 'admin',
+        'driver' => 'bidding',
+        default => 'cabs'
     };
-    $requestedTab = request()->query('tab');
-
-    // After checkout the SPA may land with /?booked=ICW-123456 (used by the
-    // sign-in gate resume path). That should open the history and highlight it.
-    $bookedRef = (string) request()->query('booked', '');
-    $bookedRef = preg_match('/^ICW-\d{6}$/', $bookedRef) === 1 ? $bookedRef : null;
-
-    $defaultTab = $bookedRef && $userRole === 'customer'
-        ? 'my-bookings'
-        : ($requestedTab && in_array($requestedTab, $allowedTabs, true)
-            ? $requestedTab
-            : match($userRole) {
-                'admin' => 'admin',
-                'driver' => 'bidding',
-                default => 'cabs'
-            });
 @endphp
 <main id="app-viewport" class="app-viewport" style="width:100%; max-width:100%; margin:0; padding:0;">
 
@@ -89,6 +70,9 @@
                                 <div class="rental-input-wrap">
                                     <span class="material-symbols-outlined rental-input-icon">search</span>
                                     <input type="text" id="rental-from-city" class="rental-input" value="Kolkata" placeholder="Pickup City / Area" autocomplete="off" onfocus="this.select(); openCityPicker('rental-from-city')" onclick="openCityPicker('rental-from-city')" oninput="handleCityPickerInput('rental-from-city', this.value); syncRentalFromCity(this.value)">
+                                    <button type="button" class="rental-locate-btn" title="Detect current pickup location (GPS or Network)" onclick="detectInitialLocation('rental-from-city', 'auto', event)">
+                                        <span class="material-symbols-outlined" style="font-size:18px;">my_location</span>
+                                    </button>
                                     <button type="button" class="rental-dropdown-toggle-btn" title="View available cities" onclick="toggleCityDropdown('rental-from-city', event)">
                                         <span class="material-symbols-outlined" style="font-size:18px; color:#64748b;">expand_more</span>
                                     </button>
@@ -156,6 +140,9 @@
                                 <div class="rental-input-wrap">
                                     <span class="material-symbols-outlined rental-input-icon">search</span>
                                     <input type="text" id="rental-rt-from" class="rental-input" value="Kolkata" placeholder="Pickup City" autocomplete="off" onfocus="this.select(); openCityPicker('rental-rt-from')" onclick="openCityPicker('rental-rt-from')" oninput="handleCityPickerInput('rental-rt-from', this.value); updateRentalRouteStats()">
+                                    <button type="button" class="rental-locate-btn" title="Detect current pickup location (GPS or Network)" onclick="detectInitialLocation('rental-rt-from', 'auto', event)">
+                                        <span class="material-symbols-outlined" style="font-size:18px;">my_location</span>
+                                    </button>
                                     <button type="button" class="rental-dropdown-toggle-btn" title="View available cities" onclick="toggleCityDropdown('rental-rt-from', event)">
                                         <span class="material-symbols-outlined" style="font-size:18px; color:#64748b;">expand_more</span>
                                     </button>
@@ -224,6 +211,9 @@
                                 <div class="rental-input-wrap">
                                     <span class="material-symbols-outlined rental-input-icon">location_city</span>
                                     <input type="text" id="rental-local-city" class="rental-input" value="Kolkata" placeholder="Select City" autocomplete="off" onfocus="this.select(); openCityPicker('rental-local-city')" onclick="openCityPicker('rental-local-city')" oninput="handleCityPickerInput('rental-local-city', this.value); updateRentalRouteStats()">
+                                    <button type="button" class="rental-locate-btn" title="Detect current city (GPS or Network)" onclick="detectInitialLocation('rental-local-city', 'auto', event)">
+                                        <span class="material-symbols-outlined" style="font-size:18px;">my_location</span>
+                                    </button>
                                     <button type="button" class="rental-dropdown-toggle-btn" title="View available cities" onclick="toggleCityDropdown('rental-local-city', event)">
                                         <span class="material-symbols-outlined" style="font-size:18px; color:#64748b;">expand_more</span>
                                     </button>
@@ -300,6 +290,9 @@
                                 <div class="rental-input-wrap">
                                     <span class="material-symbols-outlined rental-input-icon">pin_drop</span>
                                     <input type="text" id="rental-airport-address" class="rental-input" value="Salt Lake Sector V, Kolkata" placeholder="Enter City Area / Hotel / Landmark">
+                                    <button type="button" class="rental-locate-btn" title="Detect current address (GPS or Network)" onclick="detectInitialLocation('rental-airport-address', 'auto', event)">
+                                        <span class="material-symbols-outlined" style="font-size:18px;">my_location</span>
+                                    </button>
                                 </div>
                             </div>
                             <div class="rental-field-box" style="max-width:180px;">
@@ -336,6 +329,25 @@
                     <input type="hidden" id="cab-pickup-time" value="12:15">
                     <input type="hidden" id="cab-return-date" value="{{ date('Y-m-d', strtotime('+3 days')) }}">
                     <input type="hidden" id="cab-return-time" value="17:00">
+
+                    <!-- Quick Initial Pickup Detection (GPS & Network Options) -->
+                    <div class="rental-geo-bar" id="rental-geo-bar">
+                        <span class="rental-geo-label">
+                            <span class="material-symbols-outlined" style="font-size:15px; color:#20A9D2;">explore</span>
+                            <span>Detect initial pickup:</span>
+                        </span>
+                        <div class="rental-geo-actions">
+                            <button type="button" class="rental-geo-pill" id="btn-detect-pickup-gps" onclick="detectActiveBookingLocation('gps')">
+                                <span class="material-symbols-outlined" style="font-size:14px;">my_location</span>
+                                <span>Use GPS</span>
+                            </button>
+                            <button type="button" class="rental-geo-pill" id="btn-detect-pickup-network" onclick="detectActiveBookingLocation('network')">
+                                <span class="material-symbols-outlined" style="font-size:14px;">wifi</span>
+                                <span>Use Network</span>
+                            </button>
+                        </div>
+                        <span id="rental-geo-status" class="rental-geo-status" aria-live="polite"></span>
+                    </div>
 
                     <!-- Instant Highway Route Insight Strip (Required by Automated Tests) -->
                     <div class="cab-route-insight-strip" style="margin-top:14px; background:#0f172a; border-radius:8px; padding:10px 16px; color:#ffffff; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
@@ -583,7 +595,19 @@
 
                         <div class="form-row" style="margin-top:12px;">
                             <div class="form-group" style="flex:1;">
-                                <label class="rental-field-label">Exact Pickup Address / Landmark *</label>
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:4px;">
+                                    <label class="rental-field-label" style="margin-bottom:0;">Exact Pickup Address / Landmark *</label>
+                                    <div style="display:flex; align-items:center; gap:6px;">
+                                        <button type="button" class="rental-geo-pill rental-geo-pill-sm" onclick="detectInitialLocation('cab-pickup-address', 'gps', event)">
+                                            <span class="material-symbols-outlined" style="font-size:13px;">my_location</span>
+                                            <span>GPS</span>
+                                        </button>
+                                        <button type="button" class="rental-geo-pill rental-geo-pill-sm" onclick="detectInitialLocation('cab-pickup-address', 'network', event)">
+                                            <span class="material-symbols-outlined" style="font-size:13px;">wifi</span>
+                                            <span>Network</span>
+                                        </button>
+                                    </div>
+                                </div>
                                 <div class="input-with-icon">
                                     <span class="material-symbols-outlined">my_location</span>
                                     <input type="text" id="cab-pickup-address" class="form-control" placeholder="Building, Street, Landmark" value="Salt Lake Sector V, Kolkata">
@@ -843,7 +867,7 @@
                     <!-- Lower Deck Grid -->
                     <div class="deck-grid-container" id="deck-lower-grid">
                         <div class="deck-grid-row">
-                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L1" data-price="850">
+                            <button type="button" class="berth-cell" data-seat="L1" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L1</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -851,14 +875,14 @@
                                 <span class="berth-price">₹850</span>
                             </button>
                             <div class="aisle-indicator"><span class="material-symbols-outlined">straight</span></div>
-                            <div class="berth-cell ladies-only" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L2" data-price="850">
+                            <div class="berth-cell ladies-only" data-seat="L2" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L2</span>
                                     <span class="material-symbols-outlined">female</span>
                                 </div>
                                 <span class="berth-price">₹850</span>
                             </div>
-                            <div class="berth-cell booked" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L3" data-price="850">
+                            <div class="berth-cell booked" data-seat="L3" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L3</span>
                                     <span class="material-symbols-outlined">lock</span>
@@ -868,7 +892,7 @@
                         </div>
 
                         <div class="deck-grid-row">
-                            <button type="button" class="berth-cell selected" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L4" data-price="850">
+                            <button type="button" class="berth-cell selected" data-seat="L4" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L4</span>
                                     <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">check_circle</span>
@@ -876,14 +900,14 @@
                                 <span class="berth-price">₹850</span>
                             </button>
                             <div class="aisle-indicator"><span class="material-symbols-outlined">straight</span></div>
-                            <button type="button" class="berth-cell selected" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L5" data-price="850">
+                            <button type="button" class="berth-cell selected" data-seat="L5" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L5</span>
                                     <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">check_circle</span>
                                 </div>
                                 <span class="berth-price">₹850</span>
                             </button>
-                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L6" data-price="850">
+                            <button type="button" class="berth-cell" data-seat="L6" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L6</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -893,7 +917,7 @@
                         </div>
 
                         <div class="deck-grid-row">
-                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L7" data-price="850">
+                            <button type="button" class="berth-cell" data-seat="L7" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L7</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -901,14 +925,14 @@
                                 <span class="berth-price">₹850</span>
                             </button>
                             <div class="aisle-indicator"><span class="material-symbols-outlined">straight</span></div>
-                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L8" data-price="850">
+                            <button type="button" class="berth-cell" data-seat="L8" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L8</span>
                                     <span class="material-symbols-outlined">bed</span>
                                 </div>
                                 <span class="berth-price">₹850</span>
                             </button>
-                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="L9" data-price="850">
+                            <button type="button" class="berth-cell" data-seat="L9" data-price="850">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">L9</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -921,7 +945,7 @@
                     <!-- Upper Deck Grid -->
                     <div class="deck-grid-container" id="deck-upper-grid" style="display:none;">
                         <div class="deck-grid-row">
-                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="U1" data-price="950">
+                            <button type="button" class="berth-cell" data-seat="U1" data-price="950">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">U1</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -929,14 +953,14 @@
                                 <span class="berth-price">₹950</span>
                             </button>
                             <div class="aisle-indicator"><span class="material-symbols-outlined">straight</span></div>
-                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="U2" data-price="950">
+                            <button type="button" class="berth-cell" data-seat="U2" data-price="950">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">U2</span>
                                     <span class="material-symbols-outlined">bed</span>
                                 </div>
                                 <span class="berth-price">₹950</span>
                             </button>
-                            <div class="berth-cell booked" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="U3" data-price="950">
+                            <div class="berth-cell booked" data-seat="U3" data-price="950">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">U3</span>
                                     <span class="material-symbols-outlined">lock</span>
@@ -946,7 +970,7 @@
                         </div>
 
                         <div class="deck-grid-row">
-                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="U4" data-price="950">
+                            <button type="button" class="berth-cell" data-seat="U4" data-price="950">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">U4</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -954,14 +978,14 @@
                                 <span class="berth-price">₹950</span>
                             </button>
                             <div class="aisle-indicator"><span class="material-symbols-outlined">straight</span></div>
-                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="U5" data-price="950">
+                            <button type="button" class="berth-cell" data-seat="U5" data-price="950">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">U5</span>
                                     <span class="material-symbols-outlined">bed</span>
                                 </div>
                                 <span class="berth-price">₹950</span>
                             </button>
-                            <button type="button" class="berth-cell" data-coach="{{ $schedulesCoachCode ?? '8092' }}" data-seat="U6" data-price="950">
+                            <button type="button" class="berth-cell" data-seat="U6" data-price="950">
                                 <div class="berth-cell-top">
                                     <span class="berth-code">U6</span>
                                     <span class="material-symbols-outlined">bed</span>
@@ -1044,238 +1068,98 @@
         <!-- TAB: CUSTOMER MY BOOKINGS & PASSENGER MANIFEST          -->
         <!-- ======================================================== -->
         <section id="tab-my-bookings" class="tab-pane {{ $defaultTab === 'my-bookings' ? 'active' : '' }}">
-            @php
-                $myTrips = $customerBookings ?? collect();
-                // Buckets: Active = anything still in play, Completed = finished,
-                // everything else (cancelled) is only visible under "All".
-                $activeTrips = $myTrips->reject(fn ($b) => in_array($b->status, ['Completed', 'Cancelled'], true));
-                $completedTrips = $myTrips->filter(fn ($b) => $b->status === 'Completed');
-                $completedSpend = (float) $completedTrips->sum('total_amount');
-                $justBooked = $bookedRef && $myTrips->contains(fn ($b) => $b->booking_reference === $bookedRef);
-            @endphp
-
             <div class="card" style="margin-bottom:20px;">
                 <div class="card-header" style="flex-wrap:wrap; gap:10px;">
                     <div>
                         <h2 class="card-title" style="display:flex; align-items:center; gap:8px;">
                             <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px;">confirmation_number</span>
-                            <span>My Trips &amp; Booking History</span>
+                            <span>My Outstation Trips & Digital Tickets</span>
                         </h2>
-                        <p class="card-subtitle">Every ride you have booked — live status, chauffeur details, ride OTP and boarding passes</p>
+                        <p class="card-subtitle">Manage upcoming rides, verify chauffeur assignments, view OTP and access GST tax invoices</p>
                     </div>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        <button type="button" class="btn btn-sm btn-outline" onclick="filterMyTrips('all'); renderMyTrips ? renderMyTrips() : null;">
-                            <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
-                            <span>Refresh</span>
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-gold" onclick="switchTab('cabs')">
-                            <span class="material-symbols-outlined" style="font-size:15px;">add</span>
-                            <span>Book Another Trip</span>
-                        </button>
-                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-gold" onclick="switchTab('cabs')">
+                        <span class="material-symbols-outlined" style="font-size:15px;">add</span>
+                        <span>Book Another Trip</span>
+                    </button>
                 </div>
 
-                @auth
-                    @if($justBooked)
-                        <div style="display:flex; align-items:center; gap:10px; margin:14px 0 0; padding:12px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px;">
-                            <span class="material-symbols-outlined" style="color:#16a34a; font-size:22px;">check_circle</span>
-                            <div style="font-size:12.5px; color:#166534;">
-                                <strong>Booking {{ $bookedRef }} confirmed.</strong>
-                                It is highlighted below with your ride OTP — you can reopen this page any time from <em>My Trips</em>.
+                <div class="customer-bookings-grid" style="display:flex; flex-direction:column; gap:14px; padding:16px 0;">
+                    @forelse($customerBookings ?? [] as $cb)
+                    <div class="customer-trip-card" style="border:1px solid #e2e8f0; border-radius:10px; padding:16px; background:#ffffff; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:12px; margin-bottom:12px;">
+                            <div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="font-family:monospace; font-weight:800; color:var(--primary); font-size:14px;">{{ $cb->booking_reference }}</span>
+                                    <span class="admin-badge @if($cb->status === 'Confirmed') badge-success @elseif($cb->status === 'Driver Assigned') badge-gold @elseif($cb->status === 'Started') badge-info @elseif($cb->status === 'Completed') badge-primary @else badge-secondary @endif">
+                                        {{ $cb->status }}
+                                    </span>
+                                    <span class="admin-badge {{ $cb->service_type === 'cab' ? 'badge-primary' : 'badge-gold' }}" style="font-size:9.5px;">
+                                        {{ strtoupper($cb->service_type) }}
+                                    </span>
+                                </div>
+                                <div style="font-size:16px; font-weight:800; color:#0f172a; margin-top:4px;">{{ $cb->route_summary }}</div>
+                                <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
+                                    <span>Departure: <strong>{{ $cb->departure_time ? $cb->departure_time->format('D, d M Y, h:i A') : 'Scheduled' }}</strong></span>
+                                </div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="font-size:18px; font-weight:800; color:#0f172a;">₹{{ number_format($cb->total_amount) }}</div>
+                                <div style="font-size:10.5px; color:#16a34a; font-weight:600;">✓ Prepaid (Escrow Protected)</div>
                             </div>
                         </div>
-                    @endif
-                    <div class="trips-toolbar">
-                        <div class="trips-filters" role="tablist" aria-label="Filter your trips">
-                            <button type="button" class="trip-filter-pill active" data-filter="all" role="tab" aria-selected="true" onclick="filterMyTrips('all')">
-                                <span>All</span>
-                                <span class="trip-filter-count" id="trips-count-all">{{ $myTrips->count() }}</span>
-                            </button>
-                            <button type="button" class="trip-filter-pill" data-filter="active" role="tab" aria-selected="false" onclick="filterMyTrips('active')">
-                                <span>Active</span>
-                                <span class="trip-filter-count" id="trips-count-active">{{ $activeTrips->count() }}</span>
-                            </button>
-                            <button type="button" class="trip-filter-pill" data-filter="completed" role="tab" aria-selected="false" onclick="filterMyTrips('completed')">
-                                <span>Completed</span>
-                                <span class="trip-filter-count" id="trips-count-completed">{{ $completedTrips->count() }}</span>
-                            </button>
-                        </div>
-                        <div class="trips-summary" id="trips-summary">
-                            @if($myTrips->isEmpty())
-                                No trips booked yet
-                            @else
-                                {{ $activeTrips->count() }} active · {{ $completedTrips->count() }} completed
-                                @if($completedSpend > 0)
-                                    · ₹{{ number_format($completedSpend) }} travelled
+
+                        <!-- Trip Manifest Grid -->
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:14px; font-size:12px;">
+                            <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
+                                <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Pickup & Drop Details</div>
+                                <div style="margin-top:4px; color:#1e293b;"><strong>Pickup:</strong> {{ $cb->pickup_location }}</div>
+                                <div style="margin-top:2px; color:#1e293b;"><strong>Drop:</strong> {{ $cb->drop_location }}</div>
+                            </div>
+
+                            <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
+                                <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Chauffeur & Vehicle</div>
+                                @if($cb->driver)
+                                <div style="margin-top:4px; font-weight:700; color:#0f172a;">{{ $cb->driver->name }} (★{{ $cb->driver->rating }})</div>
+                                <div style="color:#15803d; font-size:11px; margin-top:2px;">{{ $cb->driver->vehicle_model }} • <strong>{{ $cb->driver->vehicle_plate }}</strong></div>
+                                <div style="margin-top:2px;"><a href="tel:{{ $cb->driver->phone }}" style="color:#0284c7; text-decoration:none;">📞 {{ $cb->driver->phone }}</a></div>
+                                @else
+                                <div style="margin-top:4px; color:#d97706; font-weight:600;">Allotment In Progress</div>
+                                <div style="font-size:11px; color:#64748b; margin-top:2px;">A verified chauffeur will be allotted 2 hours before pickup.</div>
                                 @endif
-                            @endif
+                            </div>
+
+                            <div style="background:#fffbeb; border:1px solid #fef3c7; padding:10px 12px; border-radius:6px; text-align:center;">
+                                <div style="font-weight:700; color:#92400e; font-size:10.5px; text-transform:uppercase;">Ride Start Validation OTP</div>
+                                <div style="font-family:monospace; font-size:22px; font-weight:800; color:var(--primary); letter-spacing:0.1em; margin:4px 0;">
+                                    {{ $cb->start_otp }}
+                                </div>
+                                <div style="font-size:10px; color:#78350f;">Show this 4-digit OTP to your chauffeur before boarding.</div>
+                            </div>
                         </div>
-                    </div>
 
-                    <div id="my-trips-list" class="customer-bookings-grid" style="display:flex; flex-direction:column; gap:14px; padding:8px 0 18px;">
-                        @foreach($myTrips as $cb)
-                            @php
-                                $bucket = $cb->status === 'Completed'
-                                    ? 'completed'
-                                    : ($cb->status === 'Cancelled' ? 'cancelled' : 'active');
-                                $badge = match($cb->status) {
-                                    'Confirmed' => 'badge-success',
-                                    'Driver Assigned' => 'badge-gold',
-                                    'Started' => 'badge-info',
-                                    'Bidding' => 'badge-info',
-                                    'Completed' => 'badge-primary',
-                                    default => 'badge-secondary',
-                                };
-                            @endphp
-                            <div class="customer-trip-card {{ $bookedRef && $cb->booking_reference === $bookedRef ? 'is-new' : '' }}" id="trip-card-{{ $cb->booking_reference }}"
-                                 data-bucket="{{ $bucket }}" data-status="{{ $cb->status }}">
-                                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:12px; margin-bottom:12px;">
-                                    <div>
-                                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                                            <span style="font-family:monospace; font-weight:800; color:var(--primary); font-size:14px;">{{ $cb->booking_reference }}</span>
-                                            <span class="admin-badge {{ $badge }}">{{ $cb->status }}</span>
-                                            @if($bookedRef && $cb->booking_reference === $bookedRef)
-                                                <span class="trip-new-flag">Just booked</span>
-                                            @endif
-                                            <span class="admin-badge {{ $cb->service_type === 'cab' ? 'badge-primary' : 'badge-gold' }}" style="font-size:9.5px;">
-                                                {{ strtoupper($cb->service_type) }}
-                                            </span>
-                                        </div>
-                                        <div style="font-size:16px; font-weight:800; color:#0f172a; margin-top:4px;">{{ $cb->route_summary }}</div>
-                                        <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
-                                            <span>Departure: <strong>{{ $cb->departure_time ? $cb->departure_time->format('D, d M Y, h:i A') : 'Scheduled' }}</strong></span>
-                                            <span style="margin-left:10px;">Booked: {{ $cb->created_at?->format('d M Y') }}</span>
-                                        </div>
-                                    </div>
-                                    <div style="text-align:right;">
-                                        <div style="font-size:18px; font-weight:800; color:#0f172a;">₹{{ number_format($cb->total_amount) }}</div>
-                                        <div style="font-size:10.5px; color:#16a34a; font-weight:600;">✓ Prepaid (Escrow Protected)</div>
-                                    </div>
-                                </div>
-
-                                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:14px; font-size:12px;">
-                                    <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
-                                        <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Pickup &amp; Drop Details</div>
-                                        <div style="margin-top:4px; color:#1e293b;"><strong>Pickup:</strong> {{ $cb->pickup_location }}</div>
-                                        <div style="margin-top:2px; color:#1e293b;"><strong>Drop:</strong> {{ $cb->drop_location }}</div>
-                                    </div>
-
-                                    <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
-                                        <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Chauffeur &amp; Vehicle</div>
-                                        @if($cb->driver)
-                                            <div style="margin-top:4px; font-weight:700; color:#0f172a;">{{ $cb->driver->name }} (★{{ $cb->driver->rating }})</div>
-                                            <div style="color:#15803d; font-size:11px; margin-top:2px;">{{ $cb->driver->vehicle_model }} • <strong>{{ $cb->driver->vehicle_plate }}</strong></div>
-                                            <div style="margin-top:2px;"><a href="tel:{{ $cb->driver->phone }}" style="color:#0284c7; text-decoration:none;">📞 {{ $cb->driver->phone }}</a></div>
-                                        @else
-                                            <div style="margin-top:4px; color:#d97706; font-weight:600;">
-                                                {{ $bucket === 'completed' ? 'Trip closed' : 'Allotment in progress' }}
-                                            </div>
-                                            <div style="font-size:11px; color:#64748b; margin-top:2px;">
-                                                {{ $bucket === 'completed' ? 'This trip is finished.' : 'A verified chauffeur will be allotted before pickup.' }}
-                                            </div>
-                                        @endif
-                                    </div>
-
-                                    @if($bucket === 'active')
-                                        <div style="background:#fffbeb; border:1px solid #fef3c7; padding:10px 12px; border-radius:6px; text-align:center;">
-                                            <div style="font-weight:700; color:#92400e; font-size:10.5px; text-transform:uppercase;">Ride Start Validation OTP</div>
-                                            <div style="font-family:monospace; font-size:22px; font-weight:800; color:var(--primary); letter-spacing:0.1em; margin:4px 0;">
-                                                {{ $cb->start_otp }}
-                                            </div>
-                                            <div style="font-size:10px; color:#78350f;">Show this 4-digit OTP to your chauffeur before boarding.</div>
-                                        </div>
-                                    @else
-                                        <div style="background:{{ $bucket === 'completed' ? '#f0fdf4' : '#f8fafc' }}; border:1px solid {{ $bucket === 'completed' ? '#bbf7d0' : '#e2e8f0' }}; padding:10px 12px; border-radius:6px; text-align:center;">
-                                            <div style="font-weight:700; color:{{ $bucket === 'completed' ? '#166534' : '#475569' }}; font-size:10.5px; text-transform:uppercase;">
-                                                {{ $bucket === 'completed' ? 'Trip completed' : 'Booking cancelled' }}
-                                            </div>
-                                            <div style="font-size:22px; margin:6px 0;">
-                                                {{ $bucket === 'completed' ? '✓' : '—' }}
-                                            </div>
-                                            <div style="font-size:10px; color:#64748b;">{{ $bucket === 'completed' ? 'Thanks for travelling with us.' : 'No ride OTP is issued.' }}</div>
-                                        </div>
-                                    @endif
-                                </div>
-
-                                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; border-top:1px dashed #e2e8f0; padding-top:10px; flex-wrap:wrap;">
-                                    <div style="font-size:11px; color:#94a3b8;">
-                                        {{ $cb->passengers ? count((array) $cb->passengers).' passenger(s)' : '' }}
-                                    </div>
-                                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                                        <button type="button" class="btn btn-sm btn-outline" onclick="copyTripReference('{{ $cb->booking_reference }}')">
-                                            <span class="material-symbols-outlined" style="font-size:15px;">content_copy</span>
-                                            <span>Reference</span>
-                                        </button>
-                                        <button type="button" class="btn btn-sm btn-outline-gold" onclick="openTicketModal('{{ $cb->booking_reference }}')">
-                                            <span class="material-symbols-outlined" style="font-size:15px;">confirmation_number</span>
-                                            <span>{{ $bucket === 'active' ? 'Digital Boarding Pass' : 'View Trip Ticket' }}</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        @endforeach
-
-                        <div class="trips-empty" id="trips-empty" style="display:{{ $myTrips->isEmpty() ? 'block' : 'none' }};">
-                            <span class="material-symbols-outlined" style="font-size:40px; color:#cbd5e1; display:block; margin-bottom:8px;">luggage</span>
-                            <div id="trips-empty-title" style="font-weight:700; font-size:14px; color:#475569;">
-                                {{ $myTrips->isEmpty() ? 'No trips booked yet' : 'Nothing in this view' }}
-                            </div>
-                            <p id="trips-empty-copy" style="font-size:12px; margin:4px 0 14px;">
-                                {{ $myTrips->isEmpty() ? 'Book an outstation cab or a luxury sleeper berth and it will appear here instantly.' : 'Try the All filter to see every trip on your account.' }}
-                            </p>
-                            <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('cabs')">
-                                <span>Book a Trip</span>
+                        <!-- Card Actions -->
+                        <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px dashed #e2e8f0; padding-top:10px;">
+                            <button type="button" class="btn btn-sm btn-outline" onclick="openTicketModal('{{ $cb->booking_reference }}')">
+                                <span class="material-symbols-outlined" style="font-size:15px;">confirmation_number</span>
+                                <span>Digital Boarding Pass</span>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-gold" onclick="openInvoiceModal({{ $cb->id }})">
+                                <span class="material-symbols-outlined" style="font-size:15px;">receipt</span>
+                                <span>GST Tax Invoice</span>
                             </button>
                         </div>
                     </div>
-                @endauth
-
-                @guest
-                    <div class="trips-guest-card">
-                        <div style="max-width:560px; margin:0 auto; padding:12px 0 24px;">
-                            <div style="text-align:center; margin-bottom:18px;">
-                                <span class="material-symbols-outlined" style="font-size:38px; color:#cbd5e1;">confirmation_number</span>
-                                <h3 style="font-size:17px; font-weight:800; color:#0f172a; margin:6px 0 4px;">Sign in to see your trip history</h3>
-                                <p style="font-size:12.5px; color:#64748b; margin:0;">
-                                    Your bookings are saved to your account so you can track status, share the ride OTP and reopen your boarding pass any time.
-                                </p>
-                            </div>
-
-                            <form method="POST" action="{{ route('login') }}" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:16px;">
-                                @csrf
-                                <input type="hidden" name="next" value="/?tab=my-bookings">
-                                <div class="form-group" style="margin-bottom:10px;">
-                                    <label class="form-label" for="trips-login-email">Email</label>
-                                    <input type="email" id="trips-login-email" name="email" class="form-control" required autocomplete="email" placeholder="you@example.com">
-                                </div>
-                                <div class="form-group" style="margin-bottom:12px;">
-                                    <label class="form-label" for="trips-login-password">Password</label>
-                                    <input type="password" id="trips-login-password" name="password" class="form-control" required autocomplete="current-password" placeholder="••••••••">
-                                </div>
-                                <button type="submit" class="btn btn-primary btn-block">
-                                    <span class="material-symbols-outlined" style="font-size:17px;">login</span>
-                                    <span>Sign in &amp; view my trips</span>
-                                </button>
-                            </form>
-
-                            <div style="display:flex; align-items:center; gap:10px; margin:18px 0; color:#94a3b8; font-size:11px; text-transform:uppercase; letter-spacing:0.08em;">
-                                <span style="flex:1; height:1px; background:#e2e8f0;"></span>
-                                <span>or track one booking</span>
-                                <span style="flex:1; height:1px; background:#e2e8f0;"></span>
-                            </div>
-
-                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                                <input type="text" id="trips-track-reference" class="form-control" style="flex:1 1 160px;" placeholder="Booking ref (ICW-123456)" autocomplete="off">
-                                <input type="text" id="trips-track-phone" class="form-control" style="flex:1 1 150px;" placeholder="Mobile used to book" autocomplete="tel">
-                                <button type="button" class="btn btn-outline" onclick="trackGuestBooking()" style="white-space:nowrap;">
-                                    <span class="material-symbols-outlined" style="font-size:16px;">search</span>
-                                    <span>Track</span>
-                                </button>
-                            </div>
-                            <div id="trips-track-result" style="margin-top:14px;"></div>
-                        </div>
+                    @empty
+                    <div style="text-align:center; padding:40px 20px; color:#94a3b8; background:#f8fafc; border-radius:8px;">
+                        <span class="material-symbols-outlined" style="font-size:40px; color:#cbd5e1; display:block; margin-bottom:8px;">receipt_long</span>
+                        <div style="font-weight:700; font-size:14px; color:#475569;">No active bookings found under your account</div>
+                        <p style="font-size:12px; margin:4px 0 14px;">Book an outstation cab or luxury sleeper berth to view your live tickets and chauffeur dispatch.</p>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('cabs')">
+                            <span>Book Outstation Cab</span>
+                        </button>
                     </div>
-                @endguest
+                    @endforelse
+                </div>
             </div>
         </section>
 
@@ -1309,13 +1193,6 @@
                                     <span style="font-family:monospace; font-weight:700; color:#8c5d1e;">{{ $v->vehicle_plate }}</span> &bull; 
                                     <span>{{ ucfirst($v->fleet_category) }} ({{ $v->seating_capacity }} Seats{{ $v->berth_capacity > 0 ? ', ' . $v->berth_capacity . ' Berths' : '' }})</span>
                                 </div>
-                                @if(count($v->featureLabels()) > 0)
-                                    <div style="display:flex; flex-wrap:wrap; gap:3px; margin-top:4px;">
-                                        @foreach(array_slice($v->featureLabels(), 0, 4) as $feature)
-                                            <span class="admin-badge badge-secondary" style="font-size:9px; padding:1px 5px;">{{ $feature }}</span>
-                                        @endforeach
-                                    </div>
-                                @endif
                                 <div id="driver-veh-notes-{{ $v->id }}" style="font-size:10.5px; color:#64748b; margin-top:4px; font-style:italic; {{ $v->admin_notes ? '' : 'display:none;' }}">Admin Note: {{ $v->admin_notes }}</div>
                             </div>
                             <div id="driver-my-veh-badge-{{ $v->id }}">
@@ -1342,23 +1219,14 @@
                         <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px;">hail</span>
                         <span>Available Outstation Trips for Driver Bidding</span>
                     </h3>
-                    <p style="font-size:11.5px; color:#64748b; margin:2px 0 0;">Live auctions published by the operations team: pickup (From), destination (To), highway distance (KM), departure date &amp; time and the current lowest price. Open a card to place or improve your bid.</p>
+                    <p style="font-size:11.5px; color:#64748b; margin:2px 0 0;">Review passenger pickup (From), destination (To), highway distance (KM), and submit your conclusive ride commitment bid.</p>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span class="admin-badge badge-success" style="font-size:11px;">🟢 Live Trip Requests</span>
-                    <button type="button" class="btn btn-sm btn-outline" onclick="refreshDriverAuctions()" title="Reload live auctions">
-                        <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
-                        <span>Refresh</span>
-                    </button>
                 </div>
             </div>
 
             <div class="bidding-cards-list animate-load stagger-3" id="bidding-cards-stream"></div>
-
-            <p style="font-size:11px; color:#64748b; margin:0;">
-                <span class="material-symbols-outlined" style="font-size:13px; vertical-align:-2px; color:#10b981;">lock</span>
-                Passenger name, mobile number and exact pickup address unlock only if you win the auction — bidding never reveals them.
-            </p>
         </section>
 
         <!-- ======================================================== -->
@@ -1400,18 +1268,8 @@
                                 </div>
                             </div>
                             <div style="text-align:right;">
-                                @php
-                                    $driverEarning = $dt->driver_payout_amount !== null
-                                        ? (float) $dt->driver_payout_amount
-                                        : (float) $dt->total_amount;
-                                @endphp
-                                <div style="font-size:18px; font-weight:800; color:#16a34a;">₹{{ number_format($driverEarning) }}</div>
-                                <div style="font-size:10.5px; color:#64748b;">
-                                    {{ $dt->driver_payout_amount !== null ? 'Your winning bid payout' : 'Tolls & Taxes Included' }}
-                                </div>
-                                @if($dt->assigned_bid_id)
-                                    <div style="font-size:10px; font-weight:700; color:#b45309; margin-top:2px;">Won via driver bidding</div>
-                                @endif
+                                <div style="font-size:18px; font-weight:800; color:#16a34a;">₹{{ number_format($dt->total_amount) }}</div>
+                                <div style="font-size:10.5px; color:#64748b;">Tolls & Taxes Included</div>
                             </div>
                         </div>
 
@@ -1552,8 +1410,8 @@
                     </div>
 
                     <div style="display:flex; flex-direction:column; align-items:center; text-align:center; padding:12px 0 18px; border-bottom:1px solid #f1f5f9;">
-                        <div class="driver-avatar-display" style="font-size:46px; width:72px; height:72px; border-radius:50%; background:linear-gradient(135deg, rgba(212,155,76,0.2) 0%, rgba(212,155,76,0.05) 100%); border:2px solid var(--primary); display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(212,155,76,0.2); cursor:pointer;" onclick="openDriverEditProfileModal()" title="Click to Change Avatar">
-                            {{ $driverProfile->avatar ?? '👨🏽‍✈️' }}
+                        <div class="driver-avatar-display" style="font-size:46px; width:72px; height:72px; border-radius:50%; background:linear-gradient(135deg, rgba(212,155,76,0.2) 0%, rgba(212,155,76,0.05) 100%); border:2px solid var(--primary); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; box-shadow:0 4px 12px rgba(212,155,76,0.2); cursor:pointer;" onclick="openDriverEditProfileModal()" title="Click to Change Avatar">
+                            @include('partials.avatar', ['avatar' => $driverProfile->avatar ?? null, 'fallback' => '👨🏽‍✈️', 'alt' => $driverProfile->name ?? 'Driver'])
                         </div>
                         <h4 class="driver-name-display" style="font-size:17px; font-weight:800; color:#0f172a; margin:10px 0 2px;">
                             {{ $driverProfile->name ?? 'Ramesh Patil' }}
@@ -1630,13 +1488,6 @@
                                             <span>{{ $v->seating_capacity }} Seats{{ $v->berth_capacity > 0 ? ', ' . $v->berth_capacity . ' Berths' : '' }}</span> &bull; 
                                             <span>{{ $v->fuel_type ?? 'Diesel' }}</span>
                                         </div>
-                                        @if(count($v->featureLabels()) > 0)
-                                            <div style="display:flex; flex-wrap:wrap; gap:3px; margin-top:5px;">
-                                                @foreach(array_slice($v->featureLabels(), 0, 4) as $feature)
-                                                    <span class="admin-badge badge-secondary" style="font-size:9px; padding:1px 5px;">{{ $feature }}</span>
-                                                @endforeach
-                                            </div>
-                                        @endif
                                     </div>
                                     <div>
                                         @if($v->status === 'Approved')
@@ -1750,24 +1601,10 @@
                                 </a>
                             </li>
                             <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="bidding" onclick="switchAdminSection('bidding')">
-                                    <span class="material-symbols-outlined admin-nav-icon">gavel</span>
-                                    <span class="admin-nav-text">Driver Bidding</span>
-                                    <span class="admin-nav-badge badge-gold">Auction</span>
-                                </a>
-                            </li>
-                            <li class="admin-nav-item">
                                 <a href="javascript:void(0)" class="admin-nav-link" data-section="booking-types" onclick="switchAdminSection('booking-types')">
                                     <span class="material-symbols-outlined admin-nav-icon">category</span>
                                     <span class="admin-nav-text">Booking Types & Packages</span>
                                     <span class="admin-nav-badge badge-gold">4 Types</span>
-                                </a>
-                            </li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="coupons" onclick="switchAdminSection('coupons')">
-                                    <span class="material-symbols-outlined admin-nav-icon">sell</span>
-                                    <span class="admin-nav-text">Coupons & Promotions</span>
-                                    <span class="admin-nav-badge badge-gold" id="admin-badge-coupons-count">Manage</span>
                                 </a>
                             </li>
                             <li class="admin-nav-item">
@@ -2000,7 +1837,7 @@
                                                 <tr>
                                                     <td>
                                                         <div style="display:flex; align-items:center; gap:8px;">
-                                                            <span style="font-size:18px;">{{ $driver->avatar }}</span>
+                                                            <span style="font-size:18px; width:28px; height:28px; border-radius:50%; overflow:hidden; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">@include('partials.avatar', ['avatar' => $driver->avatar ?? null, 'fallback' => '👨🏽‍✈️', 'alt' => $driver->name])</span>
                                                             <div>
                                                                 <div style="font-weight:700; font-size:12.5px;">{{ $driver->name }}</div>
                                                                 <div style="font-size:10.5px; color:#64748b;">{{ $driver->phone }}</div>
@@ -2083,74 +1920,7 @@
                             </div>
                         </div>
 
-                        <!-- 2. DRIVER BIDDING MARKETPLACE -->
-                        <div class="admin-section" id="admin-sec-bidding">
-                            <div class="card" style="margin-bottom:20px;">
-                                <div class="card-header" style="flex-wrap:wrap; gap:12px;">
-                                    <div>
-                                        <h3 class="card-title">
-                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">gavel</span>
-                                            <span>Driver Bidding Marketplace</span>
-                                        </h3>
-                                        <p class="card-subtitle">
-                                            Publish a booking to verified drivers on WhatsApp. Drivers bid downwards; the lowest bid wins once you approve it.
-                                            Customer identity and exact addresses stay hidden until approval.
-                                        </p>
-                                    </div>
-                                    <div style="display:flex; gap:8px; align-items:center;">
-                                        <select id="admin-bidding-filter-status" class="form-control" style="height:36px; font-size:12.5px; width:150px;" onchange="renderAdminBiddings()">
-                                            <option value="all">All auctions</option>
-                                            <option value="open" selected>Open</option>
-                                            <option value="closed">Closed</option>
-                                            <option value="awarded">Awarded</option>
-                                            <option value="cancelled">Cancelled</option>
-                                        </select>
-                                        <button type="button" class="btn btn-outline" onclick="renderAdminBiddings()">
-                                            <span class="material-symbols-outlined" style="font-size:16px;">refresh</span> Refresh
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="card-body" style="padding:0;">
-                                    <table class="admin-data-table admin-table-compact" id="admin-biddings-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Booking</th>
-                                                <th>Route</th>
-                                                <th>Status</th>
-                                                <th>Start price</th>
-                                                <th>Lowest bid</th>
-                                                <th>Admin profit</th>
-                                                <th>Bids</th>
-                                                <th>Closes</th>
-                                                <th style="text-align:right;">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="admin-biddings-tbody">
-                                            <tr>
-                                                <td colspan="9" style="text-align:center; padding:30px; color:#94a3b8;">
-                                                    Loading auctions…
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                            <div class="card" style="padding:16px 18px;">
-                                <div style="display:flex; gap:10px; align-items:flex-start;">
-                                    <span class="material-symbols-outlined" style="color:var(--primary);">info</span>
-                                    <div style="font-size:12.5px; color:#475569; line-height:1.7;">
-                                        <strong>How it works:</strong> open an auction from a booking's row (gavel icon in Bookings Management),
-                                        set the start price and the minimum admin margin, then send the generated WhatsApp link to your drivers.
-                                        Every new bid must undercut the current lowest bid by at least ₹1.
-                                        When you approve the winner, the booking becomes <em>Driver Assigned</em>, the driver receives the customer's
-                                        name, mobile and full addresses, and their payout is fixed at their winning bid.
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 3. BOOKINGS MANAGEMENT (DIRECTLY AFTER DASHBOARD) -->
+                        <!-- 2. BOOKINGS MANAGEMENT (DIRECTLY AFTER DASHBOARD) -->
                         <div class="admin-section" id="admin-sec-bookings">
                             <div class="card" style="margin-bottom:20px;">
                                 <div class="card-header" style="flex-wrap:wrap; gap:12px;">
@@ -2184,8 +1954,6 @@
                                             <label>Status:</label>
                                             <select id="admin-booking-filter-status" onchange="handleBookingFilterChange()">
                                                 <option value="all">All Statuses</option>
-                                                <option value="Requested">Requested</option>
-                                                <option value="Bidding">Bidding</option>
                                                 <option value="Confirmed">Confirmed</option>
                                                 <option value="Driver Assigned">Driver Assigned</option>
                                                 <option value="Started">Trip Started</option>
@@ -2290,10 +2058,6 @@
                                                         <button type="button" class="btn-action-icon btn-action-invoice" onclick="openInvoiceModal({{ $b->id }})" title="Generate Tax Invoice">
                                                             <span class="material-symbols-outlined">receipt</span>
                                                         </button>
-                                                        {{-- Driver marketplace: publish to verified drivers and collect descending bids. --}}
-                                                        <button type="button" class="btn-action-icon" style="background:#f0f7ff; color:#1d4ed8; border:1px solid #bfdbfe;" onclick="openBiddingForBooking({{ $b->id }})" title="Send to driver bidding (WhatsApp link)">
-                                                            <span class="material-symbols-outlined">gavel</span>
-                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -2384,8 +2148,8 @@
                                             <tr id="user-row-{{ $u->id }}" data-id="{{ $u->id }}" data-role="{{ $u->role }}" data-search="{{ strtolower($u->name . ' ' . $u->email . ' ' . $u->phone . ' ' . $u->role . ' ' . ($driver ? $driver->vehicle_plate . ' ' . $driver->vehicle_model : '')) }}">
                                                 <td>
                                                     <div style="display:flex; align-items:center; gap:8px;">
-                                                        <span style="font-size:20px; width:30px; height:30px; border-radius:50%; background:#f1f5f9; display:inline-flex; align-items:center; justify-content:center;">
-                                                            {{ $u->avatar ?? ($u->role === 'admin' ? '🛡️' : ($u->role === 'driver' ? '👨🏽‍✈️' : '👤')) }}
+                                                        <span style="font-size:20px; width:30px; height:30px; border-radius:50%; background:#f1f5f9; display:inline-flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
+                                                            @include('partials.avatar', ['avatar' => $u->avatar ?? null, 'fallback' => $u->role === 'admin' ? '🛡️' : ($u->role === 'driver' ? '👨🏽‍✈️' : '👤'), 'alt' => $u->name])
                                                         </span>
                                                         <div>
                                                             <div class="cell-primary-text">{{ $u->name }}</div>
@@ -3151,359 +2915,6 @@
                         </div>
 
                         <!-- 5. DRIVERS & FLEET MANAGEMENT -->
-                        <div class="admin-section" id="admin-sec-coupons">
-                            <div class="card" style="margin-bottom:20px;">
-                                <div class="card-header" style="flex-wrap:wrap; gap:12px;">
-                                    <div>
-                                        <h3 class="card-title">
-                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px; vertical-align:middle;">sell</span>
-                                            <span>Promotional Coupons & Discounts</span>
-                                        </h3>
-                                        <p class="card-subtitle">Issue discount codes with percentage or flat value, optional cap, minimum spend, expiry date and usage limit. An issued coupon is redeemable immediately on the booking screen.</p>
-                                    </div>
-                                    <div style="display:flex; gap:8px; align-items:center;">
-                                        <span class="admin-badge badge-primary" style="font-size:11px; padding:4px 8px;" id="admin-coupon-total-pill">0 Total</span>
-                                        <span class="admin-badge badge-success" style="font-size:11px; padding:4px 8px;" id="admin-coupon-redeemable-pill">0 Redeemable</span>
-                                        <button type="button" class="btn btn-sm btn-primary" onclick="openCouponModal()">
-                                            <span class="material-symbols-outlined" style="font-size:16px;">add</span>
-                                            <span>Issue Coupon</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div class="admin-bookings-toolbar" style="padding:10px 16px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-                                    <div class="admin-search-box" style="flex:1; max-width:320px;">
-                                        <span class="material-symbols-outlined">search</span>
-                                        <input type="text" id="admin-coupon-search" placeholder="Search coupon code..." oninput="loadAdminCoupons()">
-                                    </div>
-                                    <div class="admin-toolbar-filters">
-                                        <div class="admin-filter-item">
-                                            <label>Status:</label>
-                                            <select id="admin-coupon-status" onchange="loadAdminCoupons()">
-                                                <option value="all">All Statuses</option>
-                                                <option value="active">Active Only</option>
-                                                <option value="inactive">Inactive</option>
-                                            </select>
-                                        </div>
-                                        <button type="button" class="btn btn-sm btn-outline" onclick="loadAdminCoupons()">
-                                            <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
-                                            <span>Refresh</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div class="table-responsive">
-                                    <table class="admin-table-compact" id="admin-coupons-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Coupon Code</th>
-                                                <th>Discount</th>
-                                                <th>Minimum Spend</th>
-                                                <th>Expires</th>
-                                                <th>Usage</th>
-                                                <th>Status</th>
-                                                <th style="text-align:right;">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="admin-coupons-tbody">
-                                            <tr><td colspan="7" style="text-align:center; padding:20px; color:#64748b;">Open this section to load coupons…</td></tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- MODAL: ISSUE / EDIT COUPON -->
-                        <div class="modal-overlay" id="admin-coupon-modal">
-                            <div class="modal-dialog" style="max-width:540px;">
-                                <div class="modal-header">
-                                    <h3 class="modal-title" id="admin-coupon-modal-title">Issue New Coupon</h3>
-                                    <button type="button" class="modal-close-btn" onclick="closeModal('admin-coupon-modal')">×</button>
-                                </div>
-                                <div class="modal-body">
-                                    <form id="admin-coupon-form" onsubmit="saveCoupon(event)">
-                                        <input type="hidden" id="admin-coupon-id" value="">
-
-                                        <div class="form-group" style="margin-bottom:10px;">
-                                            <label class="form-label" for="admin-coupon-code">Coupon Code *</label>
-                                            <input type="text" id="admin-coupon-code" class="form-control" placeholder="e.g. MONSOON20" style="text-transform:uppercase; font-family:monospace; font-weight:700;" required>
-                                            <span style="font-size:11px; color:#64748b;">Letters, digits, hyphen and underscore only. Stored in uppercase.</span>
-                                        </div>
-
-                                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                                            <div class="form-group" style="margin-bottom:10px;">
-                                                <label class="form-label" for="admin-coupon-type">Discount Type *</label>
-                                                <select id="admin-coupon-type" class="form-control" onchange="syncCouponTypeUi()">
-                                                    <option value="percentage">Percentage (%)</option>
-                                                    <option value="flat">Flat amount (₹)</option>
-                                                </select>
-                                            </div>
-                                            <div class="form-group" style="margin-bottom:10px;">
-                                                <label class="form-label" for="admin-coupon-value">Value *</label>
-                                                <input type="number" step="0.01" min="0.01" id="admin-coupon-value" class="form-control" placeholder="15" required>
-                                            </div>
-                                        </div>
-
-                                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                                            <div class="form-group" style="margin-bottom:10px;">
-                                                <label class="form-label" for="admin-coupon-max-discount">Max Discount (₹)</label>
-                                                <input type="number" step="0.01" min="0" id="admin-coupon-max-discount" class="form-control" placeholder="Optional cap">
-                                            </div>
-                                            <div class="form-group" style="margin-bottom:10px;">
-                                                <label class="form-label" for="admin-coupon-min-spend">Minimum Spend (₹)</label>
-                                                <input type="number" step="0.01" min="0" id="admin-coupon-min-spend" class="form-control" value="0">
-                                            </div>
-                                        </div>
-
-                                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                                            <div class="form-group" style="margin-bottom:10px;">
-                                                <label class="form-label" for="admin-coupon-expires-at">Expires At</label>
-                                                <input type="datetime-local" id="admin-coupon-expires-at" class="form-control">
-                                            </div>
-                                            <div class="form-group" style="margin-bottom:10px;">
-                                                <label class="form-label" for="admin-coupon-usage-limit">Usage Limit</label>
-                                                <input type="number" min="1" id="admin-coupon-usage-limit" class="form-control" placeholder="Unlimited">
-                                            </div>
-                                        </div>
-
-                                        <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#334155; margin:4px 0 16px;">
-                                            <input type="checkbox" id="admin-coupon-active" checked>
-                                            <span>Active — redeemable immediately at booking</span>
-                                        </label>
-
-                                        <div style="display:flex; gap:8px; justify-content:flex-end;">
-                                            <button type="button" class="btn btn-outline" onclick="closeModal('admin-coupon-modal')">Cancel</button>
-                                            <button type="submit" class="btn btn-primary" id="admin-coupon-submit-btn">Save Coupon</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-
-                        <script>
-                        (function () {
-                            function esc(value) {
-                                return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
-                                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
-                                });
-                            }
-
-                            function money(amount) {
-                                return '₹' + Number(amount || 0).toLocaleString('en-IN');
-                            }
-
-                            function adminHeaders(extra) {
-                                var base = { 'Accept': 'application/json' };
-                                if (typeof getAdminCsrfToken === 'function') {
-                                    base['X-CSRF-TOKEN'] = getAdminCsrfToken();
-                                }
-                                return Object.assign(base, extra || {});
-                            }
-
-                            window.loadAdminCoupons = async function () {
-                                var tbody = document.getElementById('admin-coupons-tbody');
-                                if (!tbody) { return; }
-
-                                var search = (document.getElementById('admin-coupon-search') || {}).value || '';
-                                var status = (document.getElementById('admin-coupon-status') || {}).value || 'all';
-                                var qs = new URLSearchParams({ search: search.trim(), status: status });
-
-                                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:#64748b;">Loading coupons…</td></tr>';
-
-                                try {
-                                    var res = await fetch('/api/admin/coupons?' + qs.toString(), { headers: adminHeaders() });
-                                    var data = await res.json();
-                                    if (!res.ok || !data.success) { throw new Error(data.message || 'Failed to load coupons.'); }
-                                    renderCoupons(data.coupons || [], data.meta || {});
-                                } catch (err) {
-                                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:#b91c1c;">' + esc(err.message) + '</td></tr>';
-                                }
-                            };
-
-                            function renderCoupons(coupons, meta) {
-                                var tbody = document.getElementById('admin-coupons-tbody');
-                                var totalPill = document.getElementById('admin-coupon-total-pill');
-                                var redeemPill = document.getElementById('admin-coupon-redeemable-pill');
-                                var navBadge = document.getElementById('admin-badge-coupons-count');
-
-                                if (totalPill) { totalPill.textContent = (meta.total || coupons.length) + ' Total'; }
-                                if (redeemPill) { redeemPill.textContent = (meta.redeemable || 0) + ' Redeemable'; }
-                                if (navBadge) { navBadge.textContent = (meta.redeemable || 0) + ' Live'; }
-
-                                if (!coupons.length) {
-                                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;">No coupons issued yet. Use “Issue Coupon” to create one.</td></tr>';
-                                    return;
-                                }
-
-                                tbody.innerHTML = coupons.map(function (c) {
-                                    var discount = c.type === 'percentage'
-                                        ? Number(c.value) + '%' + (c.max_discount ? ' up to ' + money(c.max_discount) : '')
-                                        : money(c.value);
-
-                                    var usage = c.usage_limit
-                                        ? (c.used_count || 0) + ' / ' + c.usage_limit
-                                        : (c.used_count || 0) + ' / ∞';
-
-                                    var statusPill = c.is_active
-                                        ? '<span class="admin-badge badge-success" style="font-size:10.5px;">Active</span>'
-                                        : '<span class="admin-badge badge-secondary" style="font-size:10.5px;">Inactive</span>';
-
-                                    var reason = '';
-                                    if (c.is_active && !c.redeemable) {
-                                        reason = '<div style="font-size:10px; color:#b45309; font-weight:600; margin-top:2px;">not redeemable now</div>';
-                                    }
-
-                                    return '<tr id="admin-coupon-row-' + c.id + '">' +
-                                        '<td><span style="font-family:monospace; font-weight:700; color:var(--primary); font-size:12.5px;">' + esc(c.code) + '</span></td>' +
-                                        '<td><strong style="color:#0f172a; font-size:12.5px;">' + esc(discount) + '</strong><div style="font-size:10.5px; color:#64748b;">' + esc(c.type_label) + '</div></td>' +
-                                        '<td><span style="font-size:12px; color:#334155; font-weight:600;">' + money(c.min_spend) + '</span></td>' +
-                                        '<td><span style="font-size:11.5px; color:#475569;">' + (c.expires_at_display ? esc(c.expires_at_display) : '<span style="color:#94a3b8;">Never</span>') + '</span></td>' +
-                                        '<td><span style="font-size:11.5px; color:#475569; font-weight:600;">' + esc(usage) + '</span></td>' +
-                                        '<td>' + statusPill + reason + '</td>' +
-                                        '<td style="text-align:right; white-space:nowrap;">' +
-                                            '<button type="button" class="btn btn-xs btn-outline" onclick="openCouponModal(' + c.id + ')" title="Edit"><span class="material-symbols-outlined" style="font-size:15px;">edit</span></button> ' +
-                                            '<button type="button" class="btn btn-xs btn-outline" onclick="toggleCouponStatus(' + c.id + ')" title="Toggle active"><span class="material-symbols-outlined" style="font-size:15px;">power_settings_new</span></button> ' +
-                                            '<button type="button" class="btn btn-xs btn-outline" onclick="deleteCoupon(' + c.id + ')" title="Delete" style="color:#b91c1c;"><span class="material-symbols-outlined" style="font-size:15px;">delete</span></button>' +
-                                        '</td>' +
-                                    '</tr>';
-                                }).join('');
-                            }
-
-                            window.syncCouponTypeUi = function () {
-                                var type = (document.getElementById('admin-coupon-type') || {}).value;
-                                var hint = document.getElementById('admin-coupon-value');
-                                if (hint) { hint.max = type === 'percentage' ? '100' : ''; }
-                            };
-
-                            window.openCouponModal = async function (id) {
-                                var title = document.getElementById('admin-coupon-modal-title');
-                                var idField = document.getElementById('admin-coupon-id');
-                                var codeField = document.getElementById('admin-coupon-code');
-
-                                document.getElementById('admin-coupon-form').reset();
-                                idField.value = '';
-                                document.getElementById('admin-coupon-active').checked = true;
-                                if (title) { title.textContent = 'Issue New Coupon'; }
-
-                                if (id) {
-                                    try {
-                                        var res = await fetch('/api/admin/coupons/' + id, { headers: adminHeaders() });
-                                        var data = await res.json();
-                                        if (!res.ok || !data.success) { throw new Error(data.message || 'Coupon not found.'); }
-                                        var c = data.coupon;
-
-                                        idField.value = c.id;
-                                        codeField.value = c.code || '';
-                                        document.getElementById('admin-coupon-type').value = c.type || 'percentage';
-                                        document.getElementById('admin-coupon-value').value = c.value;
-                                        document.getElementById('admin-coupon-max-discount').value = c.max_discount || '';
-                                        document.getElementById('admin-coupon-min-spend').value = c.min_spend || 0;
-                                        document.getElementById('admin-coupon-usage-limit').value = c.usage_limit || '';
-                                        document.getElementById('admin-coupon-active').checked = Boolean(c.is_active);
-
-                                        if (c.expires_at) {
-                                            document.getElementById('admin-coupon-expires-at').value = String(c.expires_at).slice(0, 16);
-                                        }
-
-                                        if (title) { title.textContent = 'Edit Coupon — ' + c.code; }
-                                    } catch (err) {
-                                        showToast(err.message, 'warning');
-                                        return;
-                                    }
-                                }
-
-                                syncCouponTypeUi();
-                                var modal = document.getElementById('admin-coupon-modal');
-                                if (modal) { modal.classList.add('active'); }
-                            };
-
-                            window.saveCoupon = async function (event) {
-                                event.preventDefault();
-
-                                var id = document.getElementById('admin-coupon-id').value;
-                                var expiresVal = document.getElementById('admin-coupon-expires-at').value;
-                                var usageVal = document.getElementById('admin-coupon-usage-limit').value;
-                                var maxDiscountVal = document.getElementById('admin-coupon-max-discount').value;
-
-                                var payload = {
-                                    code: document.getElementById('admin-coupon-code').value.trim(),
-                                    type: document.getElementById('admin-coupon-type').value,
-                                    value: document.getElementById('admin-coupon-value').value,
-                                    max_discount: maxDiscountVal === '' ? null : maxDiscountVal,
-                                    min_spend: document.getElementById('admin-coupon-min-spend').value || 0,
-                                    expires_at: expiresVal === '' ? null : expiresVal.replace('T', ' ') + ':00',
-                                    usage_limit: usageVal === '' ? null : usageVal,
-                                    is_active: document.getElementById('admin-coupon-active').checked
-                                };
-
-                                var url = id ? '/api/admin/coupons/' + id : '/api/admin/coupons';
-                                var btn = document.getElementById('admin-coupon-submit-btn');
-                                if (btn) { btn.disabled = true; }
-
-                                try {
-                                    var res = await fetch(url, {
-                                        method: id ? 'PUT' : 'POST',
-                                        headers: adminHeaders({ 'Content-Type': 'application/json' }),
-                                        body: JSON.stringify(payload)
-                                    });
-                                    var data = await res.json();
-
-                                    if (res.ok && data.success) {
-                                        showToast(data.message, 'success');
-                                        closeModal('admin-coupon-modal');
-                                        loadAdminCoupons();
-                                    } else if (res.status === 422 && data.errors) {
-                                        var first = Object.keys(data.errors)[0];
-                                        showToast(data.errors[first][0], 'warning');
-                                    } else {
-                                        showToast(data.message || 'Could not save coupon.', 'warning');
-                                    }
-                                } catch (err) {
-                                    showToast('Network error while saving coupon.', 'warning');
-                                } finally {
-                                    if (btn) { btn.disabled = false; }
-                                }
-                            };
-
-                            window.toggleCouponStatus = async function (id) {
-                                try {
-                                    var res = await fetch('/api/admin/coupons/' + id + '/toggle', {
-                                        method: 'POST',
-                                        headers: adminHeaders()
-                                    });
-                                    var data = await res.json();
-                                    if (res.ok && data.success) {
-                                        showToast(data.message, 'success');
-                                        loadAdminCoupons();
-                                    } else {
-                                        showToast(data.message || 'Could not update coupon.', 'warning');
-                                    }
-                                } catch (err) {
-                                    showToast('Network error while updating coupon.', 'warning');
-                                }
-                            };
-
-                            window.deleteCoupon = async function (id) {
-                                if (!window.confirm('Delete this coupon? Existing bookings keep their discount.')) { return; }
-                                try {
-                                    var res = await fetch('/api/admin/coupons/' + id, {
-                                        method: 'DELETE',
-                                        headers: adminHeaders()
-                                    });
-                                    var data = await res.json();
-                                    if (res.ok && data.success) {
-                                        showToast(data.message, 'success');
-                                        loadAdminCoupons();
-                                    } else {
-                                        showToast(data.message || 'Could not delete coupon.', 'warning');
-                                    }
-                                } catch (err) {
-                                    showToast('Network error while deleting coupon.', 'warning');
-                                }
-                            };
-                        })();
-                        </script>
-
                         <div class="admin-section" id="admin-sec-fleet">
                             <div class="card">
                                 <div class="card-header">
@@ -3533,7 +2944,7 @@
                                             <tr>
                                                 <td>
                                                     <div style="display:flex; align-items:center; gap:10px;">
-                                                        <span style="font-size:22px;">{{ $driver->avatar }}</span>
+                                                        <span style="font-size:22px; width:32px; height:32px; border-radius:50%; overflow:hidden; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">@include('partials.avatar', ['avatar' => $driver->avatar ?? null, 'fallback' => '👨🏽‍✈️', 'alt' => $driver->name])</span>
                                                         <div>
                                                             <div style="font-weight:700; font-size:13px;">{{ $driver->name }}</div>
                                                             <div style="font-size:11px; color:#64748b;">{{ $driver->phone }}</div>
@@ -3603,8 +3014,7 @@
                                     </div>
                                 </div>
 
-                                @if(config('demo.enabled'))
-                                <div class="card demo-only">
+                                <div class="card">
                                     <div class="card-header">
                                         <div>
                                             <h3 class="card-title">
@@ -3627,7 +3037,6 @@
                                         </button>
                                     </div>
                                 </div>
-                                @endif
                             </div>
 
                             <!-- Platform Feature & Booking Module Controls -->
@@ -4301,7 +3710,6 @@
                                                 <th>Plate Number</th>
                                                 <th>Category</th>
                                                 <th>Capacity</th>
-                                                <th>Car Features</th>
                                                 <th>RC Number</th>
                                                 <th>Approval Status</th>
                                                 <th style="text-align:right;">Actions</th>
@@ -4328,21 +3736,6 @@
                                                     <div>{{ $veh->seating_capacity }} Seats</div>
                                                     @if($veh->berth_capacity > 0)
                                                         <div style="font-size:10.5px; color:#16a34a; font-weight:700;">{{ $veh->berth_capacity }} Berths Fitted</div>
-                                                    @endif
-                                                </td>
-                                                <td>
-                                                    @php $vehFeatures = $veh->featureLabels(); @endphp
-                                                    @if(count($vehFeatures) > 0)
-                                                        <div style="display:flex; flex-wrap:wrap; gap:3px; max-width:190px;">
-                                                            @foreach(array_slice($vehFeatures, 0, 3) as $feature)
-                                                                <span class="admin-badge badge-secondary" style="font-size:9.5px; padding:2px 5px; white-space:nowrap;">{{ $feature }}</span>
-                                                            @endforeach
-                                                            @if(count($vehFeatures) > 3)
-                                                                <span class="admin-badge badge-secondary" style="font-size:9.5px; padding:2px 5px;" title="{{ implode(', ', array_slice($vehFeatures, 3)) }}">+{{ count($vehFeatures) - 3 }}</span>
-                                                            @endif
-                                                        </div>
-                                                    @else
-                                                        <span style="font-size:10.5px; color:#94a3b8;">Not listed</span>
                                                     @endif
                                                 </td>
                                                 <td style="font-family:monospace; font-size:11px;" id="admin-veh-rc-{{ $veh->id }}">{{ $veh->rc_number ?: 'Pending Upload' }}</td>
@@ -4377,7 +3770,7 @@
                                                 </td>
                                             </tr>
                                             @empty
-                                            <tr><td colspan="9" style="text-align:center; padding:20px; color:#94a3b8;">No driver vehicles listed yet.</td></tr>
+                                            <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">No driver vehicles listed yet.</td></tr>
                                             @endforelse
                                         </tbody>
                                     </table>
@@ -4403,10 +3796,12 @@
                     <span>Schedules</span>
                 </button>
                 @endif
-                <button type="button" class="mobile-dock-btn {{ $defaultTab === 'my-bookings' ? 'active' : '' }}" data-target="my-bookings">
-                    <span class="material-symbols-outlined">confirmation_number</span>
-                    <span>My Trips</span>
-                </button>
+                @auth
+                    <button type="button" class="mobile-dock-btn {{ $defaultTab === 'my-bookings' ? 'active' : '' }}" data-target="my-bookings">
+                        <span class="material-symbols-outlined">confirmation_number</span>
+                        <span>My Trips</span>
+                    </button>
+                @endauth
             @elseif($userRole === 'driver')
                 <button type="button" class="mobile-dock-btn {{ $defaultTab === 'bidding' ? 'active' : '' }}" data-target="bidding">
                     <span class="material-symbols-outlined">local_offer</span>
@@ -4474,6 +3869,141 @@
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('payment-modal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+@if($userRole === 'driver' || $userRole === 'admin')
+<!-- ======================================================== -->
+<!-- MODAL: CONCLUSIVE DRIVER BID & COMMITMENT POPUP          -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="driver-bid-modal">
+    <div class="modal-dialog" style="max-width: 580px;">
+        <div class="modal-header" style="background:#0b0f19; color:#f8fafc; border-bottom:1px solid #1e293b;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div style="width:36px; height:36px; border-radius:8px; background:rgba(212,155,76,0.15); border:1px solid #d49b4c; display:flex; align-items:center; justify-content:center; color:#d49b4c;">
+                    <span class="material-symbols-outlined" style="font-size:22px;">gavel</span>
+                </div>
+                <div>
+                    <h3 class="modal-title" style="color:#ffffff; font-size:16px;">Chauffeur Ride Commitment & Bidding</h3>
+                    <p style="font-size:11px; color:#94a3b8; margin:0;">Conclusive trip agreement & binding fare proposal</p>
+                </div>
+            </div>
+            <button type="button" class="modal-close-btn" style="color:#cbd5e1;" onclick="closeModal('driver-bid-modal')">×</button>
+        </div>
+        <div class="modal-body" style="padding:18px 20px;">
+            <!-- Trip Route & Distance Details Box -->
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <span class="admin-badge badge-primary" id="driver-bid-trip-type" style="font-size:10.5px;">Outstation Trip</span>
+                    <span style="font-size:11.5px; color:#64748b; font-weight:600;" id="driver-bid-trip-schedule">Scheduled Departure</span>
+                </div>
+                
+                <!-- From & To Route Display -->
+                <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; margin-bottom:12px;">
+                    <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px;">
+                        <div style="font-size:10px; font-weight:700; color:#0284c7; text-transform:uppercase; letter-spacing:0.04em;">From (Pickup Location)</div>
+                        <div style="font-size:13px; font-weight:700; color:#0f172a; margin-top:2px;" id="driver-bid-from-loc">Pickup Location</div>
+                    </div>
+                    <div style="text-align:center; color:var(--primary); font-weight:800; font-size:20px;">➔</div>
+                    <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px;">
+                        <div style="font-size:10px; font-weight:700; color:#16a34a; text-transform:uppercase; letter-spacing:0.04em;">To (Drop Location)</div>
+                        <div style="font-size:13px; font-weight:700; color:#0f172a; margin-top:2px;" id="driver-bid-to-loc">Drop Location</div>
+                    </div>
+                </div>
+
+                <!-- Distance, Time & Passenger Budget Row -->
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; border-top:1px dashed #cbd5e1; padding-top:10px;">
+                    <div>
+                        <span style="color:#64748b;">Distance:</span>
+                        <strong style="color:#0f172a; margin-left:4px; font-family:monospace; font-size:14px;" id="driver-bid-distance-km">450 km</strong>
+                        <span style="color:#94a3b8; margin:0 6px;">&bull;</span>
+                        <span style="color:#64748b;">Est. Time:</span>
+                        <strong style="color:#0f172a; margin-left:4px;" id="driver-bid-est-time">9h 15m</strong>
+                    </div>
+                    <div>
+                        <span style="color:#64748b;">Passenger Budget:</span>
+                        <strong style="color:#16a34a; margin-left:4px; font-size:14px;" id="driver-bid-customer-budget">₹4,800</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Driver Fare Input -->
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>Your Proposed Ride Price (₹)</span>
+                    <span style="font-size:11px; color:#64748b;">Enter final all-inclusive trip fare</span>
+                </label>
+                <div class="input-with-icon">
+                    <span class="material-symbols-outlined" style="color:var(--primary);">currency_rupee</span>
+                    <input type="number" id="driver-bid-amount-input" class="form-control" style="font-size:20px; font-weight:800; color:#0f172a; height:46px;" oninput="updateConclusiveWriteup()" min="100" step="50">
+                </div>
+                <!-- Quick Amount Adjusters -->
+                <div style="display:flex; gap:6px; margin-top:8px;">
+                    <button type="button" class="btn btn-xs btn-outline" onclick="adjustDriverBidPrice(-100)">- ₹100</button>
+                    <button type="button" class="btn btn-xs btn-outline-gold" onclick="resetDriverBidToTarget()">Match Budget</button>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="adjustDriverBidPrice(200)">+ ₹200</button>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="adjustDriverBidPrice(500)">+ ₹500</button>
+                </div>
+            </div>
+
+            <!-- Mandatory Conclusive Write-up & Acceptance Box -->
+            <div style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:8px; padding:14px; margin-top:14px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+                    <span class="material-symbols-outlined" style="color:#d97706; font-size:18px;">verified</span>
+                    <span style="font-size:11px; text-transform:uppercase; font-weight:800; color:#92400e; letter-spacing:0.05em;">Conclusive Ride Commitment Statement</span>
+                </div>
+                <div id="driver-bid-conclusive-statement" style="font-size:13.5px; font-weight:600; color:#1e293b; line-height:1.55; padding:6px 0;">
+                    "I will take and do this ride from <span id="writeup-from" style="color:#0284c7;">Pickup</span> to <span id="writeup-to" style="color:#16a34a;">Drop</span> (<span id="writeup-km" style="font-family:monospace;">0 km</span>) at this price: <span id="writeup-price" style="color:#b45309; font-weight:800; font-size:15px;">₹0</span>. I accept this."
+                </div>
+                <div style="margin-top:10px; display:flex; align-items:flex-start; gap:8px; border-top:1px dashed #fcd34d; padding-top:8px;">
+                    <input type="checkbox" id="driver-bid-accept-checkbox" checked style="width:17px; height:17px; margin-top:2px; accent-color:#d97706; cursor:pointer;" onchange="toggleBidSubmitButton(this.checked)">
+                    <label for="driver-bid-accept-checkbox" style="font-size:11.5px; color:#475569; font-weight:600; cursor:pointer; line-height:1.4;">
+                        I accept this trip and agree to report on schedule with my verified vehicle at the agreed fare.
+                    </label>
+                </div>
+            </div>
+
+            <!-- Privacy Protection Notice -->
+            <div style="background:#f1f5f9; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; margin-top:10px; font-size:11px; color:#475569; display:flex; align-items:center; gap:6px;">
+                <span class="material-symbols-outlined" style="font-size:16px; color:#64748b;">lock</span>
+                <span><strong>Security & Privacy:</strong> Passenger phone number and exact doorstep pickup address remain masked until your bid is accepted and the ride is allotted to you.</span>
+            </div>
+        </div>
+        <div class="modal-footer" style="background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('driver-bid-modal')">Cancel</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-submit-conclusive-bid" onclick="submitConclusiveDriverBid()">
+                <span>✓ I Accept & Confirm This Bid (<span id="btn-bid-amount-preview">₹0</span>)</span>
+            </button>
+        </div>
+    </div>
+</div>
+@endif
+
+<!-- ======================================================== -->
+<!-- MODAL: DRIVER COUNTER OFFER                              -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="counter-modal">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3 class="modal-title">Counter Offer</h3>
+            <button type="button" class="modal-close-btn" onclick="closeModal('counter-modal')">×</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size:12.5px; color:#64748b; margin-bottom:12px;">
+                Propose your target fare to <strong id="counter-driver-name" style="color:#0f172a;">Driver</strong>. Current bid: <span id="counter-current-bid" style="font-weight:700; color:var(--secondary);" class="text-tabular">₹5,200</span>.
+            </p>
+            <div class="form-group">
+                <label class="form-label">Target Offer (₹)</label>
+                <div class="input-with-icon">
+                    <span class="material-symbols-outlined">currency_rupee</span>
+                    <input type="number" id="counter-target-input" class="form-control" value="4800">
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('counter-modal')">Cancel</button>
+            <button type="button" class="btn btn-accent btn-sm" onclick="submitCounterOffer()">Send Counter Bid</button>
         </div>
     </div>
 </div>
@@ -4623,134 +4153,6 @@
 <!-- ======================================================== -->
 <!-- MODAL: ALLOT CHAUFFEUR / DRIVER (AdminLTE 3)             -->
 <!-- ======================================================== -->
-<!-- ======================================================== -->
-<!-- MODAL: OPEN DRIVER BIDDING (reverse auction)             -->
-<!-- ======================================================== -->
-<div class="modal-overlay" id="admin-bidding-open-modal">
-    <div class="modal-dialog" style="max-width: 560px;">
-        <div class="modal-header">
-            <h3 class="modal-title">
-                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">gavel</span>
-                <span>Send Booking to Driver Bidding</span>
-            </h3>
-            <button type="button" class="modal-close-btn" onclick="closeModal('admin-bidding-open-modal')">×</button>
-        </div>
-        <div class="modal-body">
-            <div id="bidding-open-form">
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                        <span id="bidding-info-ref" style="font-family:monospace; font-weight:700; color:var(--primary); font-size:13px;">—</span>
-                        <span id="bidding-info-fare" style="font-weight:800; color:#0f172a;">₹0</span>
-                    </div>
-                    <div id="bidding-info-route" style="font-weight:600; color:#334155;">—</div>
-                    <div id="bidding-info-customer" style="color:#64748b; margin-top:2px;">—</div>
-                </div>
-
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                    <div class="form-group">
-                        <label class="form-label" for="bidding-fee-pct">Minimum admin margin (%)</label>
-                        <input type="number" id="bidding-fee-pct" class="form-control" value="15" min="0" max="90" step="0.5" oninput="recalculateBiddingCeiling()">
-                        <small style="color:#64748b; font-size:11px;">Your guaranteed cut of the customer fare.</small>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="bidding-start-amount">Start price (max driver price)</label>
-                        <input type="number" id="bidding-start-amount" class="form-control" min="1" step="1">
-                        <small style="color:#64748b; font-size:11px;" id="bidding-ceiling-hint">Max allowed: ₹0</small>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label" for="bidding-closes-at">Bidding deadline</label>
-                    <input type="datetime-local" id="bidding-closes-at" class="form-control">
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label" for="bidding-notes">Internal note (optional)</label>
-                    <input type="text" id="bidding-notes" class="form-control" placeholder="e.g. Airport pickup, toll included">
-                </div>
-
-                <div id="bidding-open-error" style="display:none; font-size:12px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:6px; padding:8px 10px; margin-bottom:10px;"></div>
-
-                <button type="button" class="btn btn-primary btn-block" id="bidding-open-submit" onclick="submitOpenBidding()">
-                    <span class="material-symbols-outlined" style="font-size:18px;">campaign</span>
-                    Open bidding &amp; generate WhatsApp link
-                </button>
-            </div>
-
-            <div id="bidding-share-panel" style="display:none;">
-                <div style="font-size:12.5px; background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; border-radius:6px; padding:8px 10px; margin-bottom:12px;">
-                    Bidding is live. Send this link to your verified drivers.
-                </div>
-                <label class="form-label" for="bidding-share-url">Driver bidding link</label>
-                <div style="display:flex; gap:8px; margin-bottom:12px;">
-                    <input type="text" id="bidding-share-url" class="form-control" readonly style="font-family:monospace; font-size:12px;">
-                    <button type="button" class="btn btn-outline" onclick="copyBiddingShare()" style="white-space:nowrap;">Copy</button>
-                </div>
-                <a id="bidding-whatsapp-link" class="btn btn-primary btn-block" target="_blank" rel="noopener" style="text-decoration:none;">
-                    <span class="material-symbols-outlined" style="font-size:18px;">chat</span>
-                    Share on WhatsApp
-                </a>
-                <label class="form-label" style="margin-top:14px;">Message preview</label>
-                <pre id="bidding-share-text" style="white-space:pre-wrap; background:#0f172a; color:#e2e8f0; border-radius:8px; padding:12px; font-size:11.5px; line-height:1.6;"></pre>
-                <button type="button" class="btn btn-outline btn-block" style="margin-top:10px;" onclick="closeModal('admin-bidding-open-modal'); switchAdminSection('bidding'); renderAdminBiddings();">
-                    View the auction board
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ======================================================== -->
-<!-- MODAL: BIDDING DETAIL / AWARD WINNER                     -->
-<!-- ======================================================== -->
-<div class="modal-overlay" id="admin-bidding-detail-modal">
-    <div class="modal-dialog" style="max-width: 720px;">
-        <div class="modal-header">
-            <h3 class="modal-title">
-                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">format_list_numbered</span>
-                <span>Bids & Winner Approval</span>
-            </h3>
-            <button type="button" class="modal-close-btn" onclick="closeModal('admin-bidding-detail-modal')">×</button>
-        </div>
-        <div class="modal-body">
-            <div id="bidding-detail-summary" style="margin-bottom:12px;"></div>
-
-            <table class="admin-data-table admin-table-compact">
-                <thead>
-                    <tr>
-                        <th>Driver</th>
-                        <th>Vehicle</th>
-                        <th>Bid</th>
-                        <th>Placed</th>
-                        <th>IP</th>
-                        <th style="text-align:right;">Action</th>
-                    </tr>
-                </thead>
-                <tbody id="bidding-detail-bids">
-                    <tr><td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">No bids yet.</td></tr>
-                </tbody>
-            </table>
-
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;">
-                <button type="button" class="btn btn-primary" id="bidding-detail-award" onclick="awardWinningBid()">
-                    <span class="material-symbols-outlined" style="font-size:18px;">verified</span>
-                    Approve lowest bid &amp; assign
-                </button>
-                <button type="button" class="btn btn-outline" id="bidding-detail-close" onclick="closeBiddingSession()">
-                    Close bidding
-                </button>
-                <button type="button" class="btn btn-outline" style="color:#b91c1c; border-color:#fecaca;" onclick="cancelBiddingSession()">
-                    Cancel auction
-                </button>
-                <button type="button" class="btn btn-outline" onclick="copyBiddingDetailLink()">
-                    Copy driver link
-                </button>
-            </div>
-            <div id="bidding-detail-error" style="display:none; margin-top:10px; font-size:12px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:6px; padding:8px 10px;"></div>
-        </div>
-    </div>
-</div>
-
 <div class="modal-overlay" id="admin-allot-driver-modal">
     <div class="modal-dialog" style="max-width: 520px;">
         <div class="modal-header">
@@ -4804,7 +4206,6 @@
                         <option value="Driver Assigned" selected>Driver Assigned (Chauffeur dispatched)</option>
                         <option value="Confirmed">Confirmed (Chauffeur queued)</option>
                         <option value="Started">Trip In Progress</option>
-                        <option value="">Keep current stage (no status change)</option>
                     </select>
                 </div>
 
@@ -5053,8 +4454,6 @@
                     <div class="form-group">
                         <label class="form-label" for="edit-status">Booking Status</label>
                         <select id="edit-status" class="form-control">
-                            <option value="Requested">Requested</option>
-                            <option value="Bidding">Bidding</option>
                             <option value="Confirmed">Confirmed</option>
                             <option value="Driver Assigned">Driver Assigned</option>
                             <option value="Started">Trip Started</option>
@@ -5075,11 +4474,6 @@
                             @endforeach
                         </select>
                     </div>
-                </div>
-
-                <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:11.5px; color:#1e40af; display:flex; align-items:flex-start; gap:8px;">
-                    <span class="material-symbols-outlined" style="font-size:18px;">admin_panel_settings</span>
-                    <span><strong>Admin override:</strong> any stage can be saved here — including reopening <em>Completed</em> or <em>Cancelled</em> trips and replacing a chauffeur on a live ride. Customer and driver apps keep their normal stage rules.</span>
                 </div>
 
                 <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--outline); padding-top:14px;">
@@ -5578,7 +4972,7 @@
         </div>
         <div class="modal-body" style="padding:16px 20px;">
             <div style="display:flex; align-items:center; gap:14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:16px;">
-                <div style="font-size:36px; width:52px; height:52px; border-radius:50%; background:#ffffff; border:1px solid #cbd5e1; display:flex; align-items:center; justify-content:center;" id="view-user-avatar">
+                <div style="font-size:36px; width:52px; height:52px; border-radius:50%; background:#ffffff; border:1px solid #cbd5e1; display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;" id="view-user-avatar">
                     👤
                 </div>
                 <div style="flex:1;">
@@ -5937,18 +5331,6 @@
                     <input type="text" id="admin-veh-rc" class="form-control" placeholder="e.g. RC-MH12-984129">
                 </div>
 
-                <div class="form-group" style="margin-bottom:12px;">
-                    <label class="form-label">Car Features / Amenities</label>
-                    <div id="admin-veh-features" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(165px, 1fr)); gap:4px 10px; border:1px solid #e2e8f0; border-radius:6px; padding:8px 10px; max-height:130px; overflow:auto; background:#f8fafc;">
-                        @foreach(\App\Models\DriverVehicle::FEATURES as $feature)
-                            <label style="display:flex; align-items:center; gap:5px; font-size:11.5px; color:#334155; cursor:pointer;">
-                                <input type="checkbox" name="admin-veh-feature" value="{{ $feature }}">
-                                <span>{{ $feature }}</span>
-                            </label>
-                        @endforeach
-                    </div>
-                </div>
-
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
                     <div class="form-group">
                         <label class="form-label" for="admin-veh-status">Admin Approval Status *</label>
@@ -6061,18 +5443,6 @@
                 <div class="form-group" style="margin-bottom:14px;">
                     <label class="form-label" for="driver-new-veh-rc">Registration Certificate (RC Number) *</label>
                     <input type="text" id="driver-new-veh-rc" class="form-control" placeholder="e.g. RC-MH12-123456" required>
-                </div>
-
-                <div class="form-group" style="margin-bottom:14px;">
-                    <label class="form-label">Car Features / Amenities</label>
-                    <div id="driver-new-veh-features" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(165px, 1fr)); gap:4px 10px; border:1px solid #e2e8f0; border-radius:6px; padding:8px 10px; max-height:130px; overflow:auto; background:#f8fafc;">
-                        @foreach(\App\Models\DriverVehicle::FEATURES as $feature)
-                            <label style="display:flex; align-items:center; gap:5px; font-size:11.5px; color:#334155; cursor:pointer;">
-                                <input type="checkbox" name="driver-new-veh-feature" value="{{ $feature }}">
-                                <span>{{ $feature }}</span>
-                            </label>
-                        @endforeach
-                    </div>
                 </div>
 
                 <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--outline); padding-top:12px;">

@@ -50,12 +50,11 @@ class UserRegistrationAndOtpLoginTest extends TestCase
             'email' => 'subhash.driver@example.com',
             'phone' => '9832233445',
             'password' => 'driverpass123',
-            'role' => 'driver',
             'vehicle_model' => 'Toyota Innova Crysta',
             'vehicle_plate' => 'WB 06 QX 7788',
         ];
 
-        $response = $this->postJson('/register', $payload);
+        $response = $this->postJson('/driver/register', $payload);
 
         $response->assertStatus(200)
             ->assertJson([
@@ -75,6 +74,58 @@ class UserRegistrationAndOtpLoginTest extends TestCase
         ]);
 
         $this->assertAuthenticated();
+    }
+
+    public function test_customer_register_endpoint_refuses_driver_role()
+    {
+        $this->postJson('/register', [
+            'name' => 'Wrong Endpoint',
+            'email' => 'wrong.endpoint@example.com',
+            'phone' => '9832233499',
+            'password' => 'driverpass123',
+            'role' => 'driver',
+        ])->assertStatus(422);
+
+        $this->assertDatabaseMissing('users', ['email' => 'wrong.endpoint@example.com']);
+    }
+
+    public function test_dedicated_login_portals_and_clean_customer_popup_render()
+    {
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('Customer Sign In')
+            ->assertDontSee('onclick="selectLoginRole(\'driver\')"', false)
+            ->assertDontSee('onclick="selectLoginRole(\'admin\')"', false)
+            ->assertDontSee('id="signup-driver-fields"', false);
+
+        $this->get('/login')->assertOk()->assertSee('Customer Sign In');
+        $this->get('/driver')->assertOk()->assertSee('Driver Partner Portal')->assertSee('/driver/register', false);
+        $this->get('/admin')->assertOk()->assertSee('Platform Admin Sign In')->assertDontSee('portal-signup-form', false);
+    }
+
+    public function test_driver_and_admin_login_endpoints_enforce_their_roles()
+    {
+        $this->postJson('/driver/login', [
+            'email' => 'customer@intercitywheels.com',
+            'password' => 'password123',
+        ])->assertStatus(422);
+
+        $this->postJson('/driver/login', [
+            'email' => 'driver@intercitywheels.com',
+            'password' => 'password123',
+        ])->assertOk()->assertJsonPath('target_tab', 'bidding');
+
+        $this->postJson('/logout')->assertOk();
+
+        $this->postJson('/admin/login', [
+            'email' => 'driver@intercitywheels.com',
+            'password' => 'password123',
+        ])->assertStatus(422);
+
+        $this->postJson('/admin/login', [
+            'email' => 'admin@intercitywheels.com',
+            'password' => 'password123',
+        ])->assertOk()->assertJsonPath('target_tab', 'admin');
     }
 
     public function test_mobile_otp_can_be_dispatched_and_shows_otp_in_demo_mode()

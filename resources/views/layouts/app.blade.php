@@ -163,7 +163,7 @@
                 @auth
                     <div class="user-profile-menu" id="user-profile-menu">
                         <button type="button" class="user-profile-btn" id="user-profile-btn" onclick="toggleUserMenu()">
-                            <span class="user-avatar-badge">{{ Auth::user()->avatar ?? '👤' }}</span>
+                            <span class="user-avatar-badge">@include('partials.avatar', ['avatar' => Auth::user()->avatar, 'fallback' => Auth::user()->role === 'admin' ? '🛡️' : (Auth::user()->role === 'driver' ? '👨🏽‍✈️' : '👤'), 'alt' => Auth::user()->name])</span>
                             <div class="user-meta-info">
                                 <span class="user-meta-name">{{ Auth::user()->name }}</span>
                                 <span class="user-meta-role role-{{ Auth::user()->role }}">{{ strtoupper(Auth::user()->role) }}</span>
@@ -309,8 +309,8 @@
                 <div class="auth-header-brand">
                     <img src="{{ asset('assets/logo.jpg') }}" alt="Intercity Wheels" class="auth-logo-img">
                     <div>
-                        <h3 class="modal-title" id="auth-modal-title" style="color:#ffffff;">Portal Sign In</h3>
-                        <p class="auth-header-subtitle" id="auth-modal-subtitle">Authenticate securely or register a new account</p>
+                        <h3 class="modal-title" id="auth-modal-title" style="color:#ffffff;">Customer Sign In</h3>
+                        <p class="auth-header-subtitle" id="auth-modal-subtitle">Sign in or create your passenger account</p>
                     </div>
                 </div>
                 <button type="button" class="modal-close-btn" style="color:#cbd5e1;" onclick="closeModal('login-modal')">×</button>
@@ -329,29 +329,8 @@
                     </button>
                 </div>
 
-                <!-- ================= SECTION 1: SIGN IN ================= -->
+                <!-- ================= SECTION 1: SIGN IN (CUSTOMER ONLY) ================= -->
                 <div id="auth-signin-container">
-                    <!-- Compact Role Selector Tabs -->
-                    <div class="role-selector-pills simple-role-pills" style="margin-bottom:8px;">
-                        <button type="button" class="role-pill active" data-role="customer" onclick="selectLoginRole('customer')">
-                            <span class="role-icon">👤</span>
-                            <span class="role-label">Customer</span>
-                        </button>
-                        <button type="button" class="role-pill" data-role="driver" onclick="selectLoginRole('driver')">
-                            <span class="role-icon">👨🏽‍✈️</span>
-                            <span class="role-label">Driver</span>
-                        </button>
-                        <button type="button" class="role-pill" data-role="admin" onclick="selectLoginRole('admin')">
-                            <span class="role-icon">🛡️</span>
-                            <span class="role-label">Admin</span>
-                        </button>
-                    </div>
-
-                    <!-- Subtle Scope Caption -->
-                    <div class="role-scope-notice" id="role-scope-notice" style="display:flex; align-items:center; gap:6px; padding:5px 8px; border-radius:6px; background:#f8fafc; border:1px solid #e2e8f0; font-size:11px; color:#475569; margin-bottom:12px;">
-                        <span class="material-symbols-outlined" id="role-scope-icon" style="color:var(--primary); font-size:15px;">directions_car</span>
-                        <span id="role-scope-text">Sanitised outstation cabs and luxury sleeper bus berths.</span>
-                    </div>
 
                     <!-- PRIMARY SIGN IN: FIREBASE ID & GOOGLE -->
                     <div class="alternate-auth-section" id="alternate-auth-signin" style="margin-top:0; margin-bottom:10px;">
@@ -454,10 +433,8 @@
                     @if(config('demo.enabled'))
                     <!-- Quick 1-Click Demo Helper -->
                     <div id="demo-accounts-row" style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top:10px; font-size:11px; color:#64748b;">
-                        <span>Demo Accounts:</span>
+                        <span>Demo Account:</span>
                         <button type="button" class="btn btn-xs btn-outline" onclick="quickFillDemo('customer')" style="font-size:10px; padding:2px 7px; border-radius:10px; background:#ffffff;">Passenger</button>
-                        <button type="button" class="btn btn-xs btn-outline" onclick="quickFillDemo('driver')" style="font-size:10px; padding:2px 7px; border-radius:10px; background:#ffffff;">Driver</button>
-                        <button type="button" class="btn btn-xs btn-outline" onclick="quickFillDemo('admin')" style="font-size:10px; padding:2px 7px; border-radius:10px; background:#ffffff;">Admin</button>
                     </div>
                     @endif
 
@@ -468,19 +445,8 @@
                     </div>
                 </div>
 
-                <!-- ================= SECTION 2: SIGN UP ================= -->
+                <!-- ================= SECTION 2: SIGN UP (CUSTOMER ONLY) ================= -->
                 <div id="auth-signup-container" style="display:none;">
-                    <!-- Role Switcher for Registration (Customer vs Driver Partner) -->
-                    <div class="role-selector-pills simple-role-pills" style="margin-bottom:12px;">
-                        <button type="button" class="role-pill active" id="signup-role-btn-customer" onclick="selectSignupRole('customer')">
-                            <span class="role-icon">👤</span>
-                            <span class="role-label">Passenger</span>
-                        </button>
-                        <button type="button" class="role-pill" id="signup-role-btn-driver" onclick="selectSignupRole('driver')">
-                            <span class="role-icon">👨🏽‍✈️</span>
-                            <span class="role-label">Driver Partner</span>
-                        </button>
-                    </div>
 
                     <!-- Instant Alternate Registration at top -->
                     <div class="alternate-auth-section" id="alternate-auth-signup" style="margin-top:0; margin-bottom:10px;">
@@ -543,60 +509,23 @@
                             </div>
                         </div>
 
-                        <!-- Driver Extra Fields (Visible when Driver Partner selected) -->
-                        <div id="signup-driver-fields" style="display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:12px;">
-                            <div style="font-size:11.5px; font-weight:700; color:#0f172a; margin-bottom:8px; display:flex; align-items:center; gap:4px;">
-                                <span class="material-symbols-outlined" style="font-size:16px; color:var(--primary);">local_taxi</span>
-                                <span>Chauffeur Vehicle Details</span>
-                            </div>
-                            <div style="display:grid; grid-template-columns: 1.3fr 1fr; gap:8px;">
-                                <div>
-                                    <label class="form-label" style="font-size:10.5px;">Vehicle Model</label>
-                                    <input type="text" id="signup-veh-model" class="form-control" placeholder="e.g. Innova Crysta / Ertiga">
-                                </div>
-                                <div>
-                                    <label class="form-label" style="font-size:10.5px;">Plate Number</label>
-                                    <input type="text" id="signup-veh-plate" class="form-control" placeholder="WB 02 AB 1234" style="text-transform:uppercase;">
-                                </div>
-                            </div>
-                        </div>
-
                         <button type="submit" id="signup-submit-btn" class="btn btn-primary btn-block" style="height:44px; font-size:13.5px; margin-top:4px;">
                             <span class="material-symbols-outlined" style="font-size:18px;">how_to_reg</span>
                             <span id="signup-submit-label">Create Customer Account</span>
                         </button>
                     </form>
 
-                    <!-- Alternate Registration Providers (Firebase & Clerk) -->
-                    <div class="alternate-auth-section" id="alternate-auth-signup">
-                        <div class="auth-divider">
-                            <span>Or register with</span>
-                        </div>
-                        <div class="alternate-auth-buttons">
-                            <button type="button" class="btn-alternate-auth btn-firebase-google" id="btn-signup-firebase-google" onclick="handleAlternateLogin('firebase')" title="Sign up with Google via Firebase">
-                                <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">
-                                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.15z"/>
-                                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
-                                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-                                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-                                </svg>
-                                <span>Firebase ID / Google</span>
-                            </button>
-                            <button type="button" class="btn-alternate-auth btn-clerk-auth" id="btn-signup-clerk" onclick="handleAlternateLogin('clerk')" title="Sign up with Clerk">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
-                                    <rect width="24" height="24" rx="4" fill="#6C47FF"/>
-                                    <path d="M12 6.5C8.96 6.5 6.5 8.96 6.5 12C6.5 15.04 8.96 17.5 12 17.5C13.88 17.5 15.54 16.55 16.52 15.11L14.73 13.91C14.15 14.87 13.15 15.5 12 15.5C10.07 15.5 8.5 13.93 8.5 12C8.5 10.07 10.07 8.5 12 8.5C13.15 8.5 14.15 9.13 14.73 10.09L16.52 8.89C15.54 7.45 13.88 6.5 12 6.5Z" fill="white"/>
-                                </svg>
-                                <span>Clerk Auth</span>
-                            </button>
-                        </div>
-                    </div>
-
                     <!-- Toggle to Sign In -->
                     <div style="text-align:center; font-size:12px; color:#475569; margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;">
                         Already registered? 
                         <a href="javascript:void(0)" onclick="switchAuthMode('signin')" style="color:var(--primary); font-weight:700; text-decoration:none;">Sign In to Your Account</a>
                     </div>
+                </div>
+
+                <div style="text-align:center; font-size:11px; color:#64748b; margin-top:10px;">
+                    <a href="{{ route('driver.portal') }}" style="color:#475569; font-weight:600; text-decoration:none;">Driver Partner Portal</a>
+                    &nbsp;&middot;&nbsp;
+                    <a href="{{ route('admin.portal') }}" style="color:#475569; font-weight:600; text-decoration:none;">Admin Sign In</a>
                 </div>
 
                 <!-- Terms & Privacy Policy Legal Agreement Notice -->

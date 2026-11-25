@@ -232,4 +232,215 @@ class FirebaseAuthHardeningTest extends TestCase
             'role' => 'admin',
         ]);
     }
+
+    public function test_a_verified_firebase_rs256_jwt_signs_the_user_in(): void
+    {
+        [$privateKey, $certPem] = $this->generateTestKeyPair();
+        $this->fakeFirebaseCerts(['kid-1' => $certPem]);
+
+        $jwt = $this->signFirebaseJwt($privateKey, 'kid-1', [
+            'iss' => 'https://securetoken.google.com/'.self::PROJECT,
+            'aud' => self::PROJECT,
+            'auth_time' => time() - 10,
+            'iat' => time() - 10,
+            'exp' => time() + 3600,
+            'sub' => 'firebase-jwt-uid-456',
+            'email' => 'jwt.user@example.com',
+            'email_verified' => true,
+            'name' => 'JWT User',
+            'picture' => 'https://example.com/jwt.png',
+        ]);
+
+        $this->postJson('/auth/firebase-login', [
+            'provider' => 'firebase',
+            'id_token' => $jwt,
+            'email' => 'spoofed@example.com',
+            'uid' => 'spoofed-uid',
+            'role' => 'customer',
+        ])->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('user.email', 'jwt.user@example.com')
+            ->assertJsonPath('user.firebase_id', 'firebase-jwt-uid-456');
+
+        $this->assertAuthenticated();
+        $this->assertDatabaseMissing('users', ['email' => 'spoofed@example.com']);
+    }
+
+    public function test_a_tampered_firebase_jwt_is_rejected(): void
+    {
+        [$privateKey, $certPem] = $this->generateTestKeyPair();
+        $this->fakeFirebaseCerts(['kid-1' => $certPem]);
+
+        $jwt = $this->signFirebaseJwt($privateKey, 'kid-1', [
+            'iss' => 'https://securetoken.google.com/'.self::PROJECT,
+            'aud' => self::PROJECT,
+            'auth_time' => time() - 10,
+            'iat' => time() - 10,
+            'exp' => time() + 3600,
+            'sub' => 'firebase-jwt-uid-456',
+            'email' => 'jwt.user@example.com',
+            'email_verified' => true,
+        ]);
+
+        [$header, , $signature] = explode('.', $jwt);
+        $tamperedPayload = $this->base64UrlEncode((string) json_encode([
+            'iss' => 'https://securetoken.google.com/'.self::PROJECT,
+            'aud' => self::PROJECT,
+            'auth_time' => time() - 10,
+            'iat' => time() - 10,
+            'exp' => time() + 3600,
+            'sub' => 'victim-uid',
+            'email' => 'victim@example.com',
+            'email_verified' => true,
+        ]));
+
+        $this->postJson('/auth/firebase-login', [
+            'provider' => 'firebase',
+            'id_token' => "{$header}.{$tamperedPayload}.{$signature}",
+        ])->assertStatus(422)
+            ->assertJsonPath('message', 'Your Google sign-in could not be verified. Please sign in again.');
+
+        $this->assertGuest();
+    }
+
+    public function test_a_firebase_jwt_with_unknown_kid_or_wrong_project_is_rejected(): void
+    {
+        [$privateKey, $certPem] = $this->generateTestKeyPair();
+        $this->fakeFirebaseCerts(['kid-1' => $certPem]);
+
+        $unknownKidJwt = $this->signFirebaseJwt($privateKey, 'missing-kid', [
+            'iss' => 'https://securetoken.google.com/'.self::PROJECT,
+            'aud' => self::PROJECT,
+            'auth_time' => time() - 10,
+            'iat' => time() - 10,
+            'exp' => time() + 3600,
+            'sub' => 'uid-1',
+            'email' => 'a@example.com',
+        ]);
+
+        $this->postJson('/auth/firebase-login', [
+            'provider' => 'firebase',
+            'id_token' => $unknownKidJwt,
+        ])->assertStatus(422);
+
+        $wrongAudienceJwt = $this->signFirebaseJwt($privateKey, 'kid-1', [
+            'iss' => 'https://securetoken.google.com/'.self::PROJECT,
+            'aud' => 'other-project',
+            'auth_time' => time() - 10,
+            'iat' => time() - 10,
+            'exp' => time() + 3600,
+            'sub' => 'uid-1',
+            'email' => 'a@example.com',
+        ]);
+
+        $this->postJson('/auth/firebase-login', [
+            'provider' => 'firebase',
+            'id_token' => $wrongAudienceJwt,
+        ])->assertStatus(422)
+            ->assertJsonPath('message', 'That Google sign-in belongs to a different Firebase project.');
+
+        $this->assertGuest();
+    }
+
+    public function test_a_firebase_jwt_with_unsupported_algorithm_is_rejected(): void
+    {
+        $header = $this->base64UrlEncode((string) json_encode(['alg' => 'none', 'typ' => 'JWT']));
+        $payload = $this->base64UrlEncode((string) json_encode([
+            'iss' => 'https://securetoken.google.com/'.self::PROJECT,
+            'aud' => self::PROJECT,
+            'iat' => time() - 10,
+            'exp' => time() + 3600,
+            'sub' => 'forged-uid',
+            'email' => 'forged@example.com',
+        ]));
+
+        $this->postJson('/auth/firebase-login', [
+            'provider' => 'firebase',
+            'id_token' => "{$header}.{$payload}.sig",
+        ])->assertStatus(422)
+            ->assertJsonPath('message', 'Your Google sign-in could not be verified. Please sign in again.');
+
+        $this->assertGuest();
+    }
+
+    /**
+     * @param  array<string, string>  $certs
+     */
+    private function fakeFirebaseCerts(array $certs): void
+    {
+        Http::fake([
+            'www.googleapis.com/robot/v1/metadata/x509/*' => Http::response($certs, 200),
+        ]);
+    }
+
+    /**
+     * @return array{0: \OpenSSLAsymmetricKey, 1: string}
+     */
+    private function generateTestKeyPair(): array
+    {
+        $options = ['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA];
+        $tmpConf = null;
+
+        try {
+            $key = @openssl_pkey_new($options);
+            if ($key === false) {
+                $tmpConf = tempnam(sys_get_temp_dir(), 'ossl_');
+                file_put_contents($tmpConf, "[req]\ndistinguished_name=dn\n[dn]\n");
+                $options['config'] = $tmpConf;
+                $key = openssl_pkey_new($options);
+            }
+
+            $csr = openssl_csr_new(['commonName' => 'firebase-test'], $key, $options);
+            $x509 = openssl_csr_sign($csr, null, $key, 1, $options);
+            openssl_x509_export($x509, $certPem);
+
+            return [$key, $certPem];
+        } finally {
+            if ($tmpConf !== null && file_exists($tmpConf)) {
+                @unlink($tmpConf);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $claims
+     */
+    private function signFirebaseJwt(\OpenSSLAsymmetricKey $privateKey, string $kid, array $claims): string
+    {
+        $header = $this->base64UrlEncode((string) json_encode(['alg' => 'RS256', 'typ' => 'JWT', 'kid' => $kid]));
+        $payload = $this->base64UrlEncode((string) json_encode($claims));
+        $signingInput = "{$header}.{$payload}";
+
+        openssl_sign($signingInput, $signature, $privateKey, OPENSSL_ALGO_SHA256);
+
+        return "{$signingInput}.".$this->base64UrlEncode($signature);
+    }
+
+    private function base64UrlEncode(string $value): string
+    {
+        return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+    }
+
+    public function test_google_avatar_url_renders_as_an_image_in_header_and_emoji_renders_as_text(): void
+    {
+        $googleUser = User::factory()->create([
+            'role' => 'customer',
+            'avatar' => 'https://lh3.googleusercontent.com/a/example-photo=s96-c',
+        ]);
+
+        $this->actingAs($googleUser)
+            ->get('/')
+            ->assertOk()
+            ->assertSee('<span class="user-avatar-badge"><img src="https://lh3.googleusercontent.com/a/example-photo=s96-c"', false);
+
+        $emojiUser = User::factory()->create([
+            'role' => 'customer',
+            'avatar' => '👤',
+        ]);
+
+        $this->actingAs($emojiUser)
+            ->get('/')
+            ->assertOk()
+            ->assertSee('<span class="user-avatar-badge">👤', false);
+    }
 }

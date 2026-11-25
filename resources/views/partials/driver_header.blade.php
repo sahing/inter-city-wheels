@@ -4,7 +4,7 @@
 <div class="driver-master-banner animate-load stagger-1">
     <div class="driver-banner-left">
         <div class="driver-banner-avatar driver-avatar-display" onclick="openDriverEditProfileModal()" style="cursor:pointer;" title="Click to Edit Profile">
-            {{ $driverProfile->avatar ?? '👨🏽‍✈️' }}
+            @include('partials.avatar', ['avatar' => $driverProfile->avatar ?? null, 'fallback' => '👨🏽‍✈️', 'alt' => $driverProfile->name ?? 'Driver'])
         </div>
         <div class="driver-banner-info">
             <div class="driver-banner-name-row">

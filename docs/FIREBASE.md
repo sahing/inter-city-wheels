@@ -70,11 +70,15 @@ scopes.
 `POST /auth/firebase-login` (`App\Services\AlternateAuthService`) verifies a
 supplied `id_token` against Google before trusting anything:
 
-- signature and expiry via Google's `tokeninfo`;
+- Firebase Auth RS256 ID tokens (`https://securetoken.google.com/<project>`) are
+  verified cryptographically against Google's Secure Token x509 certificates
+  (cached per `Cache-Control: max-age`); Google OAuth2 ID tokens fall back to
+  Google's `tokeninfo`;
 - `iss` must be Google's issuer (or `securetoken.google.com/<project>`);
-- `aud` must belong to `FIREBASE_PROJECT_ID`, or equal `FIREBASE_CLIENT_ID`
-  when that is set;
-- `exp` must not be in the past (30 s clock tolerance);
+- `aud` must match `FIREBASE_PROJECT_ID` for Firebase ID tokens (or
+  `FIREBASE_CLIENT_ID` when validating a Google OAuth2 token);
+- `exp` (plus `iat` / `auth_time` on Firebase JWTs) must be valid within a 30 s
+  clock tolerance;
 - a present email must be verified;
 - the token's `sub`, email, name and picture override the posted values, so a
   caller cannot claim another identity.

@@ -44,8 +44,17 @@ Route::get('/', [HomeController::class, 'index'])->name('home');
 | Login, registration, OTP dispatch and provider callbacks must stay public.
 */
 
+Route::get('/login', [AuthController::class, 'showCustomerPortal'])->name('login.portal');
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::post('/register', [AuthController::class, 'register'])->name('register');
+
+Route::get('/driver', [AuthController::class, 'showDriverPortal'])->name('driver.portal');
+Route::post('/driver/login', [AuthController::class, 'driverLogin'])->name('driver.login');
+Route::post('/driver/register', [AuthController::class, 'driverRegister'])->name('driver.register');
+
+Route::get('/admin', [AuthController::class, 'showAdminPortal'])->name('admin.portal');
+Route::post('/admin/login', [AuthController::class, 'adminLogin'])->name('admin.login');
+
 Route::post('/auth/send-otp', [AuthController::class, 'sendMobileOtp'])->name('auth.sendOtp');
 Route::post('/auth/verify-otp', [AuthController::class, 'verifyMobileOtp'])->name('auth.verifyOtp');
 /*
@@ -88,6 +97,7 @@ Route::get('/health', function () {
 Route::prefix('api')->group(function () {
     Route::get('/routes/calculate', [RouteCalculationController::class, 'calculate'])->name('api.routes.calculate');
     Route::get('/locations/search', [LocationSearchController::class, 'search'])->name('api.locations.search');
+    Route::get('/locations/detect', [LocationSearchController::class, 'detect'])->name('api.locations.detect');
     Route::get('/locations', function () {
         return response()->json([
             'success' => true,

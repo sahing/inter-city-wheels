@@ -21,26 +21,49 @@
     return meta ? meta.getAttribute('content') : null;
   }
 
+  function isSameOriginRequest(input) {
+    const rawUrl = typeof input === 'string'
+      ? input
+      : (input instanceof URL
+        ? input.href
+        : (input && typeof input.url === 'string' ? input.url : ''));
+
+    if (!rawUrl) return false;
+
+    try {
+      const resolved = new URL(rawUrl, window.location.origin);
+      return resolved.origin === window.location.origin;
+    } catch (_) {
+      return false;
+    }
+  }
+
   window.fetch = function (input, init) {
-    const options = Object.assign({}, init || {});
     const method = String(
-      options.method || (typeof input === 'object' && input && input.method) || 'GET'
+      (init && init.method) || (typeof input === 'object' && input && input.method) || 'GET'
     ).toUpperCase();
 
-    if (!SAFE_METHODS.includes(method)) {
-      const token = csrfToken();
-
-      if (token) {
-        const headers = new Headers(
-          options.headers || (typeof input === 'object' && input ? input.headers : undefined)
-        );
-
-        if (!headers.has('X-CSRF-TOKEN')) headers.set('X-CSRF-TOKEN', token);
-        if (!headers.has('X-Requested-With')) headers.set('X-Requested-With', 'XMLHttpRequest');
-
-        options.headers = headers;
-      }
+    // Only attach Laravel CSRF headers on same-origin unsafe requests; sending
+    // them to external origins (e.g. Firebase/Google APIs) leaks the token and
+    // triggers CORS preflight 403 rejections.
+    if (SAFE_METHODS.includes(method) || !isSameOriginRequest(input)) {
+      return originalFetch(input, init);
     }
+
+    const token = csrfToken();
+    if (!token) {
+      return originalFetch(input, init);
+    }
+
+    const options = Object.assign({}, init || {});
+    const headers = new Headers(
+      options.headers || (typeof input === 'object' && input ? input.headers : undefined)
+    );
+
+    if (!headers.has('X-CSRF-TOKEN')) headers.set('X-CSRF-TOKEN', token);
+    if (!headers.has('X-Requested-With')) headers.set('X-Requested-With', 'XMLHttpRequest');
+
+    options.headers = headers;
 
     return originalFetch(input, options);
   };
@@ -518,10 +541,10 @@ function initCabsModule() {
   // Every option below changes what the server charges, so re-quote rather
   // than recomputing locally.
   if (tollCheck) tollCheck.addEventListener('change', (e) => { state.cab.includeTolls = e.target.checked; refreshCabQuote(); });
-  if (petCheck) petCheck.addEventListener('change', (e) => { 
-    state.cab.petFriendly = e.target.checked; 
+  if (petCheck) petCheck.addEventListener('change', (e) => {
+    state.cab.petFriendly = e.target.checked;
     if (typeof updateDynamicFieldsVisibility === 'function') updateDynamicFieldsVisibility();
-    refreshCabQuote(); 
+    refreshCabQuote();
   });
   if (nightCheck) nightCheck.addEventListener('change', (e) => { state.cab.nightAllowance = e.target.checked; refreshCabQuote(); });
   if (luggageCheck) luggageCheck.addEventListener('change', (e) => { state.cab.luggageCarrier = e.target.checked; refreshCabQuote(); });
@@ -711,6 +734,21 @@ function renderCityPickerDropdownItems(inputId, filterText = '', serverLocations
 
   let html = '';
 
+  if (PICKUP_PICKER_INPUTS.includes(inputId)) {
+    html += `
+      <div class="city-picker-detect-row">
+        <button type="button" class="city-picker-detect-btn" onmousedown="event.preventDefault(); detectInitialLocation('${inputId}', 'gps', event)">
+          <span class="material-symbols-outlined" style="font-size:15px; color:#20A9D2;">my_location</span>
+          <span>Use GPS Location</span>
+        </button>
+        <button type="button" class="city-picker-detect-btn" onmousedown="event.preventDefault(); detectInitialLocation('${inputId}', 'network', event)">
+          <span class="material-symbols-outlined" style="font-size:15px; color:#0284c7;">wifi</span>
+          <span>Detect via Network</span>
+        </button>
+      </div>
+    `;
+  }
+
   // Render locations list
   if (uniqueList.length > 0) {
     html += uniqueList.map(l => {
@@ -836,6 +874,165 @@ window.closeAllCityDropdowns = function () {
   document.querySelectorAll('.city-picker-dropdown').forEach(dd => {
     dd.style.display = 'none';
   });
+};
+
+// ========================================================
+// INITIAL PICKUP LOCATION DETECTION (GPS & NETWORK)
+// ========================================================
+const PICKUP_PICKER_INPUTS = ['rental-from-city', 'rental-rt-from', 'rental-local-city'];
+
+function activePickupInputId() {
+  const tripType = state.cab.tripType || 'oneway';
+  if (tripType === 'roundtrip') return 'rental-rt-from';
+  if (tripType === 'local') return 'rental-local-city';
+  if (tripType === 'airport') return 'rental-airport-address';
+  return 'rental-from-city';
+}
+
+function setGeoDetectionStatus(text, isError = false) {
+  const statusEl = document.getElementById('rental-geo-status');
+  if (!statusEl) return;
+  statusEl.textContent = text || '';
+  statusEl.style.color = isError ? '#b91c1c' : '#0369a1';
+}
+
+function setGeoButtonsDisabled(disabled) {
+  ['btn-detect-pickup-gps', 'btn-detect-pickup-network'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = disabled;
+  });
+}
+
+function getBrowserCoordinates() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('GPS geolocation is not supported in this browser.'));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude
+      }),
+      (err) => {
+        if (err && err.code === 1) {
+          reject(new Error('Location permission denied. Allow browser location or click "Use Network".'));
+        } else if (err && err.code === 3) {
+          reject(new Error('GPS timed out. Try again or click "Use Network".'));
+        } else {
+          reject(new Error('GPS location unavailable. Try "Use Network" instead.'));
+        }
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+  });
+}
+
+function applyDetectedLocation(inputId, loc, source) {
+  if (!loc || !loc.name) return;
+
+  const formatted = loc.state ? `${loc.name}, ${loc.state}` : loc.name;
+  const sourceLabel = source === 'gps' ? 'GPS' : 'Network';
+
+  if (inputId === 'cab-pickup-address') {
+    const addrInput = document.getElementById('cab-pickup-address');
+    if (addrInput) {
+      addrInput.value = loc.display_name || formatted;
+    }
+    const activeEl = document.getElementById(activePickupInputId());
+    if (activeEl && Number.isFinite(Number(loc.latitude)) && Number.isFinite(Number(loc.longitude))) {
+      activeEl.dataset.lat = String(loc.latitude);
+      activeEl.dataset.lng = String(loc.longitude);
+    }
+    showToast(`Pickup address updated via ${sourceLabel}: ${loc.display_name || formatted}`, 'success');
+    return;
+  }
+
+  if (inputId === 'rental-airport-address') {
+    const aptAddr = document.getElementById('rental-airport-address');
+    if (aptAddr) {
+      aptAddr.value = loc.display_name || formatted;
+      if (Number.isFinite(Number(loc.latitude)) && Number.isFinite(Number(loc.longitude))) {
+        aptAddr.dataset.lat = String(loc.latitude);
+        aptAddr.dataset.lng = String(loc.longitude);
+      }
+    }
+    state.cab.detectedPickup = {
+      cityFormatted: formatted,
+      displayName: loc.display_name || formatted,
+      source: source
+    };
+    updateRentalRouteStats();
+    setGeoDetectionStatus(`${sourceLabel}: ${formatted}`);
+    showToast(`Detected via ${sourceLabel}: ${formatted}`, 'success');
+    return;
+  }
+
+  selectCityFromPicker(inputId, loc.name, loc.state || '', loc.latitude, loc.longitude);
+  state.cab.detectedPickup = {
+    cityFormatted: formatted,
+    displayName: loc.display_name || formatted,
+    source: source
+  };
+
+  setGeoDetectionStatus(`${sourceLabel}: ${formatted}`);
+  showToast(`Initial pickup set via ${sourceLabel}: ${formatted}`, 'success');
+}
+
+window.detectActiveBookingLocation = function (mode = 'auto') {
+  return window.detectInitialLocation(activePickupInputId(), mode);
+};
+
+window.detectInitialLocation = async function (inputId, mode = 'auto', event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  closeAllCityDropdowns();
+  setGeoButtonsDisabled(true);
+  setGeoDetectionStatus(mode === 'network' ? 'Detecting via network...' : 'Detecting location...');
+
+  try {
+    let url = '/api/locations/detect';
+
+    if (mode === 'gps' || mode === 'auto') {
+      try {
+        const coords = await getBrowserCoordinates();
+        url += `?mode=gps&lat=${encodeURIComponent(coords.lat)}&lng=${encodeURIComponent(coords.lng)}`;
+      } catch (gpsErr) {
+        if (mode === 'gps') {
+          setGeoDetectionStatus(gpsErr.message, true);
+          showToast(gpsErr.message, 'warning');
+          return;
+        }
+        // Auto mode seamlessly falls back to approximate network detection.
+        url += '?mode=network';
+      }
+    } else {
+      url += '?mode=network';
+    }
+
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    const data = await res.json();
+
+    if (!res.ok || !data.success || !data.location) {
+      const msg = (data && data.message) || 'Could not detect initial pickup location.';
+      setGeoDetectionStatus(msg, true);
+      showToast(msg, 'warning');
+      return;
+    }
+
+    applyDetectedLocation(inputId, data.location, data.source || mode);
+  } catch (err) {
+    console.warn('Location detection error:', err);
+    const msg = 'Unable to detect location right now. Please type your pickup city.';
+    setGeoDetectionStatus(msg, true);
+    showToast(msg, 'warning');
+  } finally {
+    setGeoButtonsDisabled(false);
+  }
 };
 
 document.addEventListener('click', function (e) {
@@ -1144,9 +1341,11 @@ function cabQuoteParams() {
     const fromCoords = readInputCoords(fromEl);
     const toCoords = readInputCoords(toEl);
 
-    if (fromCoords && toCoords) {
+    if (fromCoords) {
       params.set('from_lat', fromCoords.lat);
       params.set('from_lng', fromCoords.lng);
+    }
+    if (toCoords) {
       params.set('to_lat', toCoords.lat);
       params.set('to_lng', toCoords.lng);
     }
@@ -1410,7 +1609,14 @@ window.selectRentalVehicle = function (fleetKey) {
 
   const pInput = document.getElementById('cab-pickup-address');
   const dInput = document.getElementById('cab-drop-address');
-  if (pInput) pInput.value = fromVal.includes('Sector') || fromVal.includes('Bay') || fromVal.includes('Terminal') ? fromVal : `${fromVal} Area`;
+  if (pInput) {
+    const detected = state.cab.detectedPickup;
+    if (detected && detected.cityFormatted === fromVal && detected.displayName) {
+      pInput.value = detected.displayName;
+    } else {
+      pInput.value = fromVal.includes('Sector') || fromVal.includes('Bay') || fromVal.includes('Terminal') ? fromVal : `${fromVal} Area`;
+    }
+  }
   if (dInput) dInput.value = toVal.includes('Sector') || toVal.includes('Bay') || toVal.includes('Terminal') ? toVal : `${toVal} Landmark`;
 
   // The selected fleet is part of the quote request, so refresh it before the
@@ -1739,6 +1945,15 @@ async function handleConfirmCabBooking() {
   const csrfMeta = document.querySelector('meta[name="csrf-token"]');
   const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
 
+  const fromEl = state.cab.tripType === 'roundtrip'
+    ? document.getElementById('rental-rt-from')
+    : (state.cab.tripType === 'local' ? document.getElementById('rental-local-city') : document.getElementById('rental-from-city'));
+  const toEl = state.cab.tripType === 'roundtrip'
+    ? document.getElementById('rental-rt-to')
+    : document.getElementById('rental-to-city');
+  const fromCoords = readInputCoords(fromEl);
+  const toCoords = (state.cab.tripType === 'oneway' || state.cab.tripType === 'roundtrip') ? readInputCoords(toEl) : null;
+
   const payload = {
     service_type: 'cab',
     trip_type: state.cab.tripType || 'oneway',
@@ -1746,6 +1961,10 @@ async function handleConfirmCabBooking() {
     to_city: toCityName,
     pickup_location: pickupLoc,
     drop_location: dropLoc,
+    from_lat: fromCoords ? fromCoords.lat : undefined,
+    from_lng: fromCoords ? fromCoords.lng : undefined,
+    to_lat: toCoords ? toCoords.lat : undefined,
+    to_lng: toCoords ? toCoords.lng : undefined,
     departure_time: departureTimeStr || undefined,
     return_time: returnTimeStr || undefined,
     customer_name: customerName,
@@ -1765,68 +1984,68 @@ async function handleConfirmCabBooking() {
 
   try {
     const res = await fetch('/api/bookings', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'X-CSRF-TOKEN': csrfToken
-    },
-    body: JSON.stringify(payload)
-  });
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': csrfToken
+      },
+      body: JSON.stringify(payload)
+    });
 
-  const data = await res.json();
+    const data = await res.json();
 
-  // Confirming a booking requires a signed-in account. Guests are handed to
-  // the one-tap login gate, and the payload is restored after sign-in.
-  if (res.status === 401) {
-    beginBookingLoginGate(payload);
-    return;
-  }
-
-  if (data.success && data.booking) {
-    const b = data.booking;
-    const localBooking = {
-      id: b.booking_reference,
-      type: 'Outstation Cab',
-      route: `${fromCityName} → ${toCityName}`,
-      date: 'Scheduled',
-      operator: `${FLEET_TYPES[state.cab.selectedFleet]?.name || 'Executive SUV'} (Intercity Wheels)`,
-      berths: ['Private Car Rental'],
-      passengers: [customerName],
-      amount: Number(b.total_amount),
-      status: b.status || 'Requested',
-      otp: String(b.start_otp)
-    };
-
-    state.bookings.unshift(localBooking);
-    showToast(`🎉 Booking confirmed! Reference: ${b.booking_reference}`, 'success');
-
-    // Update My Trips badge counter in header if present
-    const badge = document.querySelector('.nav-tab-badge.badge-primary');
-    if (badge) {
-      badge.textContent = String(parseInt(badge.textContent || '0', 10) + 1);
+    // Confirming a booking requires a signed-in account. Guests are handed to
+    // the one-tap login gate, and the payload is restored after sign-in.
+    if (res.status === 401) {
+      beginBookingLoginGate(payload);
+      return;
     }
 
-    // Requirement: after booking, land on the trip history with the new trip on
-    // top (signed-in customers), or the guest tracking panel (guests).
-    goToCabStep(1);
-    switchTab('my-bookings');
-    window.showBookingInHistory(b);
-  } else {
-    showToast(data.message || 'Booking validation error. Please verify input.', 'danger');
+    if (data.success && data.booking) {
+      const b = data.booking;
+      const localBooking = {
+        id: b.booking_reference,
+        type: 'Outstation Cab',
+        route: `${fromCityName} → ${toCityName}`,
+        date: 'Scheduled',
+        operator: `${FLEET_TYPES[state.cab.selectedFleet]?.name || 'Executive SUV'} (Intercity Wheels)`,
+        berths: ['Private Car Rental'],
+        passengers: [customerName],
+        amount: Number(b.total_amount),
+        status: b.status || 'Requested',
+        otp: String(b.start_otp)
+      };
+
+      state.bookings.unshift(localBooking);
+      showToast(`🎉 Booking confirmed! Reference: ${b.booking_reference}`, 'success');
+
+      // Update My Trips badge counter in header if present
+      const badge = document.querySelector('.nav-tab-badge.badge-primary');
+      if (badge) {
+        badge.textContent = String(parseInt(badge.textContent || '0', 10) + 1);
+      }
+
+      // Requirement: after booking, land on the trip history with the new trip on
+      // top (signed-in customers), or the guest tracking panel (guests).
+      goToCabStep(1);
+      switchTab('my-bookings');
+      window.showBookingInHistory(b);
+    } else {
+      showToast(data.message || 'Booking validation error. Please verify input.', 'danger');
+    }
+  } catch (err) {
+    // Previously this opened the payment sheet and then minted a ticket with a
+    // random reference, so a failed request still looked like a successful
+    // booking. A booking only exists once the server says so.
+    console.warn('Booking submission error:', err);
+    showToast('We could not reach the booking service. Please try again — no booking has been created.', 'danger');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = origBtnContent;
+    }
   }
-} catch (err) {
-  // Previously this opened the payment sheet and then minted a ticket with a
-  // random reference, so a failed request still looked like a successful
-  // booking. A booking only exists once the server says so.
-  console.warn('Booking submission error:', err);
-  showToast('We could not reach the booking service. Please try again — no booking has been created.', 'danger');
-} finally {
-  if (btn) {
-    btn.disabled = false;
-    btn.innerHTML = origBtnContent;
-  }
-}
 }
 
 function handleCityChange() {
@@ -2209,6 +2428,46 @@ function auctionEscape(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function isAvatarUrl(value) {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('https://') && !trimmed.startsWith('http://')) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch (_) {
+    return false;
+  }
+}
+
+function renderAvatarHtml(avatar, fallback = '👤', alt = 'Profile avatar') {
+  const val = typeof avatar === 'string' ? avatar.trim() : '';
+  const fb = fallback || '👤';
+  if (isAvatarUrl(val)) {
+    return `<img src="${auctionEscape(val)}" alt="${auctionEscape(alt)}" class="avatar-img" referrerpolicy="no-referrer" data-fallback="${auctionEscape(fb)}" onerror="this.replaceWith(document.createTextNode(this.dataset.fallback || '👤'))">`;
+  }
+  return auctionEscape(val || fb);
+}
+
+function setAvatarContent(el, avatar, fallback = '👤', alt = 'Profile avatar') {
+  if (!el) return;
+  const val = typeof avatar === 'string' ? avatar.trim() : '';
+  const fb = fallback || '👤';
+  if (isAvatarUrl(val)) {
+    const img = document.createElement('img');
+    img.src = val;
+    img.alt = alt;
+    img.className = 'avatar-img';
+    img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', () => {
+      img.replaceWith(document.createTextNode(fb));
+    }, { once: true });
+    el.replaceChildren(img);
+  } else {
+    el.textContent = val || fb;
+  }
 }
 
 function auctionMoney(value) {
@@ -3142,7 +3401,8 @@ window.handleFormRegister = async function (event) {
   }
 
   try {
-    const res = await fetch('/register', {
+    const registerEndpoint = role === 'driver' ? '/driver/register' : '/register';
+    const res = await fetch(registerEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -3369,11 +3629,11 @@ window.resumePendingBooking = async function () {
   try {
     payload = JSON.parse(raw);
   } catch (err) {
-    try { sessionStorage.removeItem(PENDING_BOOKING_KEY); } catch (e) {}
+    try { sessionStorage.removeItem(PENDING_BOOKING_KEY); } catch (e) { }
     return;
   }
 
-  try { sessionStorage.removeItem(PENDING_BOOKING_KEY); } catch (e) {}
+  try { sessionStorage.removeItem(PENDING_BOOKING_KEY); } catch (e) { }
 
   showToast('Finishing your booking…', 'info');
 
@@ -3745,24 +4005,35 @@ function describeFirebaseAuthError(err) {
   return (err && err.message) || 'Firebase sign-in failed. Please try again.';
 }
 
-/** Load the compat SDK and initialise the app once. */
+/** Load the compat SDK and initialise the app once (deduplicated across concurrent callers). */
+let firebaseReadyPromise = null;
+
 async function ensureFirebase() {
-  if (typeof firebase === 'undefined') {
-    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js');
+  if (!firebaseReadyPromise) {
+    firebaseReadyPromise = (async () => {
+      if (typeof firebase === 'undefined') {
+        await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+        await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js');
+      }
+
+      const cfg = firebaseConfig();
+
+      if (!cfg.is_configured) {
+        throw new Error('Firebase is not configured on the server.');
+      }
+
+      if (!firebase.apps.length) {
+        firebase.initializeApp(cfg);
+      }
+
+      return firebase;
+    })().catch((err) => {
+      firebaseReadyPromise = null;
+      throw err;
+    });
   }
 
-  const cfg = firebaseConfig();
-
-  if (!cfg.is_configured) {
-    throw new Error('Firebase is not configured on the server.');
-  }
-
-  if (!firebase.apps.length) {
-    firebase.initializeApp(cfg);
-  }
-
-  return firebase;
+  return firebaseReadyPromise;
 }
 
 /** Fetch the SDK while the page is idle so the popup opens inside the click. */
@@ -3895,16 +4166,40 @@ window.loginWithClerkLive = async function (role = 'customer') {
   }
 };
 
+const pendingScriptLoads = new Map();
+
 function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${src}"]`);
-    if (existing) return resolve();
-    const script = document.createElement('script');
-    script.src = src;
-    script.onload = resolve;
-    script.onerror = reject;
-    document.head.appendChild(script);
+  if (pendingScriptLoads.has(src)) {
+    return pendingScriptLoads.get(src);
+  }
+
+  const existing = document.querySelector(`script[src="${src}"]`);
+  if (existing && existing.dataset.loaded === '1') {
+    return Promise.resolve();
+  }
+
+  const promise = new Promise((resolve, reject) => {
+    const script = existing || document.createElement('script');
+    const onLoad = () => {
+      script.dataset.loaded = '1';
+      resolve();
+    };
+    const onError = (err) => {
+      pendingScriptLoads.delete(src);
+      reject(err);
+    };
+
+    script.addEventListener('load', onLoad, { once: true });
+    script.addEventListener('error', onError, { once: true });
+
+    if (!existing) {
+      script.src = src;
+      document.head.appendChild(script);
+    }
   });
+
+  pendingScriptLoads.set(src, promise);
+  return promise;
 }
 
 window.performLogout = function () {
@@ -4820,8 +5115,8 @@ function renderAdminUsersTable(users) {
       <tr id="user-row-${u.id}" data-id="${u.id}" data-role="${u.role}" data-search="${searchStr}">
         <td>
           <div style="display:flex; align-items:center; gap:8px;">
-            <span style="font-size:20px; width:30px; height:30px; border-radius:50%; background:#f1f5f9; display:inline-flex; align-items:center; justify-content:center;">
-              ${u.avatar || (u.role === 'admin' ? '🛡️' : (u.role === 'driver' ? '👨🏽‍✈️' : '👤'))}
+            <span style="font-size:20px; width:30px; height:30px; border-radius:50%; background:#f1f5f9; display:inline-flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
+              ${renderAvatarHtml(u.avatar, u.role === 'admin' ? '🛡️' : (u.role === 'driver' ? '👨🏽‍✈️' : '👤'), u.name || 'User')}
             </span>
             <div>
               <div class="cell-primary-text">${u.name}</div>
@@ -5026,7 +5321,12 @@ window.openViewUserModal = async function (userId) {
     if (!data.success || !data.user) return;
 
     const u = data.user;
-    document.getElementById('view-user-avatar').textContent = u.avatar || (u.role === 'admin' ? '🛡️' : (u.role === 'driver' ? '👨🏽‍✈️' : '👤'));
+    setAvatarContent(
+      document.getElementById('view-user-avatar'),
+      u.avatar,
+      u.role === 'admin' ? '🛡️' : (u.role === 'driver' ? '👨🏽‍✈️' : '👤'),
+      u.name || 'User'
+    );
     document.getElementById('view-user-name').textContent = u.name;
     document.getElementById('view-user-role-badge').textContent = u.role.toUpperCase();
     document.getElementById('view-user-role-badge').className = `admin-badge ${u.role === 'admin' ? 'badge-gold' : (u.role === 'driver' ? 'badge-success' : 'badge-primary')}`;
@@ -5168,12 +5468,12 @@ window.saveAdminLocation = async function (e) {
             row.cells[4].innerHTML = loc.is_active ? `<span class="admin-badge badge-success" style="cursor:pointer;" onclick="toggleLocationStatus(${loc.id})" id="loc-status-badge-${loc.id}" title="Click to toggle">Active</span>` : `<span class="admin-badge badge-danger" style="cursor:pointer;" onclick="toggleLocationStatus(${loc.id})" id="loc-status-badge-${loc.id}" title="Click to toggle">Inactive</span>`;
           }
         } else {
-            const tbody = document.getElementById('admin-locations-tbody');
-            if (tbody) {
-              const tr = document.createElement('tr');
-              tr.id = `admin-loc-row-${loc.id}`;
-              tr.dataset.search = `${loc.name} ${loc.state} ${loc.airport_code || ''}`.toLowerCase();
-              tr.innerHTML = `
+          const tbody = document.getElementById('admin-locations-tbody');
+          if (tbody) {
+            const tr = document.createElement('tr');
+            tr.id = `admin-loc-row-${loc.id}`;
+            tr.dataset.search = `${loc.name} ${loc.state} ${loc.airport_code || ''}`.toLowerCase();
+            tr.innerHTML = `
                 <td><strong>${loc.name}</strong></td>
                 <td>${loc.state}</td>
                 <td style="font-family:monospace; font-size:11.5px; color:#475569;">${loc.latitude}, ${loc.longitude}</td>
@@ -5190,75 +5490,75 @@ window.saveAdminLocation = async function (e) {
                   </div>
                 </td>
               `;
-              tbody.prepend(tr);
-            }
+            tbody.prepend(tr);
           }
-
-          const totalLocs = document.querySelectorAll('#admin-locations-tbody tr[id^="admin-loc-row-"]').length;
-          const locBadge = document.getElementById('admin-badge-locations-count');
-          if (locBadge) locBadge.textContent = totalLocs;
-
-          // Sync portal dropdowns and memory with updated/new locations
-          await window.syncAllLocationDropdowns();
         }
-      } else {
-        showToast(data.message || 'Validation error while saving location.', 'danger');
-      }
-    } catch (err) {
-      console.error('Save location error:', err);
-      showToast('Network error while saving location.', 'warning');
-    }
-  };
 
-  window.toggleLocationStatus = async function (id) {
-    try {
-      const res = await fetch(`/api/admin/locations/${id}/toggle`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'info');
-        const badge = document.getElementById(`loc-status-badge-${id}`) || document.querySelector(`#admin-loc-row-${id} td:nth-child(5) .admin-badge`);
-        if (badge && data.location) {
-          const isActive = data.location.is_active;
-          badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
-          badge.textContent = isActive ? 'Active' : 'Inactive';
-        }
-        await window.syncAllLocationDropdowns();
-      }
-    } catch (err) {
-      showToast('Failed to toggle location status.', 'warning');
-    }
-  };
-
-  window.deleteLocation = async function (id) {
-    if (!confirm('Are you sure you want to delete this service location?')) return;
-    try {
-      const res = await fetch(`/api/admin/locations/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'success');
-        const row = document.getElementById(`admin-loc-row-${id}`);
-        if (row) row.remove();
         const totalLocs = document.querySelectorAll('#admin-locations-tbody tr[id^="admin-loc-row-"]').length;
         const locBadge = document.getElementById('admin-badge-locations-count');
         if (locBadge) locBadge.textContent = totalLocs;
+
+        // Sync portal dropdowns and memory with updated/new locations
         await window.syncAllLocationDropdowns();
       }
-    } catch (err) {
-      showToast('Failed to delete location.', 'warning');
+    } else {
+      showToast(data.message || 'Validation error while saving location.', 'danger');
     }
-  };
+  } catch (err) {
+    console.error('Save location error:', err);
+    showToast('Network error while saving location.', 'warning');
+  }
+};
+
+window.toggleLocationStatus = async function (id) {
+  try {
+    const res = await fetch(`/api/admin/locations/${id}/toggle`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      }
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'info');
+      const badge = document.getElementById(`loc-status-badge-${id}`) || document.querySelector(`#admin-loc-row-${id} td:nth-child(5) .admin-badge`);
+      if (badge && data.location) {
+        const isActive = data.location.is_active;
+        badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
+        badge.textContent = isActive ? 'Active' : 'Inactive';
+      }
+      await window.syncAllLocationDropdowns();
+    }
+  } catch (err) {
+    showToast('Failed to toggle location status.', 'warning');
+  }
+};
+
+window.deleteLocation = async function (id) {
+  if (!confirm('Are you sure you want to delete this service location?')) return;
+  try {
+    const res = await fetch(`/api/admin/locations/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      }
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      const row = document.getElementById(`admin-loc-row-${id}`);
+      if (row) row.remove();
+      const totalLocs = document.querySelectorAll('#admin-locations-tbody tr[id^="admin-loc-row-"]').length;
+      const locBadge = document.getElementById('admin-badge-locations-count');
+      if (locBadge) locBadge.textContent = totalLocs;
+      await window.syncAllLocationDropdowns();
+    }
+  } catch (err) {
+    showToast('Failed to delete location.', 'warning');
+  }
+};
 
 // ========================================================
 // 1B. OUTSTATION CAB ROUTES MANAGEMENT (Admin)
@@ -5772,232 +6072,232 @@ window.handleCarTypeFilter = function () {
 window.toggleCabRouteStatus = async function (id) {
   try {
     const res = await fetch(`/api/admin/cab-routes/${id}/toggle`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'info');
-        const isActive = data.route.is_active;
-
-        ['cab-route-status-badge-', 'bt-cab-route-status-badge-'].forEach(prefix => {
-          const badge = document.getElementById(`${prefix}${id}`);
-          if (badge) {
-            badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
-            badge.textContent = isActive ? 'Active' : 'Inactive';
-          }
-        });
-
-        ['admin-cab-route-row-', 'admin-bt-cab-route-row-'].forEach(prefix => {
-          const row = document.getElementById(`${prefix}${id}`);
-          if (row) row.dataset.status = isActive ? 'active' : 'inactive';
-        });
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
       }
-    } catch (err) {
-      showToast('Failed to toggle cab route status.', 'warning');
-    }
-  };
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'info');
+      const isActive = data.route.is_active;
 
-  window.deleteCabRoute = async function (id) {
-    if (!confirm('Are you sure you want to delete this outstation cab route?')) return;
-    try {
-      const res = await fetch(`/api/admin/cab-routes/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
+      ['cab-route-status-badge-', 'bt-cab-route-status-badge-'].forEach(prefix => {
+        const badge = document.getElementById(`${prefix}${id}`);
+        if (badge) {
+          badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
+          badge.textContent = isActive ? 'Active' : 'Inactive';
         }
       });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'success');
-        const r1 = document.getElementById(`admin-cab-route-row-${id}`);
-        if (r1) r1.remove();
-        const r2 = document.getElementById(`admin-bt-cab-route-row-${id}`);
-        if (r2) r2.remove();
 
-        const totalRoutes = document.querySelectorAll('#admin-cab-routes-tbody tr[id^="admin-cab-route-row-"]').length || document.querySelectorAll('#admin-bt-routes-tbody tr[id^="admin-bt-cab-route-row-"]').length;
-        const filterCountEl = document.getElementById('admin-cab-routes-filter-count');
-        if (filterCountEl) filterCountEl.textContent = `${totalRoutes} Routes`;
-        const btFilterCountEl = document.getElementById('admin-bt-routes-filter-count');
-        if (btFilterCountEl) btFilterCountEl.textContent = `${totalRoutes} Routes`;
-        const navBadge = document.getElementById('admin-badge-cab-routes-count');
-        if (navBadge) navBadge.textContent = totalRoutes;
-        const tabBadge = document.getElementById('admin-tab-count-outstation');
-        if (tabBadge) tabBadge.textContent = totalRoutes;
-        const topPill = document.getElementById('admin-bt-total-routes-pill');
-        if (topPill) topPill.textContent = `${totalRoutes} Routes`;
+      ['admin-cab-route-row-', 'admin-bt-cab-route-row-'].forEach(prefix => {
+        const row = document.getElementById(`${prefix}${id}`);
+        if (row) row.dataset.status = isActive ? 'active' : 'inactive';
+      });
+    }
+  } catch (err) {
+    showToast('Failed to toggle cab route status.', 'warning');
+  }
+};
+
+window.deleteCabRoute = async function (id) {
+  if (!confirm('Are you sure you want to delete this outstation cab route?')) return;
+  try {
+    const res = await fetch(`/api/admin/cab-routes/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
       }
-    } catch (err) {
-      showToast('Failed to delete cab route.', 'warning');
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      const r1 = document.getElementById(`admin-cab-route-row-${id}`);
+      if (r1) r1.remove();
+      const r2 = document.getElementById(`admin-bt-cab-route-row-${id}`);
+      if (r2) r2.remove();
+
+      const totalRoutes = document.querySelectorAll('#admin-cab-routes-tbody tr[id^="admin-cab-route-row-"]').length || document.querySelectorAll('#admin-bt-routes-tbody tr[id^="admin-bt-cab-route-row-"]').length;
+      const filterCountEl = document.getElementById('admin-cab-routes-filter-count');
+      if (filterCountEl) filterCountEl.textContent = `${totalRoutes} Routes`;
+      const btFilterCountEl = document.getElementById('admin-bt-routes-filter-count');
+      if (btFilterCountEl) btFilterCountEl.textContent = `${totalRoutes} Routes`;
+      const navBadge = document.getElementById('admin-badge-cab-routes-count');
+      if (navBadge) navBadge.textContent = totalRoutes;
+      const tabBadge = document.getElementById('admin-tab-count-outstation');
+      if (tabBadge) tabBadge.textContent = totalRoutes;
+      const topPill = document.getElementById('admin-bt-total-routes-pill');
+      if (topPill) topPill.textContent = `${totalRoutes} Routes`;
     }
-  };
+  } catch (err) {
+    showToast('Failed to delete cab route.', 'warning');
+  }
+};
 
-  window.deleteCabRouteFromModal = function () {
-    const id = document.getElementById('admin-cab-route-id').value;
-    if (id) {
-      closeModal('admin-cab-route-modal');
-      deleteCabRoute(id);
-    }
-  };
+window.deleteCabRouteFromModal = function () {
+  const id = document.getElementById('admin-cab-route-id').value;
+  if (id) {
+    closeModal('admin-cab-route-modal');
+    deleteCabRoute(id);
+  }
+};
 
-  window.handleCabRouteSearch = function (q) {
-    const query = (q || '').toLowerCase().trim();
-    ['#admin-cab-routes-tbody tr', '#admin-bt-routes-tbody tr'].forEach(selector => {
-      const rows = document.querySelectorAll(selector);
-      let visibleCount = 0;
-      rows.forEach(r => {
-        const text = (r.dataset.search || '').toLowerCase();
-        const statusFilter = document.getElementById('admin-cab-route-filter-status')?.value || document.getElementById('admin-bt-route-filter-status')?.value || 'all';
-        const status = r.dataset.status;
-        const matchesSearch = !query || text.includes(query);
-        const matchesStatus = statusFilter === 'all' || status === statusFilter;
+window.handleCabRouteSearch = function (q) {
+  const query = (q || '').toLowerCase().trim();
+  ['#admin-cab-routes-tbody tr', '#admin-bt-routes-tbody tr'].forEach(selector => {
+    const rows = document.querySelectorAll(selector);
+    let visibleCount = 0;
+    rows.forEach(r => {
+      const text = (r.dataset.search || '').toLowerCase();
+      const statusFilter = document.getElementById('admin-cab-route-filter-status')?.value || document.getElementById('admin-bt-route-filter-status')?.value || 'all';
+      const status = r.dataset.status;
+      const matchesSearch = !query || text.includes(query);
+      const matchesStatus = statusFilter === 'all' || status === statusFilter;
 
-        if (matchesSearch && matchesStatus) {
-          r.style.display = '';
-          visibleCount++;
-        } else {
-          r.style.display = 'none';
-        }
-      });
-      const countEl = document.getElementById('admin-cab-routes-filter-count');
-      if (countEl) countEl.textContent = `${visibleCount} Routes`;
-      const btCountEl = document.getElementById('admin-bt-routes-filter-count');
-      if (btCountEl) btCountEl.textContent = `${visibleCount} Routes`;
+      if (matchesSearch && matchesStatus) {
+        r.style.display = '';
+        visibleCount++;
+      } else {
+        r.style.display = 'none';
+      }
     });
-  };
+    const countEl = document.getElementById('admin-cab-routes-filter-count');
+    if (countEl) countEl.textContent = `${visibleCount} Routes`;
+    const btCountEl = document.getElementById('admin-bt-routes-filter-count');
+    if (btCountEl) btCountEl.textContent = `${visibleCount} Routes`;
+  });
+};
 
-  window.handleCabRouteFilter = function () {
-    const q = document.getElementById('admin-cab-route-search-input')?.value || document.getElementById('admin-bt-route-search-input')?.value || '';
-    handleCabRouteSearch(q);
-  };
+window.handleCabRouteFilter = function () {
+  const q = document.getElementById('admin-cab-route-search-input')?.value || document.getElementById('admin-bt-route-search-input')?.value || '';
+  handleCabRouteSearch(q);
+};
 
-  // ========================================================
-  // 1B. MODULAR BOOKING TYPES SUB-NAV & MANAGERS
-  // ========================================================
-  window.switchBookingTypeTab = function (tabKey) {
-    document.querySelectorAll('.admin-bt-tab-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.tab === tabKey);
-    });
-    document.querySelectorAll('.admin-bt-tab-panel').forEach(panel => {
-      panel.style.display = (panel.id === `admin-bt-panel-${tabKey}`) ? 'block' : 'none';
-    });
-  };
+// ========================================================
+// 1B. MODULAR BOOKING TYPES SUB-NAV & MANAGERS
+// ========================================================
+window.switchBookingTypeTab = function (tabKey) {
+  document.querySelectorAll('.admin-bt-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabKey);
+  });
+  document.querySelectorAll('.admin-bt-tab-panel').forEach(panel => {
+    panel.style.display = (panel.id === `admin-bt-panel-${tabKey}`) ? 'block' : 'none';
+  });
+};
 
-  // Local Hourly Rental Packages Handlers
-  window.openAddLocalPackageModal = function () {
-    document.getElementById('admin-local-pkg-modal-title').textContent = 'Add Local Rental Package';
-    document.getElementById('admin-local-pkg-id').value = '';
-    document.getElementById('admin-local-pkg-code').value = '';
-    document.getElementById('admin-local-pkg-city').value = 'All Cities';
-    document.getElementById('admin-local-pkg-name').value = '';
-    document.getElementById('admin-local-pkg-hours').value = '8';
-    document.getElementById('admin-local-pkg-km').value = '80';
-    document.getElementById('admin-local-pkg-sedan').value = '2400';
-    document.getElementById('admin-local-pkg-suv').value = '3200';
-    document.getElementById('admin-local-pkg-extra-km').value = '14';
-    document.getElementById('admin-local-pkg-extra-hr').value = '150';
-    document.getElementById('admin-local-pkg-active').checked = true;
+// Local Hourly Rental Packages Handlers
+window.openAddLocalPackageModal = function () {
+  document.getElementById('admin-local-pkg-modal-title').textContent = 'Add Local Rental Package';
+  document.getElementById('admin-local-pkg-id').value = '';
+  document.getElementById('admin-local-pkg-code').value = '';
+  document.getElementById('admin-local-pkg-city').value = 'All Cities';
+  document.getElementById('admin-local-pkg-name').value = '';
+  document.getElementById('admin-local-pkg-hours').value = '8';
+  document.getElementById('admin-local-pkg-km').value = '80';
+  document.getElementById('admin-local-pkg-sedan').value = '2400';
+  document.getElementById('admin-local-pkg-suv').value = '3200';
+  document.getElementById('admin-local-pkg-extra-km').value = '14';
+  document.getElementById('admin-local-pkg-extra-hr').value = '150';
+  document.getElementById('admin-local-pkg-active').checked = true;
+
+  const delBtn = document.getElementById('admin-local-pkg-delete-btn');
+  if (delBtn) delBtn.style.display = 'none';
+
+  const modal = document.getElementById('admin-local-package-modal');
+  if (modal) modal.classList.add('active');
+};
+
+window.openEditLocalPackageModal = async function (id) {
+  try {
+    const res = await fetch(`/api/admin/local-packages/${id}`);
+    const data = await res.json();
+    if (!data.success || !data.package) return;
+
+    const p = data.package;
+    document.getElementById('admin-local-pkg-modal-title').textContent = `Edit Local Package: ${p.package_code}`;
+    document.getElementById('admin-local-pkg-id').value = p.id;
+    document.getElementById('admin-local-pkg-code').value = p.package_code;
+    document.getElementById('admin-local-pkg-city').value = p.city || 'All Cities';
+    document.getElementById('admin-local-pkg-name').value = p.name;
+    document.getElementById('admin-local-pkg-hours').value = p.duration_hours;
+    document.getElementById('admin-local-pkg-km').value = p.included_km;
+    document.getElementById('admin-local-pkg-sedan').value = p.sedan_fare;
+    document.getElementById('admin-local-pkg-suv').value = p.suv_fare;
+    document.getElementById('admin-local-pkg-extra-km').value = p.extra_km_rate || 14;
+    document.getElementById('admin-local-pkg-extra-hr').value = p.extra_hour_rate || 150;
+    document.getElementById('admin-local-pkg-active').checked = Boolean(p.is_active);
 
     const delBtn = document.getElementById('admin-local-pkg-delete-btn');
-    if (delBtn) delBtn.style.display = 'none';
+    if (delBtn) delBtn.style.display = 'inline-flex';
 
     const modal = document.getElementById('admin-local-package-modal');
     if (modal) modal.classList.add('active');
+  } catch (err) {
+    console.error('Fetch local package error:', err);
+    showToast('Failed to load local package details.', 'warning');
+  }
+};
+
+window.saveLocalPackage = async function (e) {
+  e.preventDefault();
+  const id = document.getElementById('admin-local-pkg-id').value;
+  const isEdit = Boolean(id);
+
+  const payload = {
+    package_code: document.getElementById('admin-local-pkg-code').value.trim(),
+    city: document.getElementById('admin-local-pkg-city').value.trim() || 'All Cities',
+    name: document.getElementById('admin-local-pkg-name').value.trim(),
+    duration_hours: parseInt(document.getElementById('admin-local-pkg-hours').value),
+    included_km: parseInt(document.getElementById('admin-local-pkg-km').value),
+    sedan_fare: parseFloat(document.getElementById('admin-local-pkg-sedan').value),
+    suv_fare: parseFloat(document.getElementById('admin-local-pkg-suv').value),
+    extra_km_rate: parseFloat(document.getElementById('admin-local-pkg-extra-km').value) || 14,
+    extra_hour_rate: parseFloat(document.getElementById('admin-local-pkg-extra-hr').value) || 150,
+    is_active: document.getElementById('admin-local-pkg-active').checked,
   };
 
-  window.openEditLocalPackageModal = async function (id) {
-    try {
-      const res = await fetch(`/api/admin/local-packages/${id}`);
-      const data = await res.json();
-      if (!data.success || !data.package) return;
+  const url = isEdit ? `/api/admin/local-packages/${id}` : '/api/admin/local-packages';
+  const method = isEdit ? 'PUT' : 'POST';
 
+  try {
+    const res = await fetch(url, {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message, 'success');
+      closeModal('admin-local-package-modal');
       const p = data.package;
-      document.getElementById('admin-local-pkg-modal-title').textContent = `Edit Local Package: ${p.package_code}`;
-      document.getElementById('admin-local-pkg-id').value = p.id;
-      document.getElementById('admin-local-pkg-code').value = p.package_code;
-      document.getElementById('admin-local-pkg-city').value = p.city || 'All Cities';
-      document.getElementById('admin-local-pkg-name').value = p.name;
-      document.getElementById('admin-local-pkg-hours').value = p.duration_hours;
-      document.getElementById('admin-local-pkg-km').value = p.included_km;
-      document.getElementById('admin-local-pkg-sedan').value = p.sedan_fare;
-      document.getElementById('admin-local-pkg-suv').value = p.suv_fare;
-      document.getElementById('admin-local-pkg-extra-km').value = p.extra_km_rate || 14;
-      document.getElementById('admin-local-pkg-extra-hr').value = p.extra_hour_rate || 150;
-      document.getElementById('admin-local-pkg-active').checked = Boolean(p.is_active);
-
-      const delBtn = document.getElementById('admin-local-pkg-delete-btn');
-      if (delBtn) delBtn.style.display = 'inline-flex';
-
-      const modal = document.getElementById('admin-local-package-modal');
-      if (modal) modal.classList.add('active');
-    } catch (err) {
-      console.error('Fetch local package error:', err);
-      showToast('Failed to load local package details.', 'warning');
-    }
-  };
-
-  window.saveLocalPackage = async function (e) {
-    e.preventDefault();
-    const id = document.getElementById('admin-local-pkg-id').value;
-    const isEdit = Boolean(id);
-
-    const payload = {
-      package_code: document.getElementById('admin-local-pkg-code').value.trim(),
-      city: document.getElementById('admin-local-pkg-city').value.trim() || 'All Cities',
-      name: document.getElementById('admin-local-pkg-name').value.trim(),
-      duration_hours: parseInt(document.getElementById('admin-local-pkg-hours').value),
-      included_km: parseInt(document.getElementById('admin-local-pkg-km').value),
-      sedan_fare: parseFloat(document.getElementById('admin-local-pkg-sedan').value),
-      suv_fare: parseFloat(document.getElementById('admin-local-pkg-suv').value),
-      extra_km_rate: parseFloat(document.getElementById('admin-local-pkg-extra-km').value) || 14,
-      extra_hour_rate: parseFloat(document.getElementById('admin-local-pkg-extra-hr').value) || 150,
-      is_active: document.getElementById('admin-local-pkg-active').checked,
-    };
-
-    const url = isEdit ? `/api/admin/local-packages/${id}` : '/api/admin/local-packages';
-    const method = isEdit ? 'PUT' : 'POST';
-
-    try {
-      const res = await fetch(url, {
-        method: method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast(data.message, 'success');
-        closeModal('admin-local-package-modal');
-        const p = data.package;
-        if (p) {
-          if (isEdit) {
-            const row = document.getElementById(`admin-local-pkg-row-${p.id}`);
-            if (row) {
-              row.dataset.status = p.is_active ? 'active' : 'inactive';
-              row.dataset.search = `${p.package_code} ${p.name} ${p.city}`.toLowerCase();
-              row.cells[0].innerHTML = `<div style="font-weight:700; color:#0f172a;">${p.name}</div><div style="font-size:11px; font-family:monospace; color:#64748b;">Code: <strong>${p.package_code}</strong></div>`;
-              row.cells[1].innerHTML = `<span class="admin-badge badge-info" style="font-size:11px;">📍 ${p.city}</span>`;
-              row.cells[2].innerHTML = `<span style="font-size:11.5px; font-weight:600; color:#334155;">⏱️ ${p.duration_hours} hrs &bull; 🛣️ ${p.included_km} km</span>`;
-              row.cells[3].innerHTML = `<strong style="color:var(--primary); font-size:13px;">₹${Number(p.sedan_fare).toLocaleString('en-IN')}</strong>`;
-              row.cells[4].innerHTML = `<strong style="color:var(--primary); font-size:13px;">₹${Number(p.suv_fare).toLocaleString('en-IN')}</strong>`;
-              row.cells[5].innerHTML = `<span style="font-size:11px; color:#64748b;">+₹${Number(p.extra_km_rate).toLocaleString('en-IN')}/km &bull; +₹${Number(p.extra_hour_rate).toLocaleString('en-IN')}/hr</span>`;
-              row.cells[6].innerHTML = `<span class="admin-badge ${p.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleLocalPackageStatus(${p.id})" id="local-pkg-status-badge-${p.id}" title="Click to toggle status">${p.is_active ? 'Active' : 'Inactive'}</span>`;
-            }
-          } else {
-            const tbody = document.getElementById('admin-local-packages-tbody');
-            if (tbody) {
-              const tr = document.createElement('tr');
-              tr.id = `admin-local-pkg-row-${p.id}`;
-              tr.dataset.status = p.is_active ? 'active' : 'inactive';
-              tr.dataset.search = `${p.package_code} ${p.name} ${p.city}`.toLowerCase();
-              tr.innerHTML = `
+      if (p) {
+        if (isEdit) {
+          const row = document.getElementById(`admin-local-pkg-row-${p.id}`);
+          if (row) {
+            row.dataset.status = p.is_active ? 'active' : 'inactive';
+            row.dataset.search = `${p.package_code} ${p.name} ${p.city}`.toLowerCase();
+            row.cells[0].innerHTML = `<div style="font-weight:700; color:#0f172a;">${p.name}</div><div style="font-size:11px; font-family:monospace; color:#64748b;">Code: <strong>${p.package_code}</strong></div>`;
+            row.cells[1].innerHTML = `<span class="admin-badge badge-info" style="font-size:11px;">📍 ${p.city}</span>`;
+            row.cells[2].innerHTML = `<span style="font-size:11.5px; font-weight:600; color:#334155;">⏱️ ${p.duration_hours} hrs &bull; 🛣️ ${p.included_km} km</span>`;
+            row.cells[3].innerHTML = `<strong style="color:var(--primary); font-size:13px;">₹${Number(p.sedan_fare).toLocaleString('en-IN')}</strong>`;
+            row.cells[4].innerHTML = `<strong style="color:var(--primary); font-size:13px;">₹${Number(p.suv_fare).toLocaleString('en-IN')}</strong>`;
+            row.cells[5].innerHTML = `<span style="font-size:11px; color:#64748b;">+₹${Number(p.extra_km_rate).toLocaleString('en-IN')}/km &bull; +₹${Number(p.extra_hour_rate).toLocaleString('en-IN')}/hr</span>`;
+            row.cells[6].innerHTML = `<span class="admin-badge ${p.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleLocalPackageStatus(${p.id})" id="local-pkg-status-badge-${p.id}" title="Click to toggle status">${p.is_active ? 'Active' : 'Inactive'}</span>`;
+          }
+        } else {
+          const tbody = document.getElementById('admin-local-packages-tbody');
+          if (tbody) {
+            const tr = document.createElement('tr');
+            tr.id = `admin-local-pkg-row-${p.id}`;
+            tr.dataset.status = p.is_active ? 'active' : 'inactive';
+            tr.dataset.search = `${p.package_code} ${p.name} ${p.city}`.toLowerCase();
+            tr.innerHTML = `
                 <td>
                   <div style="font-weight:700; color:#0f172a;">${p.name}</div>
                   <div style="font-size:11px; font-family:monospace; color:#64748b;">Code: <strong>${p.package_code}</strong></div>
@@ -6031,67 +6331,9 @@ window.toggleCabRouteStatus = async function (id) {
                   </div>
                 </td>
               `;
-              tbody.prepend(tr);
-            }
+            tbody.prepend(tr);
           }
-          const totalPkgs = document.querySelectorAll('#admin-local-packages-tbody tr[id^="admin-local-pkg-row-"]').length;
-          const countPill = document.getElementById('admin-local-packages-filter-count');
-          if (countPill) countPill.textContent = `${totalPkgs} Packages`;
-          const tabCount = document.getElementById('admin-tab-count-local');
-          if (tabCount) tabCount.textContent = totalPkgs;
-          const topPill = document.getElementById('admin-bt-total-packages-pill');
-          if (topPill) topPill.textContent = `${totalPkgs} Local Pkgs`;
         }
-      } else {
-        showToast(data.message || 'Error saving local package.', 'danger');
-      }
-    } catch (err) {
-      console.error('Save local package error:', err);
-      showToast('Network error while saving local package.', 'warning');
-    }
-  };
-
-  window.toggleLocalPackageStatus = async function (id) {
-    try {
-      const res = await fetch(`/api/admin/local-packages/${id}/toggle`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'info');
-        const badge = document.getElementById(`local-pkg-status-badge-${id}`);
-        const row = document.getElementById(`admin-local-pkg-row-${id}`);
-        if (badge && row) {
-          const isActive = data.is_active;
-          badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
-          badge.textContent = isActive ? 'Active' : 'Inactive';
-          row.dataset.status = isActive ? 'active' : 'inactive';
-        }
-      }
-    } catch (err) {
-      showToast('Failed to toggle package status.', 'warning');
-    }
-  };
-
-  window.deleteLocalPackage = async function (id) {
-    if (!confirm('Are you sure you want to delete this local package?')) return;
-    try {
-      const res = await fetch(`/api/admin/local-packages/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'success');
-        const row = document.getElementById(`admin-local-pkg-row-${id}`);
-        if (row) row.remove();
         const totalPkgs = document.querySelectorAll('#admin-local-packages-tbody tr[id^="admin-local-pkg-row-"]').length;
         const countPill = document.getElementById('admin-local-packages-filter-count');
         if (countPill) countPill.textContent = `${totalPkgs} Packages`;
@@ -6100,159 +6342,217 @@ window.toggleCabRouteStatus = async function (id) {
         const topPill = document.getElementById('admin-bt-total-packages-pill');
         if (topPill) topPill.textContent = `${totalPkgs} Local Pkgs`;
       }
-    } catch (err) {
-      showToast('Failed to delete local package.', 'warning');
+    } else {
+      showToast(data.message || 'Error saving local package.', 'danger');
     }
-  };
+  } catch (err) {
+    console.error('Save local package error:', err);
+    showToast('Network error while saving local package.', 'warning');
+  }
+};
 
-  window.deleteLocalPackageFromModal = function () {
-    const id = document.getElementById('admin-local-pkg-id').value;
-    if (id) {
-      closeModal('admin-local-package-modal');
-      deleteLocalPackage(id);
-    }
-  };
-
-  window.handleLocalPackageSearch = function (q) {
-    const query = (q || '').toLowerCase().trim();
-    const rows = document.querySelectorAll('#admin-local-packages-tbody tr');
-    let visibleCount = 0;
-    rows.forEach(r => {
-      const text = (r.dataset.search || '').toLowerCase();
-      const statusFilter = document.getElementById('admin-local-pkg-filter-status')?.value || 'all';
-      const status = r.dataset.status;
-      const matchesSearch = !query || text.includes(query);
-      const matchesStatus = statusFilter === 'all' || status === statusFilter;
-
-      if (matchesSearch && matchesStatus) {
-        r.style.display = '';
-        visibleCount++;
-      } else {
-        r.style.display = 'none';
+window.toggleLocalPackageStatus = async function (id) {
+  try {
+    const res = await fetch(`/api/admin/local-packages/${id}/toggle`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
       }
     });
-    const countEl = document.getElementById('admin-local-packages-filter-count');
-    if (countEl) countEl.textContent = `${visibleCount} Packages`;
-  };
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'info');
+      const badge = document.getElementById(`local-pkg-status-badge-${id}`);
+      const row = document.getElementById(`admin-local-pkg-row-${id}`);
+      if (badge && row) {
+        const isActive = data.is_active;
+        badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
+        badge.textContent = isActive ? 'Active' : 'Inactive';
+        row.dataset.status = isActive ? 'active' : 'inactive';
+      }
+    }
+  } catch (err) {
+    showToast('Failed to toggle package status.', 'warning');
+  }
+};
 
-  window.handleLocalPackageFilter = function () {
-    const q = document.getElementById('admin-local-pkg-search-input')?.value || '';
-    handleLocalPackageSearch(q);
-  };
+window.deleteLocalPackage = async function (id) {
+  if (!confirm('Are you sure you want to delete this local package?')) return;
+  try {
+    const res = await fetch(`/api/admin/local-packages/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      }
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      const row = document.getElementById(`admin-local-pkg-row-${id}`);
+      if (row) row.remove();
+      const totalPkgs = document.querySelectorAll('#admin-local-packages-tbody tr[id^="admin-local-pkg-row-"]').length;
+      const countPill = document.getElementById('admin-local-packages-filter-count');
+      if (countPill) countPill.textContent = `${totalPkgs} Packages`;
+      const tabCount = document.getElementById('admin-tab-count-local');
+      if (tabCount) tabCount.textContent = totalPkgs;
+      const topPill = document.getElementById('admin-bt-total-packages-pill');
+      if (topPill) topPill.textContent = `${totalPkgs} Local Pkgs`;
+    }
+  } catch (err) {
+    showToast('Failed to delete local package.', 'warning');
+  }
+};
 
-  // Airport Transit Hubs Handlers
-  window.openAddAirportHubModal = function () {
-    document.getElementById('admin-airport-modal-title').textContent = 'Add Airport Transit Hub';
-    document.getElementById('admin-airport-id').value = '';
-    document.getElementById('admin-airport-name').value = '';
-    document.getElementById('admin-airport-code').value = '';
-    document.getElementById('admin-airport-city').value = '';
-    document.getElementById('admin-airport-terminals').value = 'Terminal 1 & Terminal 2';
-    document.getElementById('admin-airport-pickup-surcharge').value = '250';
-    document.getElementById('admin-airport-drop-surcharge').value = '150';
-    document.getElementById('admin-airport-sedan').value = '950';
-    document.getElementById('admin-airport-suv').value = '1450';
-    document.getElementById('admin-airport-active').checked = true;
+window.deleteLocalPackageFromModal = function () {
+  const id = document.getElementById('admin-local-pkg-id').value;
+  if (id) {
+    closeModal('admin-local-package-modal');
+    deleteLocalPackage(id);
+  }
+};
+
+window.handleLocalPackageSearch = function (q) {
+  const query = (q || '').toLowerCase().trim();
+  const rows = document.querySelectorAll('#admin-local-packages-tbody tr');
+  let visibleCount = 0;
+  rows.forEach(r => {
+    const text = (r.dataset.search || '').toLowerCase();
+    const statusFilter = document.getElementById('admin-local-pkg-filter-status')?.value || 'all';
+    const status = r.dataset.status;
+    const matchesSearch = !query || text.includes(query);
+    const matchesStatus = statusFilter === 'all' || status === statusFilter;
+
+    if (matchesSearch && matchesStatus) {
+      r.style.display = '';
+      visibleCount++;
+    } else {
+      r.style.display = 'none';
+    }
+  });
+  const countEl = document.getElementById('admin-local-packages-filter-count');
+  if (countEl) countEl.textContent = `${visibleCount} Packages`;
+};
+
+window.handleLocalPackageFilter = function () {
+  const q = document.getElementById('admin-local-pkg-search-input')?.value || '';
+  handleLocalPackageSearch(q);
+};
+
+// Airport Transit Hubs Handlers
+window.openAddAirportHubModal = function () {
+  document.getElementById('admin-airport-modal-title').textContent = 'Add Airport Transit Hub';
+  document.getElementById('admin-airport-id').value = '';
+  document.getElementById('admin-airport-name').value = '';
+  document.getElementById('admin-airport-code').value = '';
+  document.getElementById('admin-airport-city').value = '';
+  document.getElementById('admin-airport-terminals').value = 'Terminal 1 & Terminal 2';
+  document.getElementById('admin-airport-pickup-surcharge').value = '250';
+  document.getElementById('admin-airport-drop-surcharge').value = '150';
+  document.getElementById('admin-airport-sedan').value = '950';
+  document.getElementById('admin-airport-suv').value = '1450';
+  document.getElementById('admin-airport-active').checked = true;
+
+  const delBtn = document.getElementById('admin-airport-delete-btn');
+  if (delBtn) delBtn.style.display = 'none';
+
+  const modal = document.getElementById('admin-airport-hub-modal');
+  if (modal) modal.classList.add('active');
+};
+
+window.openEditAirportHubModal = async function (id) {
+  try {
+    const res = await fetch(`/api/admin/airport-hubs/${id}`);
+    const data = await res.json();
+    if (!data.success || !data.airport) return;
+
+    const a = data.airport;
+    document.getElementById('admin-airport-modal-title').textContent = `Edit Airport Hub: ${a.airport_name} (${a.iata_code})`;
+    document.getElementById('admin-airport-id').value = a.id;
+    document.getElementById('admin-airport-name').value = a.airport_name;
+    document.getElementById('admin-airport-code').value = a.iata_code;
+    document.getElementById('admin-airport-city').value = a.city;
+    document.getElementById('admin-airport-terminals').value = a.terminals || '';
+    document.getElementById('admin-airport-pickup-surcharge').value = a.pickup_surcharge || 250;
+    document.getElementById('admin-airport-drop-surcharge').value = a.drop_surcharge || 150;
+    document.getElementById('admin-airport-sedan').value = a.sedan_base_fare || 950;
+    document.getElementById('admin-airport-suv').value = a.suv_base_fare || 1450;
+    document.getElementById('admin-airport-active').checked = Boolean(a.is_active);
 
     const delBtn = document.getElementById('admin-airport-delete-btn');
-    if (delBtn) delBtn.style.display = 'none';
+    if (delBtn) delBtn.style.display = 'inline-flex';
 
     const modal = document.getElementById('admin-airport-hub-modal');
     if (modal) modal.classList.add('active');
+  } catch (err) {
+    console.error('Fetch airport hub error:', err);
+    showToast('Failed to load airport hub details.', 'warning');
+  }
+};
+
+window.saveAirportHub = async function (e) {
+  e.preventDefault();
+  const id = document.getElementById('admin-airport-id').value;
+  const isEdit = Boolean(id);
+
+  const payload = {
+    airport_name: document.getElementById('admin-airport-name').value.trim(),
+    iata_code: document.getElementById('admin-airport-code').value.trim().toUpperCase(),
+    city: document.getElementById('admin-airport-city').value.trim(),
+    terminals: document.getElementById('admin-airport-terminals').value.trim() || 'Main Terminal',
+    pickup_surcharge: parseFloat(document.getElementById('admin-airport-pickup-surcharge').value) || 250,
+    drop_surcharge: parseFloat(document.getElementById('admin-airport-drop-surcharge').value) || 150,
+    sedan_base_fare: parseFloat(document.getElementById('admin-airport-sedan').value) || 950,
+    suv_base_fare: parseFloat(document.getElementById('admin-airport-suv').value) || 1450,
+    is_active: document.getElementById('admin-airport-active').checked,
   };
 
-  window.openEditAirportHubModal = async function (id) {
-    try {
-      const res = await fetch(`/api/admin/airport-hubs/${id}`);
-      const data = await res.json();
-      if (!data.success || !data.airport) return;
+  const url = isEdit ? `/api/admin/airport-hubs/${id}` : '/api/admin/airport-hubs';
+  const method = isEdit ? 'PUT' : 'POST';
 
+  try {
+    const res = await fetch(url, {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message, 'success');
+      closeModal('admin-airport-hub-modal');
       const a = data.airport;
-      document.getElementById('admin-airport-modal-title').textContent = `Edit Airport Hub: ${a.airport_name} (${a.iata_code})`;
-      document.getElementById('admin-airport-id').value = a.id;
-      document.getElementById('admin-airport-name').value = a.airport_name;
-      document.getElementById('admin-airport-code').value = a.iata_code;
-      document.getElementById('admin-airport-city').value = a.city;
-      document.getElementById('admin-airport-terminals').value = a.terminals || '';
-      document.getElementById('admin-airport-pickup-surcharge').value = a.pickup_surcharge || 250;
-      document.getElementById('admin-airport-drop-surcharge').value = a.drop_surcharge || 150;
-      document.getElementById('admin-airport-sedan').value = a.sedan_base_fare || 950;
-      document.getElementById('admin-airport-suv').value = a.suv_base_fare || 1450;
-      document.getElementById('admin-airport-active').checked = Boolean(a.is_active);
-
-      const delBtn = document.getElementById('admin-airport-delete-btn');
-      if (delBtn) delBtn.style.display = 'inline-flex';
-
-      const modal = document.getElementById('admin-airport-hub-modal');
-      if (modal) modal.classList.add('active');
-    } catch (err) {
-      console.error('Fetch airport hub error:', err);
-      showToast('Failed to load airport hub details.', 'warning');
-    }
-  };
-
-  window.saveAirportHub = async function (e) {
-    e.preventDefault();
-    const id = document.getElementById('admin-airport-id').value;
-    const isEdit = Boolean(id);
-
-    const payload = {
-      airport_name: document.getElementById('admin-airport-name').value.trim(),
-      iata_code: document.getElementById('admin-airport-code').value.trim().toUpperCase(),
-      city: document.getElementById('admin-airport-city').value.trim(),
-      terminals: document.getElementById('admin-airport-terminals').value.trim() || 'Main Terminal',
-      pickup_surcharge: parseFloat(document.getElementById('admin-airport-pickup-surcharge').value) || 250,
-      drop_surcharge: parseFloat(document.getElementById('admin-airport-drop-surcharge').value) || 150,
-      sedan_base_fare: parseFloat(document.getElementById('admin-airport-sedan').value) || 950,
-      suv_base_fare: parseFloat(document.getElementById('admin-airport-suv').value) || 1450,
-      is_active: document.getElementById('admin-airport-active').checked,
-    };
-
-    const url = isEdit ? `/api/admin/airport-hubs/${id}` : '/api/admin/airport-hubs';
-    const method = isEdit ? 'PUT' : 'POST';
-
-    try {
-      const res = await fetch(url, {
-        method: method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast(data.message, 'success');
-        closeModal('admin-airport-hub-modal');
-        const a = data.airport;
-        if (a) {
-          if (isEdit) {
-            const row = document.getElementById(`admin-airport-row-${a.id}`);
-            if (row) {
-              row.dataset.status = a.is_active ? 'active' : 'inactive';
-              row.dataset.search = `${a.airport_name} ${a.iata_code} ${a.city}`.toLowerCase();
-              row.cells[0].innerHTML = `
+      if (a) {
+        if (isEdit) {
+          const row = document.getElementById(`admin-airport-row-${a.id}`);
+          if (row) {
+            row.dataset.status = a.is_active ? 'active' : 'inactive';
+            row.dataset.search = `${a.airport_name} ${a.iata_code} ${a.city}`.toLowerCase();
+            row.cells[0].innerHTML = `
                 <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
                   <span class="material-symbols-outlined" style="font-size:16px; color:var(--primary);">flight</span>
                   <span>${a.airport_name}</span>
                 </div>
                 <div style="font-size:11px; font-family:monospace; color:#64748b;">IATA: <strong style="color:var(--primary);">${a.iata_code}</strong></div>
               `;
-              row.cells[1].innerHTML = `<div style="font-weight:600; color:#1e293b;">📍 ${a.city}</div><div style="font-size:11px; color:#64748b;">${a.terminals}</div>`;
-              row.cells[2].innerHTML = `<strong style="color:#0f172a;">₹${Number(a.pickup_surcharge).toLocaleString('en-IN')}</strong><div style="font-size:10px; color:#64748b;">Parking + Entry</div>`;
-              row.cells[3].innerHTML = `<strong style="color:#0f172a;">₹${Number(a.drop_surcharge).toLocaleString('en-IN')}</strong><div style="font-size:10px; color:#64748b;">Departure Toll</div>`;
-              row.cells[4].innerHTML = `<span style="font-size:11.5px; color:#475569;">Sedan: <strong>₹${Number(a.sedan_base_fare).toLocaleString('en-IN')}</strong> &bull; SUV: <strong>₹${Number(a.suv_base_fare).toLocaleString('en-IN')}</strong></span>`;
-              row.cells[5].innerHTML = `<span class="admin-badge ${a.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleAirportHubStatus(${a.id})" id="airport-status-badge-${a.id}" title="Click to toggle status">${a.is_active ? 'Active' : 'Inactive'}</span>`;
-            }
-          } else {
-            const tbody = document.getElementById('admin-airports-tbody');
-            if (tbody) {
-              const tr = document.createElement('tr');
-              tr.id = `admin-airport-row-${a.id}`;
-              tr.dataset.status = a.is_active ? 'active' : 'inactive';
-              tr.dataset.search = `${a.airport_name} ${a.iata_code} ${a.city}`.toLowerCase();
-              tr.innerHTML = `
+            row.cells[1].innerHTML = `<div style="font-weight:600; color:#1e293b;">📍 ${a.city}</div><div style="font-size:11px; color:#64748b;">${a.terminals}</div>`;
+            row.cells[2].innerHTML = `<strong style="color:#0f172a;">₹${Number(a.pickup_surcharge).toLocaleString('en-IN')}</strong><div style="font-size:10px; color:#64748b;">Parking + Entry</div>`;
+            row.cells[3].innerHTML = `<strong style="color:#0f172a;">₹${Number(a.drop_surcharge).toLocaleString('en-IN')}</strong><div style="font-size:10px; color:#64748b;">Departure Toll</div>`;
+            row.cells[4].innerHTML = `<span style="font-size:11.5px; color:#475569;">Sedan: <strong>₹${Number(a.sedan_base_fare).toLocaleString('en-IN')}</strong> &bull; SUV: <strong>₹${Number(a.suv_base_fare).toLocaleString('en-IN')}</strong></span>`;
+            row.cells[5].innerHTML = `<span class="admin-badge ${a.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleAirportHubStatus(${a.id})" id="airport-status-badge-${a.id}" title="Click to toggle status">${a.is_active ? 'Active' : 'Inactive'}</span>`;
+          }
+        } else {
+          const tbody = document.getElementById('admin-airports-tbody');
+          if (tbody) {
+            const tr = document.createElement('tr');
+            tr.id = `admin-airport-row-${a.id}`;
+            tr.dataset.status = a.is_active ? 'active' : 'inactive';
+            tr.dataset.search = `${a.airport_name} ${a.iata_code} ${a.city}`.toLowerCase();
+            tr.innerHTML = `
                 <td>
                   <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
                     <span class="material-symbols-outlined" style="font-size:16px; color:var(--primary);">flight</span>
@@ -6289,67 +6589,9 @@ window.toggleCabRouteStatus = async function (id) {
                   </div>
                 </td>
               `;
-              tbody.prepend(tr);
-            }
+            tbody.prepend(tr);
           }
-          const totalAirports = document.querySelectorAll('#admin-airports-tbody tr[id^="admin-airport-row-"]').length;
-          const countPill = document.getElementById('admin-airports-filter-count');
-          if (countPill) countPill.textContent = `${totalAirports} Airports`;
-          const tabCount = document.getElementById('admin-tab-count-airport');
-          if (tabCount) tabCount.textContent = totalAirports;
-          const topPill = document.getElementById('admin-bt-total-airports-pill');
-          if (topPill) topPill.textContent = `${totalAirports} Airports`;
         }
-      } else {
-        showToast(data.message || 'Error saving airport hub.', 'danger');
-      }
-    } catch (err) {
-      console.error('Save airport hub error:', err);
-      showToast('Network error while saving airport hub.', 'warning');
-    }
-  };
-
-  window.toggleAirportHubStatus = async function (id) {
-    try {
-      const res = await fetch(`/api/admin/airport-hubs/${id}/toggle`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'info');
-        const badge = document.getElementById(`airport-status-badge-${id}`);
-        const row = document.getElementById(`admin-airport-row-${id}`);
-        if (badge && row) {
-          const isActive = data.is_active;
-          badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
-          badge.textContent = isActive ? 'Active' : 'Inactive';
-          row.dataset.status = isActive ? 'active' : 'inactive';
-        }
-      }
-    } catch (err) {
-      showToast('Failed to toggle airport status.', 'warning');
-    }
-  };
-
-  window.deleteAirportHub = async function (id) {
-    if (!confirm('Are you sure you want to delete this airport hub?')) return;
-    try {
-      const res = await fetch(`/api/admin/airport-hubs/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'success');
-        const row = document.getElementById(`admin-airport-row-${id}`);
-        if (row) row.remove();
         const totalAirports = document.querySelectorAll('#admin-airports-tbody tr[id^="admin-airport-row-"]').length;
         const countPill = document.getElementById('admin-airports-filter-count');
         if (countPill) countPill.textContent = `${totalAirports} Airports`;
@@ -6358,149 +6600,207 @@ window.toggleCabRouteStatus = async function (id) {
         const topPill = document.getElementById('admin-bt-total-airports-pill');
         if (topPill) topPill.textContent = `${totalAirports} Airports`;
       }
-    } catch (err) {
-      showToast('Failed to delete airport hub.', 'warning');
+    } else {
+      showToast(data.message || 'Error saving airport hub.', 'danger');
     }
-  };
+  } catch (err) {
+    console.error('Save airport hub error:', err);
+    showToast('Network error while saving airport hub.', 'warning');
+  }
+};
 
-  window.deleteAirportHubFromModal = function () {
-    const id = document.getElementById('admin-airport-id').value;
-    if (id) {
-      closeModal('admin-airport-hub-modal');
-      deleteAirportHub(id);
-    }
-  };
-
-  window.handleAirportHubSearch = function (q) {
-    const query = (q || '').toLowerCase().trim();
-    const rows = document.querySelectorAll('#admin-airports-tbody tr');
-    let visibleCount = 0;
-    rows.forEach(r => {
-      const text = (r.dataset.search || '').toLowerCase();
-      const statusFilter = document.getElementById('admin-airport-filter-status')?.value || 'all';
-      const status = r.dataset.status;
-      const matchesSearch = !query || text.includes(query);
-      const matchesStatus = statusFilter === 'all' || status === statusFilter;
-
-      if (matchesSearch && matchesStatus) {
-        r.style.display = '';
-        visibleCount++;
-      } else {
-        r.style.display = 'none';
+window.toggleAirportHubStatus = async function (id) {
+  try {
+    const res = await fetch(`/api/admin/airport-hubs/${id}/toggle`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
       }
     });
-    const countEl = document.getElementById('admin-airports-filter-count');
-    if (countEl) countEl.textContent = `${visibleCount} Airports`;
-  };
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'info');
+      const badge = document.getElementById(`airport-status-badge-${id}`);
+      const row = document.getElementById(`admin-airport-row-${id}`);
+      if (badge && row) {
+        const isActive = data.is_active;
+        badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
+        badge.textContent = isActive ? 'Active' : 'Inactive';
+        row.dataset.status = isActive ? 'active' : 'inactive';
+      }
+    }
+  } catch (err) {
+    showToast('Failed to toggle airport status.', 'warning');
+  }
+};
 
-  window.handleAirportHubFilter = function () {
-    const q = document.getElementById('admin-airport-search-input')?.value || '';
-    handleAirportHubSearch(q);
-  };
+window.deleteAirportHub = async function (id) {
+  if (!confirm('Are you sure you want to delete this airport hub?')) return;
+  try {
+    const res = await fetch(`/api/admin/airport-hubs/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      }
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      const row = document.getElementById(`admin-airport-row-${id}`);
+      if (row) row.remove();
+      const totalAirports = document.querySelectorAll('#admin-airports-tbody tr[id^="admin-airport-row-"]').length;
+      const countPill = document.getElementById('admin-airports-filter-count');
+      if (countPill) countPill.textContent = `${totalAirports} Airports`;
+      const tabCount = document.getElementById('admin-tab-count-airport');
+      if (tabCount) tabCount.textContent = totalAirports;
+      const topPill = document.getElementById('admin-bt-total-airports-pill');
+      if (topPill) topPill.textContent = `${totalAirports} Airports`;
+    }
+  } catch (err) {
+    showToast('Failed to delete airport hub.', 'warning');
+  }
+};
 
-  // ========================================================
-  // 2. BERTH ROUTES MANAGEMENT (Admin)
-  // ========================================================
-  window.openAddBerthRouteModal = function () {
-    document.getElementById('admin-broute-modal-title').textContent = 'Add Berth Route';
-    document.getElementById('admin-broute-id').value = '';
-    document.getElementById('admin-broute-from').value = '';
-    document.getElementById('admin-broute-to').value = '';
-    document.getElementById('admin-broute-operator').value = 'Intercity Express';
-    document.getElementById('admin-broute-coach').value = '';
-    document.getElementById('admin-broute-vehicle').value = 'Volvo Multi-Axle AC Sleeper';
-    document.getElementById('admin-broute-dept').value = '09:30 PM';
-    document.getElementById('admin-broute-arr').value = '06:45 AM';
-    document.getElementById('admin-broute-price').value = '850';
-    document.getElementById('admin-broute-total-berths').value = '30';
-    document.getElementById('admin-broute-active').checked = true;
+window.deleteAirportHubFromModal = function () {
+  const id = document.getElementById('admin-airport-id').value;
+  if (id) {
+    closeModal('admin-airport-hub-modal');
+    deleteAirportHub(id);
+  }
+};
+
+window.handleAirportHubSearch = function (q) {
+  const query = (q || '').toLowerCase().trim();
+  const rows = document.querySelectorAll('#admin-airports-tbody tr');
+  let visibleCount = 0;
+  rows.forEach(r => {
+    const text = (r.dataset.search || '').toLowerCase();
+    const statusFilter = document.getElementById('admin-airport-filter-status')?.value || 'all';
+    const status = r.dataset.status;
+    const matchesSearch = !query || text.includes(query);
+    const matchesStatus = statusFilter === 'all' || status === statusFilter;
+
+    if (matchesSearch && matchesStatus) {
+      r.style.display = '';
+      visibleCount++;
+    } else {
+      r.style.display = 'none';
+    }
+  });
+  const countEl = document.getElementById('admin-airports-filter-count');
+  if (countEl) countEl.textContent = `${visibleCount} Airports`;
+};
+
+window.handleAirportHubFilter = function () {
+  const q = document.getElementById('admin-airport-search-input')?.value || '';
+  handleAirportHubSearch(q);
+};
+
+// ========================================================
+// 2. BERTH ROUTES MANAGEMENT (Admin)
+// ========================================================
+window.openAddBerthRouteModal = function () {
+  document.getElementById('admin-broute-modal-title').textContent = 'Add Berth Route';
+  document.getElementById('admin-broute-id').value = '';
+  document.getElementById('admin-broute-from').value = '';
+  document.getElementById('admin-broute-to').value = '';
+  document.getElementById('admin-broute-operator').value = 'Intercity Express';
+  document.getElementById('admin-broute-coach').value = '';
+  document.getElementById('admin-broute-vehicle').value = 'Volvo Multi-Axle AC Sleeper';
+  document.getElementById('admin-broute-dept').value = '09:30 PM';
+  document.getElementById('admin-broute-arr').value = '06:45 AM';
+  document.getElementById('admin-broute-price').value = '850';
+  document.getElementById('admin-broute-total-berths').value = '30';
+  document.getElementById('admin-broute-active').checked = true;
+
+  const modal = document.getElementById('admin-berth-route-modal');
+  if (modal) modal.classList.add('active');
+};
+
+window.openEditBerthRouteModal = async function (id) {
+  try {
+    const res = await fetch(`/api/admin/berth-routes/${id}`);
+    const data = await res.json();
+    if (!data.success || !data.route) return;
+
+    const r = data.route;
+    document.getElementById('admin-broute-modal-title').textContent = `Edit Berth Route: ${r.from_city} → ${r.to_city}`;
+    document.getElementById('admin-broute-id').value = r.id;
+    document.getElementById('admin-broute-from').value = r.from_city;
+    document.getElementById('admin-broute-to').value = r.to_city;
+    document.getElementById('admin-broute-operator').value = r.operator_name;
+    document.getElementById('admin-broute-coach').value = r.coach_code;
+    document.getElementById('admin-broute-vehicle').value = r.vehicle_type;
+    document.getElementById('admin-broute-dept').value = r.departure_time;
+    document.getElementById('admin-broute-arr').value = r.arrival_time;
+    document.getElementById('admin-broute-price').value = r.base_price;
+    document.getElementById('admin-broute-total-berths').value = r.total_berths;
+    document.getElementById('admin-broute-active').checked = Boolean(r.is_active);
 
     const modal = document.getElementById('admin-berth-route-modal');
     if (modal) modal.classList.add('active');
+  } catch (err) {
+    showToast('Failed to load berth route.', 'warning');
+  }
+};
+
+window.saveAdminBerthRoute = async function (e) {
+  e.preventDefault();
+  const id = document.getElementById('admin-broute-id').value;
+  const isEdit = Boolean(id);
+
+  const payload = {
+    from_city: document.getElementById('admin-broute-from').value.trim(),
+    to_city: document.getElementById('admin-broute-to').value.trim(),
+    operator_name: document.getElementById('admin-broute-operator').value.trim(),
+    coach_code: document.getElementById('admin-broute-coach').value.trim(),
+    vehicle_type: document.getElementById('admin-broute-vehicle').value.trim(),
+    departure_time: document.getElementById('admin-broute-dept').value.trim(),
+    arrival_time: document.getElementById('admin-broute-arr').value.trim(),
+    base_price: parseFloat(document.getElementById('admin-broute-price').value),
+    total_berths: parseInt(document.getElementById('admin-broute-total-berths').value, 10),
+    is_active: document.getElementById('admin-broute-active').checked,
   };
 
-  window.openEditBerthRouteModal = async function (id) {
-    try {
-      const res = await fetch(`/api/admin/berth-routes/${id}`);
-      const data = await res.json();
-      if (!data.success || !data.route) return;
+  const url = isEdit ? `/api/admin/berth-routes/${id}` : '/api/admin/berth-routes';
+  const method = isEdit ? 'PUT' : 'POST';
 
-      const r = data.route;
-      document.getElementById('admin-broute-modal-title').textContent = `Edit Berth Route: ${r.from_city} → ${r.to_city}`;
-      document.getElementById('admin-broute-id').value = r.id;
-      document.getElementById('admin-broute-from').value = r.from_city;
-      document.getElementById('admin-broute-to').value = r.to_city;
-      document.getElementById('admin-broute-operator').value = r.operator_name;
-      document.getElementById('admin-broute-coach').value = r.coach_code;
-      document.getElementById('admin-broute-vehicle').value = r.vehicle_type;
-      document.getElementById('admin-broute-dept').value = r.departure_time;
-      document.getElementById('admin-broute-arr').value = r.arrival_time;
-      document.getElementById('admin-broute-price').value = r.base_price;
-      document.getElementById('admin-broute-total-berths').value = r.total_berths;
-      document.getElementById('admin-broute-active').checked = Boolean(r.is_active);
-
-      const modal = document.getElementById('admin-berth-route-modal');
-      if (modal) modal.classList.add('active');
-    } catch (err) {
-      showToast('Failed to load berth route.', 'warning');
-    }
-  };
-
-  window.saveAdminBerthRoute = async function (e) {
-    e.preventDefault();
-    const id = document.getElementById('admin-broute-id').value;
-    const isEdit = Boolean(id);
-
-    const payload = {
-      from_city: document.getElementById('admin-broute-from').value.trim(),
-      to_city: document.getElementById('admin-broute-to').value.trim(),
-      operator_name: document.getElementById('admin-broute-operator').value.trim(),
-      coach_code: document.getElementById('admin-broute-coach').value.trim(),
-      vehicle_type: document.getElementById('admin-broute-vehicle').value.trim(),
-      departure_time: document.getElementById('admin-broute-dept').value.trim(),
-      arrival_time: document.getElementById('admin-broute-arr').value.trim(),
-      base_price: parseFloat(document.getElementById('admin-broute-price').value),
-      total_berths: parseInt(document.getElementById('admin-broute-total-berths').value, 10),
-      is_active: document.getElementById('admin-broute-active').checked,
-    };
-
-    const url = isEdit ? `/api/admin/berth-routes/${id}` : '/api/admin/berth-routes';
-    const method = isEdit ? 'PUT' : 'POST';
-
-    try {
-      const res = await fetch(url, {
-        method: method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast(data.message, 'success');
-        closeModal('admin-berth-route-modal');
-        const br = data.route;
-        if (br) {
-          if (isEdit) {
-            const row = document.getElementById(`admin-broute-row-${br.id}`);
-            if (row) {
-              row.dataset.search = `${br.from_city} ${br.to_city} ${br.operator_name} ${br.coach_code || ''}`.toLowerCase();
-              row.cells[0].innerHTML = `<strong>${br.from_city} → ${br.to_city}</strong><div style="font-size:11px; color:#64748b;">${br.vehicle_type}</div>`;
-              row.cells[1].innerHTML = `<span class="admin-badge badge-primary">${br.coach_code || 'N/A'}</span>`;
-              row.cells[2].textContent = br.operator_name;
-              row.cells[3].textContent = `${br.departure_time} - ${br.arrival_time}`;
-              row.cells[4].innerHTML = `<strong>₹${Number(br.base_price).toLocaleString('en-IN')}</strong>`;
-              row.cells[5].innerHTML = br.is_active ? `<span class="admin-badge badge-success" style="cursor:pointer;" onclick="toggleBerthRouteStatus(${br.id})" id="broute-status-badge-${br.id}" title="Click to toggle">Active</span>` : `<span class="admin-badge badge-danger" style="cursor:pointer;" onclick="toggleBerthRouteStatus(${br.id})" id="broute-status-badge-${br.id}" title="Click to toggle">Inactive</span>`;
-            }
-          } else {
-            const tbody = document.querySelector('#admin-berth-routes-table tbody');
-            if (tbody) {
-              const tr = document.createElement('tr');
-              tr.id = `admin-broute-row-${br.id}`;
-              tr.dataset.search = `${br.from_city} ${br.to_city} ${br.operator_name} ${br.coach_code || ''}`.toLowerCase();
-              tr.innerHTML = `
+  try {
+    const res = await fetch(url, {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message, 'success');
+      closeModal('admin-berth-route-modal');
+      const br = data.route;
+      if (br) {
+        if (isEdit) {
+          const row = document.getElementById(`admin-broute-row-${br.id}`);
+          if (row) {
+            row.dataset.search = `${br.from_city} ${br.to_city} ${br.operator_name} ${br.coach_code || ''}`.toLowerCase();
+            row.cells[0].innerHTML = `<strong>${br.from_city} → ${br.to_city}</strong><div style="font-size:11px; color:#64748b;">${br.vehicle_type}</div>`;
+            row.cells[1].innerHTML = `<span class="admin-badge badge-primary">${br.coach_code || 'N/A'}</span>`;
+            row.cells[2].textContent = br.operator_name;
+            row.cells[3].textContent = `${br.departure_time} - ${br.arrival_time}`;
+            row.cells[4].innerHTML = `<strong>₹${Number(br.base_price).toLocaleString('en-IN')}</strong>`;
+            row.cells[5].innerHTML = br.is_active ? `<span class="admin-badge badge-success" style="cursor:pointer;" onclick="toggleBerthRouteStatus(${br.id})" id="broute-status-badge-${br.id}" title="Click to toggle">Active</span>` : `<span class="admin-badge badge-danger" style="cursor:pointer;" onclick="toggleBerthRouteStatus(${br.id})" id="broute-status-badge-${br.id}" title="Click to toggle">Inactive</span>`;
+          }
+        } else {
+          const tbody = document.querySelector('#admin-berth-routes-table tbody');
+          if (tbody) {
+            const tr = document.createElement('tr');
+            tr.id = `admin-broute-row-${br.id}`;
+            tr.dataset.search = `${br.from_city} ${br.to_city} ${br.operator_name} ${br.coach_code || ''}`.toLowerCase();
+            tr.innerHTML = `
                 <td><strong>${br.from_city} → ${br.to_city}</strong><div style="font-size:11px; color:#64748b;">${br.vehicle_type}</div></td>
                 <td><span class="admin-badge badge-primary">${br.coach_code || 'N/A'}</span></td>
                 <td>${br.operator_name}</td>
@@ -6518,188 +6818,188 @@ window.toggleCabRouteStatus = async function (id) {
                   </div>
                 </td>
               `;
-              tbody.prepend(tr);
-            }
+            tbody.prepend(tr);
           }
-          const totalBroutes = document.querySelectorAll('#admin-berth-routes-table tbody tr[id^="admin-broute-row-"]').length;
-          const navBadge = document.getElementById('admin-badge-berth-routes-count');
-          if (navBadge) navBadge.textContent = totalBroutes;
         }
-      } else {
-        showToast(data.message || 'Validation error while saving route.', 'danger');
-      }
-    } catch (err) {
-      showToast('Network error while saving berth route.', 'warning');
-    }
-  };
-
-  window.toggleBerthRouteStatus = async function (id) {
-    try {
-      const res = await fetch(`/api/admin/berth-routes/${id}/toggle`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'info');
-        const badge = document.getElementById(`broute-status-badge-${id}`) || document.querySelector(`#admin-broute-row-${id} td:nth-child(6) .admin-badge`);
-        if (badge && data.route) {
-          const isActive = data.route.is_active;
-          badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
-          badge.textContent = isActive ? 'Active' : 'Inactive';
-        }
-      }
-    } catch (err) {
-      showToast('Failed to toggle berth route.', 'warning');
-    }
-  };
-
-  window.deleteBerthRoute = async function (id) {
-    if (!confirm('Are you sure you want to delete this berth route?')) return;
-    try {
-      const res = await fetch(`/api/admin/berth-routes/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'success');
-        const row = document.getElementById(`admin-broute-row-${id}`);
-        if (row) row.remove();
         const totalBroutes = document.querySelectorAll('#admin-berth-routes-table tbody tr[id^="admin-broute-row-"]').length;
         const navBadge = document.getElementById('admin-badge-berth-routes-count');
         if (navBadge) navBadge.textContent = totalBroutes;
       }
-    } catch (err) {
-      showToast('Failed to delete berth route.', 'warning');
+    } else {
+      showToast(data.message || 'Validation error while saving route.', 'danger');
     }
-  };
+  } catch (err) {
+    showToast('Network error while saving berth route.', 'warning');
+  }
+};
 
-  window.jumpToBerthLayout = function (coachCode) {
-    switchAdminSection('berth-layouts');
-    const filter = document.getElementById('admin-berth-coach-filter');
-    if (filter) {
-      filter.value = coachCode;
-      filterBerthsByCoach(coachCode);
-    }
-  };
-
-  // ========================================================
-  // 3. VEHICLE BERTH & SEAT CUSTOMIZER (Admin)
-  // ========================================================
-  window.filterBerthsByCoach = function (coachCode) {
-    const rows = document.querySelectorAll('.admin-berth-row');
-    rows.forEach(r => {
-      if (coachCode === 'all' || r.dataset.coach === coachCode) {
-        r.style.display = '';
-      } else {
-        r.style.display = 'none';
+window.toggleBerthRouteStatus = async function (id) {
+  try {
+    const res = await fetch(`/api/admin/berth-routes/${id}/toggle`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
       }
     });
-  };
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'info');
+      const badge = document.getElementById(`broute-status-badge-${id}`) || document.querySelector(`#admin-broute-row-${id} td:nth-child(6) .admin-badge`);
+      if (badge && data.route) {
+        const isActive = data.route.is_active;
+        badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
+        badge.textContent = isActive ? 'Active' : 'Inactive';
+      }
+    }
+  } catch (err) {
+    showToast('Failed to toggle berth route.', 'warning');
+  }
+};
 
-  window.openAddBerthModal = function () {
-    document.getElementById('admin-berth-modal-title').textContent = 'Add Custom Berth to Vehicle';
-    document.getElementById('admin-berth-id').value = '';
-    const activeFilter = document.getElementById('admin-berth-coach-filter')?.value;
-    document.getElementById('admin-berth-coach').value = (activeFilter && activeFilter !== 'all') ? activeFilter : '8092';
-    document.getElementById('admin-berth-operator').value = 'Intercity Express';
-    document.getElementById('admin-berth-num').value = '';
-    document.getElementById('admin-berth-deck').value = 'lower';
-    document.getElementById('admin-berth-type').value = 'window';
-    document.getElementById('admin-berth-price').value = '850';
-    document.getElementById('admin-berth-ladies').checked = false;
-    document.getElementById('admin-berth-booked').checked = false;
+window.deleteBerthRoute = async function (id) {
+  if (!confirm('Are you sure you want to delete this berth route?')) return;
+  try {
+    const res = await fetch(`/api/admin/berth-routes/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      }
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      const row = document.getElementById(`admin-broute-row-${id}`);
+      if (row) row.remove();
+      const totalBroutes = document.querySelectorAll('#admin-berth-routes-table tbody tr[id^="admin-broute-row-"]').length;
+      const navBadge = document.getElementById('admin-badge-berth-routes-count');
+      if (navBadge) navBadge.textContent = totalBroutes;
+    }
+  } catch (err) {
+    showToast('Failed to delete berth route.', 'warning');
+  }
+};
+
+window.jumpToBerthLayout = function (coachCode) {
+  switchAdminSection('berth-layouts');
+  const filter = document.getElementById('admin-berth-coach-filter');
+  if (filter) {
+    filter.value = coachCode;
+    filterBerthsByCoach(coachCode);
+  }
+};
+
+// ========================================================
+// 3. VEHICLE BERTH & SEAT CUSTOMIZER (Admin)
+// ========================================================
+window.filterBerthsByCoach = function (coachCode) {
+  const rows = document.querySelectorAll('.admin-berth-row');
+  rows.forEach(r => {
+    if (coachCode === 'all' || r.dataset.coach === coachCode) {
+      r.style.display = '';
+    } else {
+      r.style.display = 'none';
+    }
+  });
+};
+
+window.openAddBerthModal = function () {
+  document.getElementById('admin-berth-modal-title').textContent = 'Add Custom Berth to Vehicle';
+  document.getElementById('admin-berth-id').value = '';
+  const activeFilter = document.getElementById('admin-berth-coach-filter')?.value;
+  document.getElementById('admin-berth-coach').value = (activeFilter && activeFilter !== 'all') ? activeFilter : '8092';
+  document.getElementById('admin-berth-operator').value = 'Intercity Express';
+  document.getElementById('admin-berth-num').value = '';
+  document.getElementById('admin-berth-deck').value = 'lower';
+  document.getElementById('admin-berth-type').value = 'window';
+  document.getElementById('admin-berth-price').value = '850';
+  document.getElementById('admin-berth-ladies').checked = false;
+  document.getElementById('admin-berth-booked').checked = false;
+
+  const modal = document.getElementById('admin-berth-modal');
+  if (modal) modal.classList.add('active');
+};
+
+window.openEditBerthModal = async function (id) {
+  try {
+    const res = await fetch(`/api/admin/berths/${id}`);
+    const data = await res.json();
+    if (!data.success || !data.berth) return;
+
+    const b = data.berth;
+    document.getElementById('admin-berth-modal-title').textContent = `Edit Berth: ${b.berth_number} (Vehicle ${b.coach_code})`;
+    document.getElementById('admin-berth-id').value = b.id;
+    document.getElementById('admin-berth-coach').value = b.coach_code;
+    document.getElementById('admin-berth-operator').value = b.operator_name;
+    document.getElementById('admin-berth-num').value = b.berth_number;
+    document.getElementById('admin-berth-deck').value = b.deck;
+    document.getElementById('admin-berth-type').value = b.berth_type;
+    document.getElementById('admin-berth-price').value = b.price;
+    document.getElementById('admin-berth-ladies').checked = Boolean(b.is_ladies_quota);
+    document.getElementById('admin-berth-booked').checked = Boolean(b.is_booked);
 
     const modal = document.getElementById('admin-berth-modal');
     if (modal) modal.classList.add('active');
+  } catch (err) {
+    showToast('Failed to load berth details.', 'warning');
+  }
+};
+
+window.saveAdminBerth = async function (e) {
+  e.preventDefault();
+  const id = document.getElementById('admin-berth-id').value;
+  const isEdit = Boolean(id);
+
+  const payload = {
+    coach_code: document.getElementById('admin-berth-coach').value.trim(),
+    operator_name: document.getElementById('admin-berth-operator').value.trim(),
+    deck: document.getElementById('admin-berth-deck').value,
+    berth_number: document.getElementById('admin-berth-num').value.trim().toUpperCase(),
+    berth_type: document.getElementById('admin-berth-type').value,
+    price: parseFloat(document.getElementById('admin-berth-price').value),
+    is_ladies_quota: document.getElementById('admin-berth-ladies').checked,
+    is_booked: document.getElementById('admin-berth-booked').checked,
   };
 
-  window.openEditBerthModal = async function (id) {
-    try {
-      const res = await fetch(`/api/admin/berths/${id}`);
-      const data = await res.json();
-      if (!data.success || !data.berth) return;
+  const url = isEdit ? `/api/admin/berths/${id}` : '/api/admin/berths';
+  const method = isEdit ? 'PUT' : 'POST';
 
+  try {
+    const res = await fetch(url, {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message, 'success');
+      closeModal('admin-berth-modal');
       const b = data.berth;
-      document.getElementById('admin-berth-modal-title').textContent = `Edit Berth: ${b.berth_number} (Vehicle ${b.coach_code})`;
-      document.getElementById('admin-berth-id').value = b.id;
-      document.getElementById('admin-berth-coach').value = b.coach_code;
-      document.getElementById('admin-berth-operator').value = b.operator_name;
-      document.getElementById('admin-berth-num').value = b.berth_number;
-      document.getElementById('admin-berth-deck').value = b.deck;
-      document.getElementById('admin-berth-type').value = b.berth_type;
-      document.getElementById('admin-berth-price').value = b.price;
-      document.getElementById('admin-berth-ladies').checked = Boolean(b.is_ladies_quota);
-      document.getElementById('admin-berth-booked').checked = Boolean(b.is_booked);
-
-      const modal = document.getElementById('admin-berth-modal');
-      if (modal) modal.classList.add('active');
-    } catch (err) {
-      showToast('Failed to load berth details.', 'warning');
-    }
-  };
-
-  window.saveAdminBerth = async function (e) {
-    e.preventDefault();
-    const id = document.getElementById('admin-berth-id').value;
-    const isEdit = Boolean(id);
-
-    const payload = {
-      coach_code: document.getElementById('admin-berth-coach').value.trim(),
-      operator_name: document.getElementById('admin-berth-operator').value.trim(),
-      deck: document.getElementById('admin-berth-deck').value,
-      berth_number: document.getElementById('admin-berth-num').value.trim().toUpperCase(),
-      berth_type: document.getElementById('admin-berth-type').value,
-      price: parseFloat(document.getElementById('admin-berth-price').value),
-      is_ladies_quota: document.getElementById('admin-berth-ladies').checked,
-      is_booked: document.getElementById('admin-berth-booked').checked,
-    };
-
-    const url = isEdit ? `/api/admin/berths/${id}` : '/api/admin/berths';
-    const method = isEdit ? 'PUT' : 'POST';
-
-    try {
-      const res = await fetch(url, {
-        method: method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast(data.message, 'success');
-        closeModal('admin-berth-modal');
-        const b = data.berth;
-        if (b) {
-          if (isEdit) {
-            const row = document.getElementById(`admin-berth-row-${b.id}`);
-            if (row) {
-              row.dataset.coach = b.coach_code;
-              row.cells[0].textContent = b.berth_number;
-              row.cells[1].innerHTML = `<span class="admin-badge badge-primary">${b.coach_code}</span>`;
-              row.cells[2].textContent = b.deck.toUpperCase();
-              row.cells[3].textContent = b.berth_type;
-              row.cells[4].innerHTML = `<strong>₹${Number(b.price).toLocaleString('en-IN')}</strong>`;
-              row.cells[5].innerHTML = b.is_booked ? `<span class="admin-badge badge-danger">Booked</span>` : `<span class="admin-badge badge-success">Available</span>`;
-            }
-          } else {
-            const tbody = document.querySelector('#admin-berths-table tbody');
-            if (tbody) {
-              const tr = document.createElement('tr');
-              tr.id = `admin-berth-row-${b.id}`;
-              tr.className = 'admin-berth-row';
-              tr.dataset.coach = b.coach_code;
-              tr.innerHTML = `
+      if (b) {
+        if (isEdit) {
+          const row = document.getElementById(`admin-berth-row-${b.id}`);
+          if (row) {
+            row.dataset.coach = b.coach_code;
+            row.cells[0].textContent = b.berth_number;
+            row.cells[1].innerHTML = `<span class="admin-badge badge-primary">${b.coach_code}</span>`;
+            row.cells[2].textContent = b.deck.toUpperCase();
+            row.cells[3].textContent = b.berth_type;
+            row.cells[4].innerHTML = `<strong>₹${Number(b.price).toLocaleString('en-IN')}</strong>`;
+            row.cells[5].innerHTML = b.is_booked ? `<span class="admin-badge badge-danger">Booked</span>` : `<span class="admin-badge badge-success">Available</span>`;
+          }
+        } else {
+          const tbody = document.querySelector('#admin-berths-table tbody');
+          if (tbody) {
+            const tr = document.createElement('tr');
+            tr.id = `admin-berth-row-${b.id}`;
+            tr.className = 'admin-berth-row';
+            tr.dataset.coach = b.coach_code;
+            tr.innerHTML = `
                 <td><strong>${b.berth_number}</strong></td>
                 <td><span class="admin-badge badge-primary">${b.coach_code}</span></td>
                 <td>${b.deck.toUpperCase()}</td>
@@ -6718,173 +7018,173 @@ window.toggleCabRouteStatus = async function (id) {
                   </div>
                 </td>
               `;
-              tbody.prepend(tr);
-            }
+            tbody.prepend(tr);
           }
-          const totalBerths = document.querySelectorAll('#admin-berths-table tbody tr[id^="admin-berth-row-"]').length;
-          const navBadge = document.getElementById('admin-badge-berths-count');
-          if (navBadge) navBadge.textContent = totalBerths;
         }
-      } else {
-        showToast(data.message || 'Error saving berth configuration.', 'danger');
-      }
-    } catch (err) {
-      showToast('Network error while saving berth.', 'warning');
-    }
-  };
-
-  window.deleteBerth = async function (id) {
-    if (!confirm('Are you sure you want to remove this berth from the vehicle?')) return;
-    try {
-      const res = await fetch(`/api/admin/berths/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'success');
-        const row = document.getElementById(`admin-berth-row-${id}`);
-        if (row) row.remove();
         const totalBerths = document.querySelectorAll('#admin-berths-table tbody tr[id^="admin-berth-row-"]').length;
         const navBadge = document.getElementById('admin-badge-berths-count');
         if (navBadge) navBadge.textContent = totalBerths;
       }
-    } catch (err) {
-      showToast('Failed to delete berth.', 'warning');
+    } else {
+      showToast(data.message || 'Error saving berth configuration.', 'danger');
     }
-  };
+  } catch (err) {
+    showToast('Network error while saving berth.', 'warning');
+  }
+};
 
-  // ========================================================
-  // 4. DRIVER VEHICLE LISTING & FLEET APPROVALS (Admin + Driver)
-  // ========================================================
-  function updateVehiclePendingBadgeInDOM() {
-    const pendingCount = document.querySelectorAll('.admin-veh-row[data-status="Pending"]').length;
-    const badge = document.getElementById('admin-badge-pending-vehicles');
-    if (badge) {
-      if (pendingCount > 0) {
-        badge.className = 'admin-badge badge-danger';
-        badge.textContent = `${pendingCount} Pending`;
-      } else {
-        const totalCount = document.querySelectorAll('.admin-veh-row').length;
-        badge.className = 'admin-badge badge-success';
-        badge.textContent = `${totalCount} Cars`;
+window.deleteBerth = async function (id) {
+  if (!confirm('Are you sure you want to remove this berth from the vehicle?')) return;
+  try {
+    const res = await fetch(`/api/admin/berths/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
       }
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      const row = document.getElementById(`admin-berth-row-${id}`);
+      if (row) row.remove();
+      const totalBerths = document.querySelectorAll('#admin-berths-table tbody tr[id^="admin-berth-row-"]').length;
+      const navBadge = document.getElementById('admin-badge-berths-count');
+      if (navBadge) navBadge.textContent = totalBerths;
+    }
+  } catch (err) {
+    showToast('Failed to delete berth.', 'warning');
+  }
+};
+
+// ========================================================
+// 4. DRIVER VEHICLE LISTING & FLEET APPROVALS (Admin + Driver)
+// ========================================================
+function updateVehiclePendingBadgeInDOM() {
+  const pendingCount = document.querySelectorAll('.admin-veh-row[data-status="Pending"]').length;
+  const badge = document.getElementById('admin-badge-pending-vehicles');
+  if (badge) {
+    if (pendingCount > 0) {
+      badge.className = 'admin-badge badge-danger';
+      badge.textContent = `${pendingCount} Pending`;
+    } else {
+      const totalCount = document.querySelectorAll('.admin-veh-row').length;
+      badge.className = 'admin-badge badge-success';
+      badge.textContent = `${totalCount} Cars`;
     }
   }
+}
 
-  function updateVehicleRowStatusInDOM(id, status, notes) {
-    const row = document.getElementById(`admin-veh-row-${id}`);
-    if (row) {
-      row.dataset.status = status;
-      const statusCell = document.getElementById(`admin-veh-status-cell-${id}`);
-      if (statusCell) {
-        if (status === 'Approved') {
-          statusCell.innerHTML = `<span class="admin-badge badge-success">Approved</span>`;
-        } else if (status === 'Pending') {
-          statusCell.innerHTML = `<span class="admin-badge badge-warning">Pending Approval</span>`;
-        } else {
-          statusCell.innerHTML = `<span class="admin-badge badge-danger">Rejected</span>`;
-        }
-      }
-
-      // Remove approve & reject buttons smoothly
-      const approveBtn = row.querySelector(`.btn-veh-approve-${id}`);
-      const rejectBtn = row.querySelector(`.btn-veh-reject-${id}`);
-      if (approveBtn) approveBtn.remove();
-      if (rejectBtn) rejectBtn.remove();
-    }
-
-    // Update driver dashboard card if present
-    const driverBadge = document.getElementById(`driver-my-veh-badge-${id}`);
-    if (driverBadge) {
+function updateVehicleRowStatusInDOM(id, status, notes) {
+  const row = document.getElementById(`admin-veh-row-${id}`);
+  if (row) {
+    row.dataset.status = status;
+    const statusCell = document.getElementById(`admin-veh-status-cell-${id}`);
+    if (statusCell) {
       if (status === 'Approved') {
-        driverBadge.innerHTML = `<span class="admin-badge badge-success" style="font-size:10.5px; padding:4px 8px;">✅ Approved</span>`;
+        statusCell.innerHTML = `<span class="admin-badge badge-success">Approved</span>`;
       } else if (status === 'Pending') {
-        driverBadge.innerHTML = `<span class="admin-badge badge-warning" style="font-size:10.5px; padding:4px 8px;">⏳ Pending Approval</span>`;
+        statusCell.innerHTML = `<span class="admin-badge badge-warning">Pending Approval</span>`;
       } else {
-        driverBadge.innerHTML = `<span class="admin-badge badge-danger" style="font-size:10.5px; padding:4px 8px;">❌ Rejected</span>`;
+        statusCell.innerHTML = `<span class="admin-badge badge-danger">Rejected</span>`;
       }
     }
-    const driverNotes = document.getElementById(`driver-veh-notes-${id}`);
-    if (driverNotes && notes) {
-      driverNotes.textContent = `Admin Note: ${notes}`;
-      driverNotes.style.display = 'block';
-    }
 
-    updateVehiclePendingBadgeInDOM();
+    // Remove approve & reject buttons smoothly
+    const approveBtn = row.querySelector(`.btn-veh-approve-${id}`);
+    const rejectBtn = row.querySelector(`.btn-veh-reject-${id}`);
+    if (approveBtn) approveBtn.remove();
+    if (rejectBtn) rejectBtn.remove();
   }
 
-  // Renders the amenity chips stored on a vehicle (shared by the fleet cards
-  // and the admin table row appended after a driver lists a new car).
-  window.vehicleFeatureChips = function (features, limit = 3) {
-    const list = Array.isArray(features) ? features.filter((f) => typeof f === 'string' && f.trim() !== '') : [];
-    if (!list.length) return '';
-
-    const escape = (value) => String(value).replace(/[&<>"']/g, (ch) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    }[ch]));
-
-    const chips = list.slice(0, limit).map((feature) =>
-      `<span class="admin-badge badge-secondary" style="font-size:9.5px; padding:2px 5px; white-space:nowrap;">${escape(feature)}</span>`
-    );
-
-    if (list.length > limit) {
-      chips.push(`<span class="admin-badge badge-secondary" style="font-size:9.5px; padding:2px 5px;">+${list.length - limit}</span>`);
+  // Update driver dashboard card if present
+  const driverBadge = document.getElementById(`driver-my-veh-badge-${id}`);
+  if (driverBadge) {
+    if (status === 'Approved') {
+      driverBadge.innerHTML = `<span class="admin-badge badge-success" style="font-size:10.5px; padding:4px 8px;">✅ Approved</span>`;
+    } else if (status === 'Pending') {
+      driverBadge.innerHTML = `<span class="admin-badge badge-warning" style="font-size:10.5px; padding:4px 8px;">⏳ Pending Approval</span>`;
+    } else {
+      driverBadge.innerHTML = `<span class="admin-badge badge-danger" style="font-size:10.5px; padding:4px 8px;">❌ Rejected</span>`;
     }
+  }
+  const driverNotes = document.getElementById(`driver-veh-notes-${id}`);
+  if (driverNotes && notes) {
+    driverNotes.textContent = `Admin Note: ${notes}`;
+    driverNotes.style.display = 'block';
+  }
 
-    return `<div style="display:flex; flex-wrap:wrap; gap:3px; margin-top:4px; max-width:200px;">${chips.join('')}</div>`;
+  updateVehiclePendingBadgeInDOM();
+}
+
+// Renders the amenity chips stored on a vehicle (shared by the fleet cards
+// and the admin table row appended after a driver lists a new car).
+window.vehicleFeatureChips = function (features, limit = 3) {
+  const list = Array.isArray(features) ? features.filter((f) => typeof f === 'string' && f.trim() !== '') : [];
+  if (!list.length) return '';
+
+  const escape = (value) => String(value).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+
+  const chips = list.slice(0, limit).map((feature) =>
+    `<span class="admin-badge badge-secondary" style="font-size:9.5px; padding:2px 5px; white-space:nowrap;">${escape(feature)}</span>`
+  );
+
+  if (list.length > limit) {
+    chips.push(`<span class="admin-badge badge-secondary" style="font-size:9.5px; padding:2px 5px;">+${list.length - limit}</span>`);
+  }
+
+  return `<div style="display:flex; flex-wrap:wrap; gap:3px; margin-top:4px; max-width:200px;">${chips.join('')}</div>`;
+};
+
+window.openDriverListVehicleModal = function () {
+  const modal = document.getElementById('driver-list-vehicle-modal');
+  if (modal) modal.classList.add('active');
+};
+
+window.submitDriverNewVehicle = async function (e) {
+  e.preventDefault();
+  const payload = {
+    vehicle_model: document.getElementById('driver-new-veh-model').value.trim(),
+    vehicle_plate: document.getElementById('driver-new-veh-plate').value.trim().toUpperCase(),
+    fleet_category: document.getElementById('driver-new-veh-category').value,
+    seating_capacity: parseInt(document.getElementById('driver-new-veh-seats').value, 10),
+    berth_capacity: parseInt(document.getElementById('driver-new-veh-berths').value || 0, 10),
+    fuel_type: document.getElementById('driver-new-veh-fuel').value,
+    model_year: document.getElementById('driver-new-veh-year').value.trim(),
+    rc_number: document.getElementById('driver-new-veh-rc').value.trim(),
+    features: Array.from(document.querySelectorAll('#driver-new-veh-features input[type="checkbox"]:checked')).map((cb) => cb.value),
   };
 
-  window.openDriverListVehicleModal = function () {
-    const modal = document.getElementById('driver-list-vehicle-modal');
-    if (modal) modal.classList.add('active');
-  };
+  try {
+    const res = await fetch('/api/driver/vehicles', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message, 'success');
+      closeModal('driver-list-vehicle-modal');
+      document.getElementById('driver-list-vehicle-form')?.reset();
 
-  window.submitDriverNewVehicle = async function (e) {
-    e.preventDefault();
-    const payload = {
-      vehicle_model: document.getElementById('driver-new-veh-model').value.trim(),
-      vehicle_plate: document.getElementById('driver-new-veh-plate').value.trim().toUpperCase(),
-      fleet_category: document.getElementById('driver-new-veh-category').value,
-      seating_capacity: parseInt(document.getElementById('driver-new-veh-seats').value, 10),
-      berth_capacity: parseInt(document.getElementById('driver-new-veh-berths').value || 0, 10),
-      fuel_type: document.getElementById('driver-new-veh-fuel').value,
-      model_year: document.getElementById('driver-new-veh-year').value.trim(),
-      rc_number: document.getElementById('driver-new-veh-rc').value.trim(),
-      features: Array.from(document.querySelectorAll('#driver-new-veh-features input[type="checkbox"]:checked')).map((cb) => cb.value),
-    };
+      const v = data.vehicle;
+      if (v) {
+        // Prepend card to driver vehicle grid
+        const grid = document.getElementById('driver-my-vehicles-grid');
+        if (grid) {
+          const emptyEl = grid.querySelector('div[style*="grid-column: 1 / -1"]');
+          if (emptyEl) emptyEl.remove();
 
-    try {
-      const res = await fetch('/api/driver/vehicles', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast(data.message, 'success');
-        closeModal('driver-list-vehicle-modal');
-        document.getElementById('driver-list-vehicle-form')?.reset();
-
-        const v = data.vehicle;
-        if (v) {
-          // Prepend card to driver vehicle grid
-          const grid = document.getElementById('driver-my-vehicles-grid');
-          if (grid) {
-            const emptyEl = grid.querySelector('div[style*="grid-column: 1 / -1"]');
-            if (emptyEl) emptyEl.remove();
-
-            const card = document.createElement('div');
-            card.id = `driver-my-veh-card-${v.id}`;
-            card.style.cssText = 'border:1px solid #e2e8f0; border-radius:8px; padding:12px; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;';
-            card.innerHTML = `
+          const card = document.createElement('div');
+          card.id = `driver-my-veh-card-${v.id}`;
+          card.style.cssText = 'border:1px solid #e2e8f0; border-radius:8px; padding:12px; background:#f8fafc; display:flex; justify-content:space-between; align-items:center;';
+          card.innerHTML = `
               <div>
                 <div style="font-weight:700; font-size:13px; color:#0f172a;" id="driver-veh-title-${v.id}">${v.vehicle_model}</div>
                 <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
@@ -6897,19 +7197,19 @@ window.toggleCabRouteStatus = async function (id) {
                 <span class="admin-badge badge-warning" style="font-size:10.5px; padding:4px 8px;">⏳ Pending Approval</span>
               </div>
             `;
-            grid.prepend(card);
-          }
+          grid.prepend(card);
+        }
 
-          // Prepend card to driver profile fleet grid as well
-          const profileGrid = document.getElementById('driver-profile-vehicles-grid');
-          if (profileGrid) {
-            const emptyEl = profileGrid.querySelector('div[style*="grid-column:1 / -1"]');
-            if (emptyEl) emptyEl.remove();
+        // Prepend card to driver profile fleet grid as well
+        const profileGrid = document.getElementById('driver-profile-vehicles-grid');
+        if (profileGrid) {
+          const emptyEl = profileGrid.querySelector('div[style*="grid-column:1 / -1"]');
+          if (emptyEl) emptyEl.remove();
 
-            const pcard = document.createElement('div');
-            pcard.id = `driver-profile-veh-card-${v.id}`;
-            pcard.style.cssText = 'border:1px solid #e2e8f0; border-radius:8px; padding:12px; background:#f8fafc; display:flex; justify-content:space-between; align-items:flex-start;';
-            pcard.innerHTML = `
+          const pcard = document.createElement('div');
+          pcard.id = `driver-profile-veh-card-${v.id}`;
+          pcard.style.cssText = 'border:1px solid #e2e8f0; border-radius:8px; padding:12px; background:#f8fafc; display:flex; justify-content:space-between; align-items:flex-start;';
+          pcard.innerHTML = `
               <div>
                 <div style="font-weight:700; font-size:13.5px; color:#0f172a;">${v.vehicle_model}</div>
                 <div style="font-size:11.5px; color:#64748b; margin-top:3px;">
@@ -6926,17 +7226,17 @@ window.toggleCabRouteStatus = async function (id) {
                 <span class="admin-badge badge-warning" style="font-size:10px; padding:3px 7px;">⏳ Pending</span>
               </div>
             `;
-            profileGrid.prepend(pcard);
-          }
+          profileGrid.prepend(pcard);
+        }
 
-          // Also prepend to admin table if visible
-          const tbody = document.getElementById('admin-vehicles-tbody');
-          if (tbody) {
-            const tr = document.createElement('tr');
-            tr.className = 'admin-veh-row';
-            tr.dataset.status = 'Pending';
-            tr.id = `admin-veh-row-${v.id}`;
-            tr.innerHTML = `
+        // Also prepend to admin table if visible
+        const tbody = document.getElementById('admin-vehicles-tbody');
+        if (tbody) {
+          const tr = document.createElement('tr');
+          tr.className = 'admin-veh-row';
+          tr.dataset.status = 'Pending';
+          tr.id = `admin-veh-row-${v.id}`;
+          tr.innerHTML = `
               <td>
                 <div style="font-weight:700; color:#0f172a;">${v.driver_name || 'Partner Chauffeur'}</div>
                 <div style="font-size:11px; color:#64748b;">${v.driver_phone || '+91 Verified'}</div>
@@ -6981,497 +7281,497 @@ window.toggleCabRouteStatus = async function (id) {
                 </div>
               </td>
             `;
-            tbody.prepend(tr);
-            updateVehiclePendingBadgeInDOM();
-          }
+          tbody.prepend(tr);
+          updateVehiclePendingBadgeInDOM();
         }
-      } else {
-        showToast(data.message || 'Failed to submit vehicle.', 'danger');
       }
-    } catch (err) {
-      showToast('Network error while registering vehicle.', 'warning');
-    }
-  };
-
-  window.filterAdminVehicles = function (status) {
-    const rows = document.querySelectorAll('.admin-veh-row');
-    rows.forEach(r => {
-      if (status === 'all' || r.dataset.status === status) {
-        r.style.display = '';
-      } else {
-        r.style.display = 'none';
-      }
-    });
-  };
-
-  window.reloadAdminVehicles = async function () {
-    try {
-      const res = await fetch('/api/admin/vehicles');
-      const data = await res.json();
-      if (data.success) {
-        showToast('Vehicle fleet data refreshed.', 'info');
-      }
-    } catch (err) {
-      showToast('Vehicles reloaded.', 'info');
-    }
-  };
-
-  window.openEditVehicleModal = async function (id) {
-    window.currentEditingVehicleId = id;
-    try {
-      const res = await fetch(`/api/admin/vehicles/${id}`);
-      const data = await res.json();
-      if (!data.success || !data.vehicle) return;
-
-      const v = data.vehicle;
-      document.getElementById('admin-veh-id').value = v.id;
-      document.getElementById('admin-veh-driver-name').value = v.driver_name;
-      document.getElementById('admin-veh-driver-phone').value = v.driver_phone;
-      document.getElementById('admin-veh-model').value = v.vehicle_model;
-      document.getElementById('admin-veh-plate').value = v.vehicle_plate;
-      document.getElementById('admin-veh-category').value = v.fleet_category;
-      document.getElementById('admin-veh-seats').value = v.seating_capacity;
-      document.getElementById('admin-veh-berths').value = v.berth_capacity;
-      document.getElementById('admin-veh-coach').value = v.coach_code || '';
-      document.getElementById('admin-veh-fuel').value = v.fuel_type || 'Diesel';
-      document.getElementById('admin-veh-year').value = v.model_year || '2023';
-      document.getElementById('admin-veh-rc').value = v.rc_number || '';
-      document.getElementById('admin-veh-status').value = v.status;
-      document.getElementById('admin-veh-notes').value = v.admin_notes || '';
-      document.getElementById('admin-veh-active').checked = Boolean(v.is_active);
-
-      const features = Array.isArray(v.features) ? v.features : [];
-      document.querySelectorAll('#admin-veh-features input[type="checkbox"]').forEach((cb) => {
-        cb.checked = features.includes(cb.value);
-      });
-
-      const modal = document.getElementById('admin-vehicle-modal');
-      if (modal) modal.classList.add('active');
-    } catch (err) {
-      showToast('Failed to load vehicle details.', 'warning');
-    }
-  };
-
-  window.saveAdminVehicle = async function (e) {
-    e.preventDefault();
-    const id = document.getElementById('admin-veh-id').value;
-    const payload = {
-      driver_name: document.getElementById('admin-veh-driver-name').value.trim(),
-      driver_phone: document.getElementById('admin-veh-driver-phone').value.trim(),
-      vehicle_model: document.getElementById('admin-veh-model').value.trim(),
-      vehicle_plate: document.getElementById('admin-veh-plate').value.trim().toUpperCase(),
-      fleet_category: document.getElementById('admin-veh-category').value,
-      seating_capacity: parseInt(document.getElementById('admin-veh-seats').value, 10),
-      berth_capacity: parseInt(document.getElementById('admin-veh-berths').value || 0, 10),
-      coach_code: document.getElementById('admin-veh-coach').value.trim() || null,
-      fuel_type: document.getElementById('admin-veh-fuel').value,
-      model_year: document.getElementById('admin-veh-year').value.trim(),
-      rc_number: document.getElementById('admin-veh-rc').value.trim() || null,
-      features: Array.from(document.querySelectorAll('#admin-veh-features input[type="checkbox"]:checked')).map((cb) => cb.value),
-      status: document.getElementById('admin-veh-status').value,
-      admin_notes: document.getElementById('admin-veh-notes').value.trim() || null,
-      is_active: document.getElementById('admin-veh-active').checked,
-    };
-
-    try {
-      const res = await fetch(`/api/admin/vehicles/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast(data.message, 'success');
-        closeModal('admin-vehicle-modal');
-        const v = data.vehicle;
-        if (v) {
-          updateVehicleRowStatusInDOM(v.id, v.status, v.admin_notes || '');
-          const row = document.getElementById(`admin-veh-row-${v.id}`);
-          if (row) {
-            row.cells[0].innerHTML = `<div style="font-weight:700; color:#0f172a;">${v.driver_name}</div><div style="font-size:11px; color:#64748b;">${v.driver_phone}</div>`;
-            row.cells[1].innerHTML = `<div style="font-weight:600; color:#0f172a;">${v.vehicle_model}</div><div style="font-size:11px; color:#64748b;">Year: ${v.model_year} &bull; Fuel: ${v.fuel_type}</div>`;
-            row.cells[2].innerHTML = `<span class="admin-badge badge-gold" style="font-family:monospace; font-size:11.5px;">${v.vehicle_plate}</span>`;
-            row.cells[3].innerHTML = `<span class="admin-badge badge-primary">${v.fleet_category.toUpperCase()}</span>`;
-            row.cells[4].innerHTML = `<div>${v.seating_capacity} Seats</div>${v.berth_capacity > 0 ? `<div style="font-size:10.5px; color:#16a34a; font-weight:700;">${v.berth_capacity} Berths Fitted</div>` : ''}`;
-            const rcCell = document.getElementById(`admin-veh-rc-${v.id}`);
-            if (rcCell) rcCell.textContent = v.rc_number || 'Pending Upload';
-          }
-        }
-      } else {
-        showToast(data.message || 'Failed to update vehicle.', 'danger');
-      }
-    } catch (err) {
-      showToast('Network error while saving vehicle.', 'warning');
-    }
-  };
-
-  window.approveDriverVehicle = async function (id) {
-    try {
-      const res = await fetch(`/api/admin/vehicles/${id}/approve`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'success');
-        updateVehicleRowStatusInDOM(id, 'Approved');
-      } else {
-        showToast(data.message || 'Failed to approve vehicle.', 'danger');
-      }
-    } catch (err) {
-      showToast('Failed to approve vehicle.', 'warning');
-    }
-  };
-
-  window.rejectDriverVehicle = async function (id) {
-    const reason = prompt('Please specify the reason for rejection (e.g. Invalid RC or expired fitness certificate):', 'Expired commercial taxi fitness certificate');
-    if (!reason) return;
-
-    try {
-      const res = await fetch(`/api/admin/vehicles/${id}/reject`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        },
-        body: JSON.stringify({ admin_notes: reason })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'info');
-        updateVehicleRowStatusInDOM(id, 'Rejected', reason);
-      } else {
-        showToast(data.message || 'Failed to reject vehicle.', 'danger');
-      }
-    } catch (err) {
-      showToast('Failed to reject vehicle.', 'warning');
-    }
-  };
-
-  window.deleteVehicle = async function (id) {
-    if (!confirm('Are you sure you want to permanently delete this vehicle record?')) return;
-    try {
-      const res = await fetch(`/api/admin/vehicles/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'success');
-        const row = document.getElementById(`admin-veh-row-${id}`);
-        if (row) row.remove();
-        updateVehiclePendingBadgeInDOM();
-      } else {
-        showToast(data.message || 'Failed to delete vehicle.', 'danger');
-      }
-    } catch (err) {
-      showToast('Failed to delete vehicle.', 'warning');
-    }
-  };
-
-  window.deleteVehicleFromModal = function () {
-    if (window.currentEditingVehicleId) {
-      closeModal('admin-vehicle-modal');
-      deleteVehicle(window.currentEditingVehicleId);
-    }
-  };
-
-  window.handleLocationSearch = function (query) {
-    const q = (query || '').toLowerCase().trim();
-    const rows = document.querySelectorAll('#admin-locations-tbody tr');
-    rows.forEach(row => {
-      const searchData = row.getAttribute('data-search') || row.innerText || '';
-      if (!q || searchData.toLowerCase().includes(q)) {
-        row.style.display = '';
-      } else {
-        row.style.display = 'none';
-      }
-    });
-  };
-
-  window.openTicketModal = async function (reference) {
-    let b = (state.bookings || []).find(item => item.id === reference || item.booking_reference === reference);
-    if (!b) {
-      try {
-        // Owner access works for signed-in customers; older bookings that are
-        // only linked by phone need the number that was used to book.
-        const phone = window.CURRENT_USER && window.CURRENT_USER.phone ? window.CURRENT_USER.phone : '';
-        const withPhone = phone ? `?phone=${encodeURIComponent(phone)}` : '';
-
-        let res = await fetch(`/api/bookings/${reference}${withPhone}`);
-        let data = await res.json();
-
-        if ((!res.ok || !data.success) && phone) {
-          res = await fetch(`/api/bookings/${reference}`);
-          data = await res.json();
-        }
-
-        if (data && data.success && data.booking) {
-          const dbBooking = data.booking;
-          b = {
-            id: dbBooking.booking_reference,
-            route: dbBooking.route_summary || '',
-            operator: dbBooking.driver
-              ? `${dbBooking.driver.name} (${dbBooking.driver.vehicle_model || 'Cab'})`
-              : (dbBooking.service_type === 'bus' ? 'Intercity Sleeper Bus' : 'Intercity Verified Cab'),
-            berths: Array.isArray(dbBooking.selected_units) && dbBooking.selected_units.length
-              ? dbBooking.selected_units
-              : ['Private Cab'],
-            amount: Number(dbBooking.total_amount || 0),
-            otp: dbBooking.start_otp || '----'
-          };
-        }
-      } catch (err) {
-        console.error('Failed to fetch ticket info:', err);
-      }
-    }
-    if (b) {
-      showTicketModal(b);
     } else {
-      showToast('Booking ticket details not found.', 'warning');
+      showToast(data.message || 'Failed to submit vehicle.', 'danger');
     }
-  };
+  } catch (err) {
+    showToast('Network error while registering vehicle.', 'warning');
+  }
+};
 
-  window.updatePolicyPreview = function () {
-    const privUrl = document.getElementById('setting-privacy-url')?.value.trim() || '/privacy-policy';
-    const termsUrl = document.getElementById('setting-terms-url')?.value.trim() || '/terms-conditions';
-
-    const privPreview = document.getElementById('preview-link-privacy');
-    const termsPreview = document.getElementById('preview-link-terms');
-    if (privPreview) privPreview.href = privUrl;
-    if (termsPreview) termsPreview.href = termsUrl;
-
-    const loginPriv = document.getElementById('login-link-privacy');
-    const loginTerms = document.getElementById('login-link-terms');
-    if (loginPriv) loginPriv.href = privUrl;
-    if (loginTerms) loginTerms.href = termsUrl;
-  };
-
-  window.saveAdminPolicyUrls = async function (e) {
-    if (e && e.preventDefault) e.preventDefault();
-
-    const privUrl = document.getElementById('setting-privacy-url')?.value.trim() || '/privacy-policy';
-    const termsUrl = document.getElementById('setting-terms-url')?.value.trim() || '/terms-conditions';
-
-    try {
-      const res = await fetch('/api/admin/settings/policy-urls', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        },
-        body: JSON.stringify({
-          privacy_policy_url: privUrl,
-          terms_conditions_url: termsUrl
-        })
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast(data.message || 'Legal & Policy URLs updated successfully!', 'success');
-        updatePolicyPreview();
-      } else {
-        showToast(data.message || 'Failed to update policy URLs.', 'danger');
-      }
-    } catch (err) {
-      console.error('Save policy error:', err);
-      showToast('Network error while saving policy URLs.', 'warning');
+window.filterAdminVehicles = function (status) {
+  const rows = document.querySelectorAll('.admin-veh-row');
+  rows.forEach(r => {
+    if (status === 'all' || r.dataset.status === status) {
+      r.style.display = '';
+    } else {
+      r.style.display = 'none';
     }
-  };
+  });
+};
 
-  window.toggleAdminSchedulesAndBerths = async function(enable) {
-    const toggle = document.getElementById('setting-schedules-berths-toggle');
-    const badge = document.getElementById('setting-schedules-berths-badge');
-    const btn = document.getElementById('setting-schedules-berths-btn');
-    const previewBadge = document.getElementById('admin-preview-berths-badge');
-    const berthAlert = document.getElementById('berth-routes-feature-alert');
-    const schedulesContainer = document.getElementById('schedules-booking-container');
-    const disabledCard = document.getElementById('schedules-disabled-notice-card');
-
-    try {
-      const res = await fetch('/api/admin/settings/toggle-feature', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        },
-        body: JSON.stringify({
-          feature: 'schedules_and_berths',
-          enabled: enable
-        })
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        const isNowOn = data.enabled;
-        if (toggle) toggle.checked = isNowOn;
-        if (badge) {
-          badge.className = 'badge ' + (isNowOn ? 'badge-success' : 'badge-danger');
-          badge.textContent = isNowOn ? 'ON (Active)' : 'OFF (Disabled)';
-        }
-        if (btn) {
-          btn.className = 'btn btn-sm ' + (isNowOn ? 'btn-outline-danger' : 'btn-primary');
-          btn.innerHTML = `<span class="material-symbols-outlined" style="font-size:15px;">${isNowOn ? 'power_settings_new' : 'check_circle'}</span><span>${isNowOn ? 'Turn OFF' : 'Turn ON'}</span>`;
-        }
-        if (previewBadge) {
-          previewBadge.className = 'badge ' + (isNowOn ? 'badge-success' : 'badge-gold');
-          previewBadge.textContent = isNowOn ? 'LIVE' : 'OFF';
-        }
-        if (berthAlert) {
-          berthAlert.style.display = isNowOn ? 'none' : 'flex';
-        }
-        // Update slider visually
-        const slider = toggle?.nextElementSibling;
-        if (slider) {
-          slider.style.backgroundColor = isNowOn ? '#10b981' : '#cbd5e1';
-          const knob = slider.querySelector('span');
-          if (knob) knob.style.left = isNowOn ? '28px' : '4px';
-        }
-
-        // Update global platform settings in memory
-        if (!window.PLATFORM_SETTINGS) window.PLATFORM_SETTINGS = {};
-        window.PLATFORM_SETTINGS.enable_schedules_and_berths = isNowOn ? '1' : '0';
-
-        // Toggle visibility of navigation buttons if present
-        const navBtn = document.getElementById('nav-tab-btn-schedules');
-        if (navBtn) navBtn.style.display = isNowOn ? '' : 'none';
-        const dockBtn = document.getElementById('mobile-dock-btn-schedules');
-        if (dockBtn) dockBtn.style.display = isNowOn ? '' : 'none';
-        const dropdownItem = document.getElementById('dropdown-item-schedules');
-        if (dropdownItem) dropdownItem.style.display = isNowOn ? '' : 'none';
-
-        if (schedulesContainer && (!window.CURRENT_USER || window.CURRENT_USER.role === 'customer')) {
-          schedulesContainer.style.display = isNowOn ? '' : 'none';
-        }
-        if (disabledCard) {
-          disabledCard.style.display = isNowOn ? 'none' : 'block';
-        }
-
-        showToast(data.message || (isNowOn ? 'Schedules & Berths option enabled!' : 'Schedules & Berths option disabled!'), isNowOn ? 'success' : 'warning');
-      } else {
-        if (toggle) toggle.checked = !enable;
-        showToast(data.message || 'Failed to update feature setting.', 'danger');
-      }
-    } catch (err) {
-      console.error('Toggle feature error:', err);
-      if (toggle) toggle.checked = !enable;
-      showToast('Network error while updating feature setting.', 'warning');
+window.reloadAdminVehicles = async function () {
+  try {
+    const res = await fetch('/api/admin/vehicles');
+    const data = await res.json();
+    if (data.success) {
+      showToast('Vehicle fleet data refreshed.', 'info');
     }
-  };
+  } catch (err) {
+    showToast('Vehicles reloaded.', 'info');
+  }
+};
 
-  // ==========================================
-  // DRIVER PROFILE & DUTY STATUS CONTROLS
-  // ==========================================
-  window.openDriverEditProfileModal = function () {
-    const modal = document.getElementById('driver-edit-profile-modal');
-    if (modal) {
-      modal.classList.add('active');
-    }
-  };
+window.openEditVehicleModal = async function (id) {
+  window.currentEditingVehicleId = id;
+  try {
+    const res = await fetch(`/api/admin/vehicles/${id}`);
+    const data = await res.json();
+    if (!data.success || !data.vehicle) return;
 
-  window.selectDriverAvatar = function (avatar) {
-    const hiddenInput = document.getElementById('driver-edit-avatar');
-    if (hiddenInput) hiddenInput.value = avatar;
-    document.querySelectorAll('.avatar-picker-grid .avatar-option').forEach(el => {
-      el.classList.toggle('active', el.textContent.trim() === avatar);
+    const v = data.vehicle;
+    document.getElementById('admin-veh-id').value = v.id;
+    document.getElementById('admin-veh-driver-name').value = v.driver_name;
+    document.getElementById('admin-veh-driver-phone').value = v.driver_phone;
+    document.getElementById('admin-veh-model').value = v.vehicle_model;
+    document.getElementById('admin-veh-plate').value = v.vehicle_plate;
+    document.getElementById('admin-veh-category').value = v.fleet_category;
+    document.getElementById('admin-veh-seats').value = v.seating_capacity;
+    document.getElementById('admin-veh-berths').value = v.berth_capacity;
+    document.getElementById('admin-veh-coach').value = v.coach_code || '';
+    document.getElementById('admin-veh-fuel').value = v.fuel_type || 'Diesel';
+    document.getElementById('admin-veh-year').value = v.model_year || '2023';
+    document.getElementById('admin-veh-rc').value = v.rc_number || '';
+    document.getElementById('admin-veh-status').value = v.status;
+    document.getElementById('admin-veh-notes').value = v.admin_notes || '';
+    document.getElementById('admin-veh-active').checked = Boolean(v.is_active);
+
+    const features = Array.isArray(v.features) ? v.features : [];
+    document.querySelectorAll('#admin-veh-features input[type="checkbox"]').forEach((cb) => {
+      cb.checked = features.includes(cb.value);
     });
+
+    const modal = document.getElementById('admin-vehicle-modal');
+    if (modal) modal.classList.add('active');
+  } catch (err) {
+    showToast('Failed to load vehicle details.', 'warning');
+  }
+};
+
+window.saveAdminVehicle = async function (e) {
+  e.preventDefault();
+  const id = document.getElementById('admin-veh-id').value;
+  const payload = {
+    driver_name: document.getElementById('admin-veh-driver-name').value.trim(),
+    driver_phone: document.getElementById('admin-veh-driver-phone').value.trim(),
+    vehicle_model: document.getElementById('admin-veh-model').value.trim(),
+    vehicle_plate: document.getElementById('admin-veh-plate').value.trim().toUpperCase(),
+    fleet_category: document.getElementById('admin-veh-category').value,
+    seating_capacity: parseInt(document.getElementById('admin-veh-seats').value, 10),
+    berth_capacity: parseInt(document.getElementById('admin-veh-berths').value || 0, 10),
+    coach_code: document.getElementById('admin-veh-coach').value.trim() || null,
+    fuel_type: document.getElementById('admin-veh-fuel').value,
+    model_year: document.getElementById('admin-veh-year').value.trim(),
+    rc_number: document.getElementById('admin-veh-rc').value.trim() || null,
+    features: Array.from(document.querySelectorAll('#admin-veh-features input[type="checkbox"]:checked')).map((cb) => cb.value),
+    status: document.getElementById('admin-veh-status').value,
+    admin_notes: document.getElementById('admin-veh-notes').value.trim() || null,
+    is_active: document.getElementById('admin-veh-active').checked,
   };
 
-  window.saveDriverProfile = async function (e) {
-    if (e && e.preventDefault) e.preventDefault();
-    const btn = document.getElementById('driver-save-profile-btn');
-    if (btn) btn.disabled = true;
-
-    const payload = {
-      name: document.getElementById('driver-edit-name')?.value.trim(),
-      phone: document.getElementById('driver-edit-phone')?.value.trim(),
-      avatar: document.getElementById('driver-edit-avatar')?.value.trim() || '👨🏽‍✈️',
-      vehicle_model: document.getElementById('driver-edit-model')?.value.trim(),
-      vehicle_plate: document.getElementById('driver-edit-plate')?.value.trim().toUpperCase(),
-      fleet_category: document.getElementById('driver-edit-category')?.value,
-      city: document.getElementById('driver-edit-city')?.value.trim(),
-    };
-
-    try {
-      const res = await fetch('/api/driver/profile', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast(data.message || 'Chauffeur profile updated successfully!', 'success');
-        closeModal('driver-edit-profile-modal');
-
-        const p = data.profile;
-        if (p) {
-          document.querySelectorAll('.driver-name-display').forEach(el => el.textContent = p.name);
-          document.querySelectorAll('.driver-avatar-display').forEach(el => el.textContent = p.avatar || '👨🏽‍✈️');
-          document.querySelectorAll('.driver-vehicle-display').forEach(el => el.textContent = p.vehicle_model);
-          document.querySelectorAll('.driver-plate-display').forEach(el => el.textContent = p.vehicle_plate);
-          document.querySelectorAll('.driver-category-display').forEach(el => el.textContent = (p.fleet_category || 'SUV').toUpperCase());
-          document.querySelectorAll('.driver-phone-display').forEach(el => el.textContent = p.phone);
-          document.querySelectorAll('.driver-city-display').forEach(el => el.textContent = p.city || 'Hub Base');
+  try {
+    const res = await fetch(`/api/admin/vehicles/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message, 'success');
+      closeModal('admin-vehicle-modal');
+      const v = data.vehicle;
+      if (v) {
+        updateVehicleRowStatusInDOM(v.id, v.status, v.admin_notes || '');
+        const row = document.getElementById(`admin-veh-row-${v.id}`);
+        if (row) {
+          row.cells[0].innerHTML = `<div style="font-weight:700; color:#0f172a;">${v.driver_name}</div><div style="font-size:11px; color:#64748b;">${v.driver_phone}</div>`;
+          row.cells[1].innerHTML = `<div style="font-weight:600; color:#0f172a;">${v.vehicle_model}</div><div style="font-size:11px; color:#64748b;">Year: ${v.model_year} &bull; Fuel: ${v.fuel_type}</div>`;
+          row.cells[2].innerHTML = `<span class="admin-badge badge-gold" style="font-family:monospace; font-size:11.5px;">${v.vehicle_plate}</span>`;
+          row.cells[3].innerHTML = `<span class="admin-badge badge-primary">${v.fleet_category.toUpperCase()}</span>`;
+          row.cells[4].innerHTML = `<div>${v.seating_capacity} Seats</div>${v.berth_capacity > 0 ? `<div style="font-size:10.5px; color:#16a34a; font-weight:700;">${v.berth_capacity} Berths Fitted</div>` : ''}`;
+          const rcCell = document.getElementById(`admin-veh-rc-${v.id}`);
+          if (rcCell) rcCell.textContent = v.rc_number || 'Pending Upload';
         }
-      } else {
-        showToast(data.message || 'Failed to update chauffeur profile.', 'danger');
+      }
+    } else {
+      showToast(data.message || 'Failed to update vehicle.', 'danger');
+    }
+  } catch (err) {
+    showToast('Network error while saving vehicle.', 'warning');
+  }
+};
+
+window.approveDriverVehicle = async function (id) {
+  try {
+    const res = await fetch(`/api/admin/vehicles/${id}/approve`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      }
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      updateVehicleRowStatusInDOM(id, 'Approved');
+    } else {
+      showToast(data.message || 'Failed to approve vehicle.', 'danger');
+    }
+  } catch (err) {
+    showToast('Failed to approve vehicle.', 'warning');
+  }
+};
+
+window.rejectDriverVehicle = async function (id) {
+  const reason = prompt('Please specify the reason for rejection (e.g. Invalid RC or expired fitness certificate):', 'Expired commercial taxi fitness certificate');
+  if (!reason) return;
+
+  try {
+    const res = await fetch(`/api/admin/vehicles/${id}/reject`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      },
+      body: JSON.stringify({ admin_notes: reason })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'info');
+      updateVehicleRowStatusInDOM(id, 'Rejected', reason);
+    } else {
+      showToast(data.message || 'Failed to reject vehicle.', 'danger');
+    }
+  } catch (err) {
+    showToast('Failed to reject vehicle.', 'warning');
+  }
+};
+
+window.deleteVehicle = async function (id) {
+  if (!confirm('Are you sure you want to permanently delete this vehicle record?')) return;
+  try {
+    const res = await fetch(`/api/admin/vehicles/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      }
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success');
+      const row = document.getElementById(`admin-veh-row-${id}`);
+      if (row) row.remove();
+      updateVehiclePendingBadgeInDOM();
+    } else {
+      showToast(data.message || 'Failed to delete vehicle.', 'danger');
+    }
+  } catch (err) {
+    showToast('Failed to delete vehicle.', 'warning');
+  }
+};
+
+window.deleteVehicleFromModal = function () {
+  if (window.currentEditingVehicleId) {
+    closeModal('admin-vehicle-modal');
+    deleteVehicle(window.currentEditingVehicleId);
+  }
+};
+
+window.handleLocationSearch = function (query) {
+  const q = (query || '').toLowerCase().trim();
+  const rows = document.querySelectorAll('#admin-locations-tbody tr');
+  rows.forEach(row => {
+    const searchData = row.getAttribute('data-search') || row.innerText || '';
+    if (!q || searchData.toLowerCase().includes(q)) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+};
+
+window.openTicketModal = async function (reference) {
+  let b = (state.bookings || []).find(item => item.id === reference || item.booking_reference === reference);
+  if (!b) {
+    try {
+      // Owner access works for signed-in customers; older bookings that are
+      // only linked by phone need the number that was used to book.
+      const phone = window.CURRENT_USER && window.CURRENT_USER.phone ? window.CURRENT_USER.phone : '';
+      const withPhone = phone ? `?phone=${encodeURIComponent(phone)}` : '';
+
+      let res = await fetch(`/api/bookings/${reference}${withPhone}`);
+      let data = await res.json();
+
+      if ((!res.ok || !data.success) && phone) {
+        res = await fetch(`/api/bookings/${reference}`);
+        data = await res.json();
+      }
+
+      if (data && data.success && data.booking) {
+        const dbBooking = data.booking;
+        b = {
+          id: dbBooking.booking_reference,
+          route: dbBooking.route_summary || '',
+          operator: dbBooking.driver
+            ? `${dbBooking.driver.name} (${dbBooking.driver.vehicle_model || 'Cab'})`
+            : (dbBooking.service_type === 'bus' ? 'Intercity Sleeper Bus' : 'Intercity Verified Cab'),
+          berths: Array.isArray(dbBooking.selected_units) && dbBooking.selected_units.length
+            ? dbBooking.selected_units
+            : ['Private Cab'],
+          amount: Number(dbBooking.total_amount || 0),
+          otp: dbBooking.start_otp || '----'
+        };
       }
     } catch (err) {
-      console.error('Driver profile save error:', err);
-      showToast('Network error while saving profile.', 'warning');
-    } finally {
-      if (btn) btn.disabled = false;
+      console.error('Failed to fetch ticket info:', err);
     }
-  };
+  }
+  if (b) {
+    showTicketModal(b);
+  } else {
+    showToast('Booking ticket details not found.', 'warning');
+  }
+};
 
-  window.toggleDriverDutyStatus = async function () {
-    try {
-      const res = await fetch('/api/driver/toggle-online', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getAdminCsrfToken()
-        }
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        const isOnline = data.is_online;
-        showToast(data.message, isOnline ? 'success' : 'info');
+window.updatePolicyPreview = function () {
+  const privUrl = document.getElementById('setting-privacy-url')?.value.trim() || '/privacy-policy';
+  const termsUrl = document.getElementById('setting-terms-url')?.value.trim() || '/terms-conditions';
 
-        document.querySelectorAll('.driver-duty-pill-toggle').forEach(el => {
-          el.classList.toggle('online', isOnline);
-          el.classList.toggle('offline', !isOnline);
-        });
-        document.querySelectorAll('.driver-duty-dot').forEach(el => {
-          el.classList.toggle('bg-success', isOnline);
-          el.classList.toggle('bg-secondary', !isOnline);
-        });
-        document.querySelectorAll('.driver-duty-text').forEach(el => {
-          el.textContent = isOnline ? 'Duty Online' : 'Off Duty';
-        });
+  const privPreview = document.getElementById('preview-link-privacy');
+  const termsPreview = document.getElementById('preview-link-terms');
+  if (privPreview) privPreview.href = privUrl;
+  if (termsPreview) termsPreview.href = termsUrl;
+
+  const loginPriv = document.getElementById('login-link-privacy');
+  const loginTerms = document.getElementById('login-link-terms');
+  if (loginPriv) loginPriv.href = privUrl;
+  if (loginTerms) loginTerms.href = termsUrl;
+};
+
+window.saveAdminPolicyUrls = async function (e) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const privUrl = document.getElementById('setting-privacy-url')?.value.trim() || '/privacy-policy';
+  const termsUrl = document.getElementById('setting-terms-url')?.value.trim() || '/terms-conditions';
+
+  try {
+    const res = await fetch('/api/admin/settings/policy-urls', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      },
+      body: JSON.stringify({
+        privacy_policy_url: privUrl,
+        terms_conditions_url: termsUrl
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message || 'Legal & Policy URLs updated successfully!', 'success');
+      updatePolicyPreview();
+    } else {
+      showToast(data.message || 'Failed to update policy URLs.', 'danger');
+    }
+  } catch (err) {
+    console.error('Save policy error:', err);
+    showToast('Network error while saving policy URLs.', 'warning');
+  }
+};
+
+window.toggleAdminSchedulesAndBerths = async function (enable) {
+  const toggle = document.getElementById('setting-schedules-berths-toggle');
+  const badge = document.getElementById('setting-schedules-berths-badge');
+  const btn = document.getElementById('setting-schedules-berths-btn');
+  const previewBadge = document.getElementById('admin-preview-berths-badge');
+  const berthAlert = document.getElementById('berth-routes-feature-alert');
+  const schedulesContainer = document.getElementById('schedules-booking-container');
+  const disabledCard = document.getElementById('schedules-disabled-notice-card');
+
+  try {
+    const res = await fetch('/api/admin/settings/toggle-feature', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      },
+      body: JSON.stringify({
+        feature: 'schedules_and_berths',
+        enabled: enable
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      const isNowOn = data.enabled;
+      if (toggle) toggle.checked = isNowOn;
+      if (badge) {
+        badge.className = 'badge ' + (isNowOn ? 'badge-success' : 'badge-danger');
+        badge.textContent = isNowOn ? 'ON (Active)' : 'OFF (Disabled)';
       }
-    } catch (err) {
-      showToast('Network error while toggling duty status.', 'warning');
+      if (btn) {
+        btn.className = 'btn btn-sm ' + (isNowOn ? 'btn-outline-danger' : 'btn-primary');
+        btn.innerHTML = `<span class="material-symbols-outlined" style="font-size:15px;">${isNowOn ? 'power_settings_new' : 'check_circle'}</span><span>${isNowOn ? 'Turn OFF' : 'Turn ON'}</span>`;
+      }
+      if (previewBadge) {
+        previewBadge.className = 'badge ' + (isNowOn ? 'badge-success' : 'badge-gold');
+        previewBadge.textContent = isNowOn ? 'LIVE' : 'OFF';
+      }
+      if (berthAlert) {
+        berthAlert.style.display = isNowOn ? 'none' : 'flex';
+      }
+      // Update slider visually
+      const slider = toggle?.nextElementSibling;
+      if (slider) {
+        slider.style.backgroundColor = isNowOn ? '#10b981' : '#cbd5e1';
+        const knob = slider.querySelector('span');
+        if (knob) knob.style.left = isNowOn ? '28px' : '4px';
+      }
+
+      // Update global platform settings in memory
+      if (!window.PLATFORM_SETTINGS) window.PLATFORM_SETTINGS = {};
+      window.PLATFORM_SETTINGS.enable_schedules_and_berths = isNowOn ? '1' : '0';
+
+      // Toggle visibility of navigation buttons if present
+      const navBtn = document.getElementById('nav-tab-btn-schedules');
+      if (navBtn) navBtn.style.display = isNowOn ? '' : 'none';
+      const dockBtn = document.getElementById('mobile-dock-btn-schedules');
+      if (dockBtn) dockBtn.style.display = isNowOn ? '' : 'none';
+      const dropdownItem = document.getElementById('dropdown-item-schedules');
+      if (dropdownItem) dropdownItem.style.display = isNowOn ? '' : 'none';
+
+      if (schedulesContainer && (!window.CURRENT_USER || window.CURRENT_USER.role === 'customer')) {
+        schedulesContainer.style.display = isNowOn ? '' : 'none';
+      }
+      if (disabledCard) {
+        disabledCard.style.display = isNowOn ? 'none' : 'block';
+      }
+
+      showToast(data.message || (isNowOn ? 'Schedules & Berths option enabled!' : 'Schedules & Berths option disabled!'), isNowOn ? 'success' : 'warning');
+    } else {
+      if (toggle) toggle.checked = !enable;
+      showToast(data.message || 'Failed to update feature setting.', 'danger');
     }
+  } catch (err) {
+    console.error('Toggle feature error:', err);
+    if (toggle) toggle.checked = !enable;
+    showToast('Network error while updating feature setting.', 'warning');
+  }
+};
+
+// ==========================================
+// DRIVER PROFILE & DUTY STATUS CONTROLS
+// ==========================================
+window.openDriverEditProfileModal = function () {
+  const modal = document.getElementById('driver-edit-profile-modal');
+  if (modal) {
+    modal.classList.add('active');
+  }
+};
+
+window.selectDriverAvatar = function (avatar) {
+  const hiddenInput = document.getElementById('driver-edit-avatar');
+  if (hiddenInput) hiddenInput.value = avatar;
+  document.querySelectorAll('.avatar-picker-grid .avatar-option').forEach(el => {
+    el.classList.toggle('active', el.textContent.trim() === avatar);
+  });
+};
+
+window.saveDriverProfile = async function (e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const btn = document.getElementById('driver-save-profile-btn');
+  if (btn) btn.disabled = true;
+
+  const payload = {
+    name: document.getElementById('driver-edit-name')?.value.trim(),
+    phone: document.getElementById('driver-edit-phone')?.value.trim(),
+    avatar: document.getElementById('driver-edit-avatar')?.value.trim() || '👨🏽‍✈️',
+    vehicle_model: document.getElementById('driver-edit-model')?.value.trim(),
+    vehicle_plate: document.getElementById('driver-edit-plate')?.value.trim().toUpperCase(),
+    fleet_category: document.getElementById('driver-edit-category')?.value,
+    city: document.getElementById('driver-edit-city')?.value.trim(),
   };
+
+  try {
+    const res = await fetch('/api/driver/profile', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message || 'Chauffeur profile updated successfully!', 'success');
+      closeModal('driver-edit-profile-modal');
+
+      const p = data.profile;
+      if (p) {
+        document.querySelectorAll('.driver-name-display').forEach(el => el.textContent = p.name);
+        document.querySelectorAll('.driver-avatar-display').forEach(el => setAvatarContent(el, p.avatar, '👨🏽‍✈️', p.name || 'Driver'));
+        document.querySelectorAll('.driver-vehicle-display').forEach(el => el.textContent = p.vehicle_model);
+        document.querySelectorAll('.driver-plate-display').forEach(el => el.textContent = p.vehicle_plate);
+        document.querySelectorAll('.driver-category-display').forEach(el => el.textContent = (p.fleet_category || 'SUV').toUpperCase());
+        document.querySelectorAll('.driver-phone-display').forEach(el => el.textContent = p.phone);
+        document.querySelectorAll('.driver-city-display').forEach(el => el.textContent = p.city || 'Hub Base');
+      }
+    } else {
+      showToast(data.message || 'Failed to update chauffeur profile.', 'danger');
+    }
+  } catch (err) {
+    console.error('Driver profile save error:', err);
+    showToast('Network error while saving profile.', 'warning');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+window.toggleDriverDutyStatus = async function () {
+  try {
+    const res = await fetch('/api/driver/toggle-online', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      }
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      const isOnline = data.is_online;
+      showToast(data.message, isOnline ? 'success' : 'info');
+
+      document.querySelectorAll('.driver-duty-pill-toggle').forEach(el => {
+        el.classList.toggle('online', isOnline);
+        el.classList.toggle('offline', !isOnline);
+      });
+      document.querySelectorAll('.driver-duty-dot').forEach(el => {
+        el.classList.toggle('bg-success', isOnline);
+        el.classList.toggle('bg-secondary', !isOnline);
+      });
+      document.querySelectorAll('.driver-duty-text').forEach(el => {
+        el.textContent = isOnline ? 'Duty Online' : 'Off Duty';
+      });
+    }
+  } catch (err) {
+    showToast('Network error while toggling duty status.', 'warning');
+  }
+};
 
 // ==========================================
 // DRIVER BIDDING MARKETPLACE (Admin)
@@ -7771,8 +8071,8 @@ window.openBiddingDetail = async function (sessionId) {
           <td style="font-size:11px; color:#64748b;">${biddingEscape(bid.ip_address || '—')}</td>
           <td style="text-align:right;">
             ${(session.status === 'open' || session.status === 'closed')
-              ? `<button type="button" class="btn btn-xs btn-outline-gold" onclick="awardWinningBid(${bid.id})">Assign</button>`
-              : ''}
+          ? `<button type="button" class="btn btn-xs btn-outline-gold" onclick="awardWinningBid(${bid.id})">Assign</button>`
+          : ''}
           </td>
         </tr>`).join('');
     }

@@ -14,9 +14,69 @@ use Illuminate\Support\Facades\Hash;
 class AuthController extends Controller
 {
     /**
+     * Render the dedicated Customer sign-in / registration portal (/login).
+     */
+    public function showCustomerPortal()
+    {
+        if (Auth::check() && Auth::user()->role === 'customer') {
+            return redirect()->route('home');
+        }
+
+        return view('auth.portal', ['portalRole' => 'customer']);
+    }
+
+    /**
+     * Render the dedicated Driver Partner sign-in / registration portal (/driver).
+     */
+    public function showDriverPortal()
+    {
+        if (Auth::check() && in_array(Auth::user()->role, ['driver', 'admin'], true)) {
+            return redirect()->route('home', ['tab' => 'bidding']);
+        }
+
+        return view('auth.portal', ['portalRole' => 'driver']);
+    }
+
+    /**
+     * Render the dedicated Admin sign-in portal (/admin).
+     */
+    public function showAdminPortal()
+    {
+        if (Auth::check() && Auth::user()->role === 'admin') {
+            return redirect()->route('home', ['tab' => 'admin']);
+        }
+
+        return view('auth.portal', ['portalRole' => 'admin']);
+    }
+
+    /**
      * Authenticate user with role-aware logic.
      */
     public function login(Request $request)
+    {
+        return $this->authenticateWithRole($request);
+    }
+
+    /**
+     * Authenticate a driver on the dedicated /driver/login endpoint.
+     */
+    public function driverLogin(Request $request)
+    {
+        return $this->authenticateWithRole($request, 'driver');
+    }
+
+    /**
+     * Authenticate an admin on the dedicated /admin/login endpoint.
+     */
+    public function adminLogin(Request $request)
+    {
+        return $this->authenticateWithRole($request, 'admin');
+    }
+
+    /**
+     * Shared role-checked credential authentication.
+     */
+    private function authenticateWithRole(Request $request, ?string $forcedRole = null)
     {
         $validated = $request->validate([
             'email' => 'required|email',
@@ -51,8 +111,10 @@ class AuthController extends Controller
             ], 422);
         }
 
-        // If a specific role tab was selected in the login modal, check role match
-        if (! empty($validated['role']) && $user->role !== $validated['role']) {
+        $expectedRole = $forcedRole ?? ($validated['role'] ?? null);
+
+        // Check role match when a specific portal or role tab is targeted
+        if (! empty($expectedRole) && $user->role !== $expectedRole) {
             $msg = 'This account is registered as a '.ucfirst($user->role).'. Please select the '.ucfirst($user->role).' tab to log in.';
             if (! $request->wantsJson() && ! $request->ajax()) {
                 return back()->withErrors(['email' => $msg])->withInput();
@@ -98,21 +160,41 @@ class AuthController extends Controller
     }
 
     /**
-     * Register a new user account (Customer or Driver).
+     * Register a new Customer account (/register).
      */
     public function register(Request $request)
+    {
+        $request->validate([
+            'role' => 'nullable|string|in:customer',
+        ], [
+            'role.in' => 'Driver accounts must register via /driver/register.',
+        ]);
+
+        return $this->registerAccount($request, 'customer');
+    }
+
+    /**
+     * Register a new Driver Partner account (/driver/register).
+     */
+    public function driverRegister(Request $request)
+    {
+        return $this->registerAccount($request, 'driver');
+    }
+
+    /**
+     * Shared user / driver account provisioning.
+     */
+    private function registerAccount(Request $request, string $role)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:100',
             'email' => 'required|email|max:150|unique:users,email',
             'phone' => 'required|string|max:20',
             'password' => 'required|string|min:6',
-            'role' => 'nullable|string|in:customer,driver',
             'vehicle_model' => 'nullable|string|max:100',
             'vehicle_plate' => 'nullable|string|max:30',
         ]);
 
-        $role = $validated['role'] ?? 'customer';
         $phone = trim($validated['phone']);
 
         $user = User::create([
@@ -125,14 +207,16 @@ class AuthController extends Controller
         ]);
 
         if ($role === 'driver') {
-            // Also register record in drivers table
+            $vehicleModel = trim((string) ($validated['vehicle_model'] ?? ''));
+            $vehiclePlate = strtoupper(trim((string) ($validated['vehicle_plate'] ?? '')));
+
             Driver::firstOrCreate(
                 ['phone' => $phone],
                 [
                     'name' => $user->name,
                     'avatar' => '👨🏽‍✈️',
-                    'vehicle_model' => trim($request->input('vehicle_model', 'Maruti Suzuki Ertiga')),
-                    'vehicle_plate' => strtoupper(trim($request->input('vehicle_plate', 'WB 02 '.rand(10, 99).' '.rand(1000, 9999)))),
+                    'vehicle_model' => $vehicleModel !== '' ? $vehicleModel : 'Maruti Suzuki Ertiga',
+                    'vehicle_plate' => $vehiclePlate !== '' ? $vehiclePlate : 'WB 02 '.rand(10, 99).' '.rand(1000, 9999),
                     'fleet_category' => 'suv',
                     'rating' => 4.90,
                     'trips_count' => 0,

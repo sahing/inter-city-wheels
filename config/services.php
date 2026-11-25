@@ -62,6 +62,10 @@ return [
         ),
 
         'tokeninfo_url' => env('FIREBASE_TOKENINFO_URL', 'https://oauth2.googleapis.com/tokeninfo'),
+        'certs_url' => env(
+            'FIREBASE_CERTS_URL',
+            'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com'
+        ),
     ],
 
     'clerk' => [
@@ -94,6 +98,18 @@ return [
         'db_cache' => (bool) env('OSM_DB_CACHE', true),
         'route_ttl_days' => (int) env('OSM_ROUTE_TTL_DAYS', 30),
         'place_ttl_days' => (int) env('OSM_PLACE_TTL_DAYS', 90),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Network IP Geolocation (approximate initial pickup detection)
+    |--------------------------------------------------------------------------
+    */
+
+    'geoip' => [
+        'enabled' => (bool) env('GEOIP_ENABLED', true),
+        'url' => env('GEOIP_URL', 'https://ipwho.is'),
+        'timeout' => (float) env('GEOIP_TIMEOUT', 3.0),
     ],
 
 ];

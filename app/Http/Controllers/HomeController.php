@@ -2,20 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AirportHub;
 use App\Models\BerthRoute;
 use App\Models\Booking;
-use App\Models\CarType;
 use App\Models\Coupon;
 use App\Models\Driver;
 use App\Models\DriverVehicle;
 use App\Models\DynamicFormField;
-use App\Models\LocalPackage;
-use App\Models\PlatformSetting;
 use App\Models\RouteFare;
 use App\Models\SeatLayout;
 use App\Models\ServiceLocation;
-use App\Models\User;
 use App\Models\WorkflowStage;
 
 class HomeController extends Controller
@@ -32,7 +27,7 @@ class HomeController extends Controller
         $coupons = Coupon::where('is_active', true)->get();
         $recentBookings = Booking::with('driver')->latest()->get();
         $allDrivers = Driver::all();
-        $allUsers = User::latest()->get();
+        $allUsers = \App\Models\User::latest()->get();
         $currentUser = auth()->user();
 
         // Admin Datasets for Locations, Berth Routes, Berth Layouts & Vehicles
@@ -40,13 +35,13 @@ class HomeController extends Controller
         $berthRoutes = BerthRoute::with('seatLayouts')->latest()->get();
         $allSeatLayouts = SeatLayout::orderBy('coach_code')->orderBy('deck')->orderBy('berth_number')->get();
         $driverVehicles = DriverVehicle::with('driver')->latest()->get();
-        $localPackages = LocalPackage::orderBy('duration_hours')->get();
-        $airportHubs = AirportHub::orderBy('city')->get();
-        $allCarTypes = CarType::orderBy('order_index')->get();
+        $localPackages = \App\Models\LocalPackage::orderBy('duration_hours')->get();
+        $airportHubs = \App\Models\AirportHub::orderBy('city')->get();
+        $allCarTypes = \App\Models\CarType::orderBy('order_index')->get();
         $platformSettings = [
-            'privacy_policy_url' => PlatformSetting::get('privacy_policy_url', '/privacy-policy'),
-            'terms_conditions_url' => PlatformSetting::get('terms_conditions_url', '/terms-conditions'),
-            'enable_schedules_and_berths' => PlatformSetting::get('enable_schedules_and_berths', '0'),
+            'privacy_policy_url' => \App\Models\PlatformSetting::get('privacy_policy_url', '/privacy-policy'),
+            'terms_conditions_url' => \App\Models\PlatformSetting::get('terms_conditions_url', '/terms-conditions'),
+            'enable_schedules_and_berths' => \App\Models\PlatformSetting::get('enable_schedules_and_berths', '0'),
         ];
         $isSchedulesEnabled = $platformSettings['enable_schedules_and_berths'] === '1';
 
