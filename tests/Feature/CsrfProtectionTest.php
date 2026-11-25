@@ -33,7 +33,7 @@ class CsrfProtectionTest extends TestCase
     {
         $this->actingAsRealBrowserApp();
 
-        $this->postJson('/api/bookings', [
+        $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', [
             'service_type' => 'cab',
             'from_city' => 'Pune',
             'to_city' => 'Goa',
@@ -68,7 +68,10 @@ class CsrfProtectionTest extends TestCase
     {
         $this->actingAsRealBrowserApp();
 
-        $this->withSession(['_token' => 'known-token'])
+        $customer = User::where('role', 'customer')->firstOrFail();
+
+        $this->actingAs($customer)
+            ->withSession(['_token' => 'known-token'])
             ->withHeader('X-CSRF-TOKEN', 'known-token')
             ->postJson('/api/bookings', [
                 'service_type' => 'cab',

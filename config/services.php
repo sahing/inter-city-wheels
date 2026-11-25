@@ -48,11 +48,52 @@ return [
         'messaging_sender_id' => env('FIREBASE_MESSAGING_SENDER_ID'),
         'app_id' => env('FIREBASE_APP_ID'),
         'measurement_id' => env('FIREBASE_MEASUREMENT_ID'),
+
+        // Optional explicit audience (the OAuth client id, e.g.
+        // 627768077846-xxxx.apps.googleusercontent.com). When empty, the token
+        // audience must belong to `project_id`.
+        'client_id' => env('FIREBASE_CLIENT_ID'),
+
+        // Accept a posted firebase_id with no ID token. Convenient for the local
+        // demo flow, dangerous in production: it lets anyone claim any account.
+        'allow_id_only' => (bool) env(
+            'FIREBASE_ALLOW_ID_ONLY',
+            env('APP_ENV', 'production') !== 'production'
+        ),
+
+        'tokeninfo_url' => env('FIREBASE_TOKENINFO_URL', 'https://oauth2.googleapis.com/tokeninfo'),
     ],
 
     'clerk' => [
         'publishable_key' => env('CLERK_PUBLISHABLE_KEY'),
         'secret_key' => env('CLERK_SECRET_KEY'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | OpenStreetMap (Nominatim geocoding + OSRM routing)
+    |--------------------------------------------------------------------------
+    |
+    | Both public instances are free but rate-limited, so results are cached and
+    | requests are throttled. Point the URLs at a self-hosted instance (or a
+    | commercial Nominatim/OSRM provider) for production traffic; the public
+    | Nominatim usage policy forbids heavy use.
+    |
+    */
+
+    'osm' => [
+        'enabled' => (bool) env('OSM_ENABLED', true),
+        'nominatim_url' => env('OSM_NOMINATIM_URL', 'https://nominatim.openstreetmap.org'),
+        'osrm_url' => env('OSM_OSRM_URL', 'https://router.project-osrm.org'),
+        'user_agent' => env('OSM_USER_AGENT', 'IntercityWheels/2.0 (+https://intercitywheels.com)'),
+        'country_codes' => env('OSM_COUNTRY_CODES', 'in'),
+        'timeout' => (float) env('OSM_TIMEOUT', 3.0),
+        'throttle' => (bool) env('OSM_THROTTLE', true),
+        'cache_ttl' => (int) env('OSM_CACHE_TTL', 604800),
+        'route_cache_ttl' => (int) env('OSM_ROUTE_CACHE_TTL', 43200),
+        'db_cache' => (bool) env('OSM_DB_CACHE', true),
+        'route_ttl_days' => (int) env('OSM_ROUTE_TTL_DAYS', 30),
+        'place_ttl_days' => (int) env('OSM_PLACE_TTL_DAYS', 90),
     ],
 
 ];

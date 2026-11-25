@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\BiddingAdminController;
 use App\Http\Controllers\Admin\BookingAdminController;
 use App\Http\Controllers\Admin\CabRouteAdminController;
 use App\Http\Controllers\Admin\CarTypeAdminController;
+use App\Http\Controllers\Admin\CouponAdminController;
 use App\Http\Controllers\Admin\DynamicFormController;
 use App\Http\Controllers\Admin\LocalPackageAdminController;
 use App\Http\Controllers\Admin\LocationAdminController;
@@ -47,11 +48,18 @@ Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::post('/register', [AuthController::class, 'register'])->name('register');
 Route::post('/auth/send-otp', [AuthController::class, 'sendMobileOtp'])->name('auth.sendOtp');
 Route::post('/auth/verify-otp', [AuthController::class, 'verifyMobileOtp'])->name('auth.verifyOtp');
-Route::get('/auth/alternate-config', [AuthController::class, 'alternateConfig'])->name('auth.alternateConfig');
-Route::post('/auth/alternate-login', [AuthController::class, 'alternateLogin'])->name('auth.alternateLogin');
-Route::post('/auth/firebase-login', [AuthController::class, 'firebaseLogin'])->name('auth.firebaseLogin');
-Route::post('/auth/clerk-login', [AuthController::class, 'clerkLogin'])->name('auth.clerkLogin');
-Route::post('/login/quick-demo', [AuthController::class, 'quickDemoLogin'])->name('login.demo');
+/*
+| Demo-only authentication surfaces. Each of these can authenticate a caller
+| without credentials, so `demo` middleware answers 404 unless demo mode is on.
+| See config/demo.php and INTERCITY_DEMO_MODE.
+*/
+Route::middleware('demo')->group(function () {
+    Route::get('/auth/alternate-config', [AuthController::class, 'alternateConfig'])->name('auth.alternateConfig');
+    Route::post('/auth/alternate-login', [AuthController::class, 'alternateLogin'])->name('auth.alternateLogin');
+    Route::post('/auth/firebase-login', [AuthController::class, 'firebaseLogin'])->name('auth.firebaseLogin');
+    Route::post('/auth/clerk-login', [AuthController::class, 'clerkLogin'])->name('auth.clerkLogin');
+    Route::post('/login/quick-demo', [AuthController::class, 'quickDemoLogin'])->name('login.demo');
+});
 Route::match(['get', 'post'], '/logout', [AuthController::class, 'logout'])->name('logout');
 
 /*
@@ -105,8 +113,8 @@ Route::prefix('api')->group(function () {
         ]);
     })->name('api.carTypes.active');
 
-    // Bookings (guest + customer intake)
-    Route::post('/bookings', [BookingController::class, 'store'])->name('api.bookings.store');
+    // Booking creation requires a signed-in customer — see the authenticated
+    // group below. Browsing, quoting and ticket retrieval stay anonymous.
 
     // Anonymous ticket retrieval: reference + the mobile number on the booking.
     Route::post('/bookings/lookup', [BookingController::class, 'lookup'])->name('api.bookings.lookup');
@@ -124,6 +132,10 @@ Route::prefix('api')->group(function () {
 
 Route::prefix('api')->middleware(['auth'])->group(function () {
     Route::get('/auth/user', [AuthController::class, 'current'])->name('api.auth.user');
+
+    // Confirming a booking requires a signed-in customer, so every trip is
+    // owned by an account. Guests are sent to the one-tap login gate.
+    Route::post('/bookings', [BookingController::class, 'store'])->name('api.bookings.store');
 });
 
 /*
@@ -291,6 +303,14 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::post('/admin/biddings/{id}/close', [BiddingAdminController::class, 'close'])->name('api.admin.biddings.close');
     Route::post('/admin/biddings/{id}/award', [BiddingAdminController::class, 'award'])->name('api.admin.biddings.award');
     Route::post('/admin/biddings/{id}/cancel', [BiddingAdminController::class, 'cancel'])->name('api.admin.biddings.cancel');
+
+    // Promotional Coupons
+    Route::get('/admin/coupons', [CouponAdminController::class, 'index'])->name('api.admin.coupons.index');
+    Route::post('/admin/coupons', [CouponAdminController::class, 'store'])->name('api.admin.coupons.store');
+    Route::get('/admin/coupons/{id}', [CouponAdminController::class, 'show'])->name('api.admin.coupons.show');
+    Route::put('/admin/coupons/{id}', [CouponAdminController::class, 'update'])->name('api.admin.coupons.update');
+    Route::post('/admin/coupons/{id}/toggle', [CouponAdminController::class, 'toggleStatus'])->name('api.admin.coupons.toggle');
+    Route::delete('/admin/coupons/{id}', [CouponAdminController::class, 'destroy'])->name('api.admin.coupons.destroy');
 });
 
 /*

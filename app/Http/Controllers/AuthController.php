@@ -208,17 +208,23 @@ class AuthController extends Controller
         $smsResult = $smsService->sendOtp($cleanPhone, $issued['otp']);
         $isDemo = ! ($smsResult['sent'] ?? false);
 
+        // Echoing the code back is a demo convenience only. In production the
+        // code is delivered by SMS and must never be returned to the caller.
+        $echoOtp = $isDemo && (bool) config('demo.enabled');
+
         $msg = $smsResult['sent']
             ? "OTP sent to +91 {$cleanPhone} via Fast2SMS."
-            : "OTP for +91 {$cleanPhone} generated: {$issued['otp']} (Demo Mode)";
+            : ($echoOtp
+                ? "OTP for +91 {$cleanPhone} generated: {$issued['otp']} (Demo Mode)"
+                : 'We could not reach the SMS gateway right now. Please try again shortly.');
 
         return response()->json([
             'success' => true,
             'message' => $msg,
             'phone' => $cleanPhone,
             // Never leak a live code once a real gateway is delivering it.
-            'otp' => $isDemo ? $issued['otp'] : null,
-            'display_otp' => $isDemo ? $issued['otp'] : null,
+            'otp' => $echoOtp ? $issued['otp'] : null,
+            'display_otp' => $echoOtp ? $issued['otp'] : null,
             'expires_in' => $issued['expires_in'],
             'sms_sent' => $smsResult['sent'],
             'is_demo' => $smsResult['is_demo'] ?? true,

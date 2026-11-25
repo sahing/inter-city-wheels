@@ -92,6 +92,7 @@ class RouteCalculationController extends Controller
                 'base_toll' => $trip['base_toll'],
                 'roundtrip_discount_pct' => $trip['roundtrip_discount_pct'],
                 'distance_source' => $trip['source'],
+                'cached' => (bool) ($trip['cached'] ?? false),
             ],
             'fleet_estimates' => $fleetEstimates,
             'itemized_breakdown' => $itemized,

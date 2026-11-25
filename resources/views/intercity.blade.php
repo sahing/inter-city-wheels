@@ -3,11 +3,23 @@
 @section('content')
 @php
     $userRole = Auth::check() ? Auth::user()->role : null;
-    $defaultTab = match($userRole) {
-        'admin' => 'admin',
-        'driver' => 'bidding',
-        default => 'cabs'
+
+    // Deep links such as /?tab=my-bookings (used after sign-in from the trips
+    // screen) select a tab, but only one this role is allowed to see.
+    $allowedTabs = match($userRole) {
+        'admin' => ['admin'],
+        'driver' => ['bidding', 'driver-trips', 'driver-wallet', 'driver-profile'],
+        default => ['cabs', 'schedules', 'my-bookings'],
     };
+    $requestedTab = request()->query('tab');
+
+    $defaultTab = $requestedTab && in_array($requestedTab, $allowedTabs, true)
+        ? $requestedTab
+        : match($userRole) {
+            'admin' => 'admin',
+            'driver' => 'bidding',
+            default => 'cabs'
+        };
 @endphp
 <main id="app-viewport" class="app-viewport" style="width:100%; max-width:100%; margin:0; padding:0;">
 
@@ -1025,98 +1037,225 @@
         <!-- TAB: CUSTOMER MY BOOKINGS & PASSENGER MANIFEST          -->
         <!-- ======================================================== -->
         <section id="tab-my-bookings" class="tab-pane {{ $defaultTab === 'my-bookings' ? 'active' : '' }}">
+            @php
+                $myTrips = $customerBookings ?? collect();
+                // Buckets: Active = anything still in play, Completed = finished,
+                // everything else (cancelled) is only visible under "All".
+                $activeTrips = $myTrips->reject(fn ($b) => in_array($b->status, ['Completed', 'Cancelled'], true));
+                $completedTrips = $myTrips->filter(fn ($b) => $b->status === 'Completed');
+                $completedSpend = (float) $completedTrips->sum('total_amount');
+            @endphp
+
             <div class="card" style="margin-bottom:20px;">
                 <div class="card-header" style="flex-wrap:wrap; gap:10px;">
                     <div>
                         <h2 class="card-title" style="display:flex; align-items:center; gap:8px;">
                             <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px;">confirmation_number</span>
-                            <span>My Outstation Trips & Digital Tickets</span>
+                            <span>My Trips &amp; Booking History</span>
                         </h2>
-                        <p class="card-subtitle">Manage upcoming rides, verify chauffeur assignments, view OTP and access GST tax invoices</p>
+                        <p class="card-subtitle">Every ride you have booked — live status, chauffeur details, ride OTP and boarding passes</p>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-gold" onclick="switchTab('cabs')">
-                        <span class="material-symbols-outlined" style="font-size:15px;">add</span>
-                        <span>Book Another Trip</span>
-                    </button>
-                </div>
-
-                <div class="customer-bookings-grid" style="display:flex; flex-direction:column; gap:14px; padding:16px 0;">
-                    @forelse($customerBookings ?? [] as $cb)
-                    <div class="customer-trip-card" style="border:1px solid #e2e8f0; border-radius:10px; padding:16px; background:#ffffff; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:12px; margin-bottom:12px;">
-                            <div>
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <span style="font-family:monospace; font-weight:800; color:var(--primary); font-size:14px;">{{ $cb->booking_reference }}</span>
-                                    <span class="admin-badge @if($cb->status === 'Confirmed') badge-success @elseif($cb->status === 'Driver Assigned') badge-gold @elseif($cb->status === 'Started') badge-info @elseif($cb->status === 'Completed') badge-primary @else badge-secondary @endif">
-                                        {{ $cb->status }}
-                                    </span>
-                                    <span class="admin-badge {{ $cb->service_type === 'cab' ? 'badge-primary' : 'badge-gold' }}" style="font-size:9.5px;">
-                                        {{ strtoupper($cb->service_type) }}
-                                    </span>
-                                </div>
-                                <div style="font-size:16px; font-weight:800; color:#0f172a; margin-top:4px;">{{ $cb->route_summary }}</div>
-                                <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
-                                    <span>Departure: <strong>{{ $cb->departure_time ? $cb->departure_time->format('D, d M Y, h:i A') : 'Scheduled' }}</strong></span>
-                                </div>
-                            </div>
-                            <div style="text-align:right;">
-                                <div style="font-size:18px; font-weight:800; color:#0f172a;">₹{{ number_format($cb->total_amount) }}</div>
-                                <div style="font-size:10.5px; color:#16a34a; font-weight:600;">✓ Prepaid (Escrow Protected)</div>
-                            </div>
-                        </div>
-
-                        <!-- Trip Manifest Grid -->
-                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:14px; font-size:12px;">
-                            <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
-                                <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Pickup & Drop Details</div>
-                                <div style="margin-top:4px; color:#1e293b;"><strong>Pickup:</strong> {{ $cb->pickup_location }}</div>
-                                <div style="margin-top:2px; color:#1e293b;"><strong>Drop:</strong> {{ $cb->drop_location }}</div>
-                            </div>
-
-                            <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
-                                <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Chauffeur & Vehicle</div>
-                                @if($cb->driver)
-                                <div style="margin-top:4px; font-weight:700; color:#0f172a;">{{ $cb->driver->name }} (★{{ $cb->driver->rating }})</div>
-                                <div style="color:#15803d; font-size:11px; margin-top:2px;">{{ $cb->driver->vehicle_model }} • <strong>{{ $cb->driver->vehicle_plate }}</strong></div>
-                                <div style="margin-top:2px;"><a href="tel:{{ $cb->driver->phone }}" style="color:#0284c7; text-decoration:none;">📞 {{ $cb->driver->phone }}</a></div>
-                                @else
-                                <div style="margin-top:4px; color:#d97706; font-weight:600;">Allotment In Progress</div>
-                                <div style="font-size:11px; color:#64748b; margin-top:2px;">A verified chauffeur will be allotted 2 hours before pickup.</div>
-                                @endif
-                            </div>
-
-                            <div style="background:#fffbeb; border:1px solid #fef3c7; padding:10px 12px; border-radius:6px; text-align:center;">
-                                <div style="font-weight:700; color:#92400e; font-size:10.5px; text-transform:uppercase;">Ride Start Validation OTP</div>
-                                <div style="font-family:monospace; font-size:22px; font-weight:800; color:var(--primary); letter-spacing:0.1em; margin:4px 0;">
-                                    {{ $cb->start_otp }}
-                                </div>
-                                <div style="font-size:10px; color:#78350f;">Show this 4-digit OTP to your chauffeur before boarding.</div>
-                            </div>
-                        </div>
-
-                        <!-- Card Actions -->
-                        <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px dashed #e2e8f0; padding-top:10px;">
-                            <button type="button" class="btn btn-sm btn-outline" onclick="openTicketModal('{{ $cb->booking_reference }}')">
-                                <span class="material-symbols-outlined" style="font-size:15px;">confirmation_number</span>
-                                <span>Digital Boarding Pass</span>
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-gold" onclick="openInvoiceModal({{ $cb->id }})">
-                                <span class="material-symbols-outlined" style="font-size:15px;">receipt</span>
-                                <span>GST Tax Invoice</span>
-                            </button>
-                        </div>
-                    </div>
-                    @empty
-                    <div style="text-align:center; padding:40px 20px; color:#94a3b8; background:#f8fafc; border-radius:8px;">
-                        <span class="material-symbols-outlined" style="font-size:40px; color:#cbd5e1; display:block; margin-bottom:8px;">receipt_long</span>
-                        <div style="font-weight:700; font-size:14px; color:#475569;">No active bookings found under your account</div>
-                        <p style="font-size:12px; margin:4px 0 14px;">Book an outstation cab or luxury sleeper berth to view your live tickets and chauffeur dispatch.</p>
-                        <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('cabs')">
-                            <span>Book Outstation Cab</span>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button type="button" class="btn btn-sm btn-outline" onclick="filterMyTrips('all'); renderMyTrips ? renderMyTrips() : null;">
+                            <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
+                            <span>Refresh</span>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-gold" onclick="switchTab('cabs')">
+                            <span class="material-symbols-outlined" style="font-size:15px;">add</span>
+                            <span>Book Another Trip</span>
                         </button>
                     </div>
-                    @endforelse
                 </div>
+
+                @auth
+                    <div class="trips-toolbar">
+                        <div class="trips-filters" role="tablist" aria-label="Filter your trips">
+                            <button type="button" class="trip-filter-pill active" data-filter="all" role="tab" aria-selected="true" onclick="filterMyTrips('all')">
+                                <span>All</span>
+                                <span class="trip-filter-count" id="trips-count-all">{{ $myTrips->count() }}</span>
+                            </button>
+                            <button type="button" class="trip-filter-pill" data-filter="active" role="tab" aria-selected="false" onclick="filterMyTrips('active')">
+                                <span>Active</span>
+                                <span class="trip-filter-count" id="trips-count-active">{{ $activeTrips->count() }}</span>
+                            </button>
+                            <button type="button" class="trip-filter-pill" data-filter="completed" role="tab" aria-selected="false" onclick="filterMyTrips('completed')">
+                                <span>Completed</span>
+                                <span class="trip-filter-count" id="trips-count-completed">{{ $completedTrips->count() }}</span>
+                            </button>
+                        </div>
+                        <div class="trips-summary" id="trips-summary">
+                            @if($myTrips->isEmpty())
+                                No trips booked yet
+                            @else
+                                {{ $activeTrips->count() }} active · {{ $completedTrips->count() }} completed
+                                @if($completedSpend > 0)
+                                    · ₹{{ number_format($completedSpend) }} travelled
+                                @endif
+                            @endif
+                        </div>
+                    </div>
+
+                    <div id="my-trips-list" class="customer-bookings-grid" style="display:flex; flex-direction:column; gap:14px; padding:8px 0 18px;">
+                        @foreach($myTrips as $cb)
+                            @php
+                                $bucket = $cb->status === 'Completed'
+                                    ? 'completed'
+                                    : ($cb->status === 'Cancelled' ? 'cancelled' : 'active');
+                                $badge = match($cb->status) {
+                                    'Confirmed' => 'badge-success',
+                                    'Driver Assigned' => 'badge-gold',
+                                    'Started' => 'badge-info',
+                                    'Bidding' => 'badge-info',
+                                    'Completed' => 'badge-primary',
+                                    default => 'badge-secondary',
+                                };
+                            @endphp
+                            <div class="customer-trip-card" id="trip-card-{{ $cb->booking_reference }}"
+                                 data-bucket="{{ $bucket }}" data-status="{{ $cb->status }}">
+                                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:12px; margin-bottom:12px;">
+                                    <div>
+                                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                            <span style="font-family:monospace; font-weight:800; color:var(--primary); font-size:14px;">{{ $cb->booking_reference }}</span>
+                                            <span class="admin-badge {{ $badge }}">{{ $cb->status }}</span>
+                                            <span class="admin-badge {{ $cb->service_type === 'cab' ? 'badge-primary' : 'badge-gold' }}" style="font-size:9.5px;">
+                                                {{ strtoupper($cb->service_type) }}
+                                            </span>
+                                        </div>
+                                        <div style="font-size:16px; font-weight:800; color:#0f172a; margin-top:4px;">{{ $cb->route_summary }}</div>
+                                        <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
+                                            <span>Departure: <strong>{{ $cb->departure_time ? $cb->departure_time->format('D, d M Y, h:i A') : 'Scheduled' }}</strong></span>
+                                            <span style="margin-left:10px;">Booked: {{ $cb->created_at?->format('d M Y') }}</span>
+                                        </div>
+                                    </div>
+                                    <div style="text-align:right;">
+                                        <div style="font-size:18px; font-weight:800; color:#0f172a;">₹{{ number_format($cb->total_amount) }}</div>
+                                        <div style="font-size:10.5px; color:#16a34a; font-weight:600;">✓ Prepaid (Escrow Protected)</div>
+                                    </div>
+                                </div>
+
+                                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:14px; font-size:12px;">
+                                    <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
+                                        <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Pickup &amp; Drop Details</div>
+                                        <div style="margin-top:4px; color:#1e293b;"><strong>Pickup:</strong> {{ $cb->pickup_location }}</div>
+                                        <div style="margin-top:2px; color:#1e293b;"><strong>Drop:</strong> {{ $cb->drop_location }}</div>
+                                    </div>
+
+                                    <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
+                                        <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Chauffeur &amp; Vehicle</div>
+                                        @if($cb->driver)
+                                            <div style="margin-top:4px; font-weight:700; color:#0f172a;">{{ $cb->driver->name }} (★{{ $cb->driver->rating }})</div>
+                                            <div style="color:#15803d; font-size:11px; margin-top:2px;">{{ $cb->driver->vehicle_model }} • <strong>{{ $cb->driver->vehicle_plate }}</strong></div>
+                                            <div style="margin-top:2px;"><a href="tel:{{ $cb->driver->phone }}" style="color:#0284c7; text-decoration:none;">📞 {{ $cb->driver->phone }}</a></div>
+                                        @else
+                                            <div style="margin-top:4px; color:#d97706; font-weight:600;">
+                                                {{ $bucket === 'completed' ? 'Trip closed' : 'Allotment in progress' }}
+                                            </div>
+                                            <div style="font-size:11px; color:#64748b; margin-top:2px;">
+                                                {{ $bucket === 'completed' ? 'This trip is finished.' : 'A verified chauffeur will be allotted before pickup.' }}
+                                            </div>
+                                        @endif
+                                    </div>
+
+                                    @if($bucket === 'active')
+                                        <div style="background:#fffbeb; border:1px solid #fef3c7; padding:10px 12px; border-radius:6px; text-align:center;">
+                                            <div style="font-weight:700; color:#92400e; font-size:10.5px; text-transform:uppercase;">Ride Start Validation OTP</div>
+                                            <div style="font-family:monospace; font-size:22px; font-weight:800; color:var(--primary); letter-spacing:0.1em; margin:4px 0;">
+                                                {{ $cb->start_otp }}
+                                            </div>
+                                            <div style="font-size:10px; color:#78350f;">Show this 4-digit OTP to your chauffeur before boarding.</div>
+                                        </div>
+                                    @else
+                                        <div style="background:{{ $bucket === 'completed' ? '#f0fdf4' : '#f8fafc' }}; border:1px solid {{ $bucket === 'completed' ? '#bbf7d0' : '#e2e8f0' }}; padding:10px 12px; border-radius:6px; text-align:center;">
+                                            <div style="font-weight:700; color:{{ $bucket === 'completed' ? '#166534' : '#475569' }}; font-size:10.5px; text-transform:uppercase;">
+                                                {{ $bucket === 'completed' ? 'Trip completed' : 'Booking cancelled' }}
+                                            </div>
+                                            <div style="font-size:22px; margin:6px 0;">
+                                                {{ $bucket === 'completed' ? '✓' : '—' }}
+                                            </div>
+                                            <div style="font-size:10px; color:#64748b;">{{ $bucket === 'completed' ? 'Thanks for travelling with us.' : 'No ride OTP is issued.' }}</div>
+                                        </div>
+                                    @endif
+                                </div>
+
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; border-top:1px dashed #e2e8f0; padding-top:10px; flex-wrap:wrap;">
+                                    <div style="font-size:11px; color:#94a3b8;">
+                                        {{ $cb->passengers ? count((array) $cb->passengers).' passenger(s)' : '' }}
+                                    </div>
+                                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                        <button type="button" class="btn btn-sm btn-outline" onclick="copyTripReference('{{ $cb->booking_reference }}')">
+                                            <span class="material-symbols-outlined" style="font-size:15px;">content_copy</span>
+                                            <span>Reference</span>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-gold" onclick="openTicketModal('{{ $cb->booking_reference }}')">
+                                            <span class="material-symbols-outlined" style="font-size:15px;">confirmation_number</span>
+                                            <span>{{ $bucket === 'active' ? 'Digital Boarding Pass' : 'View Trip Ticket' }}</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
+
+                        <div class="trips-empty" id="trips-empty" style="display:{{ $myTrips->isEmpty() ? 'block' : 'none' }};">
+                            <span class="material-symbols-outlined" style="font-size:40px; color:#cbd5e1; display:block; margin-bottom:8px;">luggage</span>
+                            <div id="trips-empty-title" style="font-weight:700; font-size:14px; color:#475569;">
+                                {{ $myTrips->isEmpty() ? 'No trips booked yet' : 'Nothing in this view' }}
+                            </div>
+                            <p id="trips-empty-copy" style="font-size:12px; margin:4px 0 14px;">
+                                {{ $myTrips->isEmpty() ? 'Book an outstation cab or a luxury sleeper berth and it will appear here instantly.' : 'Try the All filter to see every trip on your account.' }}
+                            </p>
+                            <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('cabs')">
+                                <span>Book a Trip</span>
+                            </button>
+                        </div>
+                    </div>
+                @endauth
+
+                @guest
+                    <div class="trips-guest-card">
+                        <div style="max-width:560px; margin:0 auto; padding:12px 0 24px;">
+                            <div style="text-align:center; margin-bottom:18px;">
+                                <span class="material-symbols-outlined" style="font-size:38px; color:#cbd5e1;">confirmation_number</span>
+                                <h3 style="font-size:17px; font-weight:800; color:#0f172a; margin:6px 0 4px;">Sign in to see your trip history</h3>
+                                <p style="font-size:12.5px; color:#64748b; margin:0;">
+                                    Your bookings are saved to your account so you can track status, share the ride OTP and reopen your boarding pass any time.
+                                </p>
+                            </div>
+
+                            <form method="POST" action="{{ route('login') }}" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:16px;">
+                                @csrf
+                                <input type="hidden" name="next" value="/?tab=my-bookings">
+                                <div class="form-group" style="margin-bottom:10px;">
+                                    <label class="form-label" for="trips-login-email">Email</label>
+                                    <input type="email" id="trips-login-email" name="email" class="form-control" required autocomplete="email" placeholder="you@example.com">
+                                </div>
+                                <div class="form-group" style="margin-bottom:12px;">
+                                    <label class="form-label" for="trips-login-password">Password</label>
+                                    <input type="password" id="trips-login-password" name="password" class="form-control" required autocomplete="current-password" placeholder="••••••••">
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-block">
+                                    <span class="material-symbols-outlined" style="font-size:17px;">login</span>
+                                    <span>Sign in &amp; view my trips</span>
+                                </button>
+                            </form>
+
+                            <div style="display:flex; align-items:center; gap:10px; margin:18px 0; color:#94a3b8; font-size:11px; text-transform:uppercase; letter-spacing:0.08em;">
+                                <span style="flex:1; height:1px; background:#e2e8f0;"></span>
+                                <span>or track one booking</span>
+                                <span style="flex:1; height:1px; background:#e2e8f0;"></span>
+                            </div>
+
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <input type="text" id="trips-track-reference" class="form-control" style="flex:1 1 160px;" placeholder="Booking ref (ICW-123456)" autocomplete="off">
+                                <input type="text" id="trips-track-phone" class="form-control" style="flex:1 1 150px;" placeholder="Mobile used to book" autocomplete="tel">
+                                <button type="button" class="btn btn-outline" onclick="trackGuestBooking()" style="white-space:nowrap;">
+                                    <span class="material-symbols-outlined" style="font-size:16px;">search</span>
+                                    <span>Track</span>
+                                </button>
+                            </div>
+                            <div id="trips-track-result" style="margin-top:14px;"></div>
+                        </div>
+                    </div>
+                @endguest
             </div>
         </section>
 
@@ -1150,6 +1289,13 @@
                                     <span style="font-family:monospace; font-weight:700; color:#8c5d1e;">{{ $v->vehicle_plate }}</span> &bull; 
                                     <span>{{ ucfirst($v->fleet_category) }} ({{ $v->seating_capacity }} Seats{{ $v->berth_capacity > 0 ? ', ' . $v->berth_capacity . ' Berths' : '' }})</span>
                                 </div>
+                                @if(count($v->featureLabels()) > 0)
+                                    <div style="display:flex; flex-wrap:wrap; gap:3px; margin-top:4px;">
+                                        @foreach(array_slice($v->featureLabels(), 0, 4) as $feature)
+                                            <span class="admin-badge badge-secondary" style="font-size:9px; padding:1px 5px;">{{ $feature }}</span>
+                                        @endforeach
+                                    </div>
+                                @endif
                                 <div id="driver-veh-notes-{{ $v->id }}" style="font-size:10.5px; color:#64748b; margin-top:4px; font-style:italic; {{ $v->admin_notes ? '' : 'display:none;' }}">Admin Note: {{ $v->admin_notes }}</div>
                             </div>
                             <div id="driver-my-veh-badge-{{ $v->id }}">
@@ -1445,6 +1591,13 @@
                                             <span>{{ $v->seating_capacity }} Seats{{ $v->berth_capacity > 0 ? ', ' . $v->berth_capacity . ' Berths' : '' }}</span> &bull; 
                                             <span>{{ $v->fuel_type ?? 'Diesel' }}</span>
                                         </div>
+                                        @if(count($v->featureLabels()) > 0)
+                                            <div style="display:flex; flex-wrap:wrap; gap:3px; margin-top:5px;">
+                                                @foreach(array_slice($v->featureLabels(), 0, 4) as $feature)
+                                                    <span class="admin-badge badge-secondary" style="font-size:9px; padding:1px 5px;">{{ $feature }}</span>
+                                                @endforeach
+                                            </div>
+                                        @endif
                                     </div>
                                     <div>
                                         @if($v->status === 'Approved')
@@ -1569,6 +1722,13 @@
                                     <span class="material-symbols-outlined admin-nav-icon">category</span>
                                     <span class="admin-nav-text">Booking Types & Packages</span>
                                     <span class="admin-nav-badge badge-gold">4 Types</span>
+                                </a>
+                            </li>
+                            <li class="admin-nav-item">
+                                <a href="javascript:void(0)" class="admin-nav-link" data-section="coupons" onclick="switchAdminSection('coupons')">
+                                    <span class="material-symbols-outlined admin-nav-icon">sell</span>
+                                    <span class="admin-nav-text">Coupons & Promotions</span>
+                                    <span class="admin-nav-badge badge-gold" id="admin-badge-coupons-count">Manage</span>
                                 </a>
                             </li>
                             <li class="admin-nav-item">
@@ -2952,6 +3112,359 @@
                         </div>
 
                         <!-- 5. DRIVERS & FLEET MANAGEMENT -->
+                        <div class="admin-section" id="admin-sec-coupons">
+                            <div class="card" style="margin-bottom:20px;">
+                                <div class="card-header" style="flex-wrap:wrap; gap:12px;">
+                                    <div>
+                                        <h3 class="card-title">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px; vertical-align:middle;">sell</span>
+                                            <span>Promotional Coupons & Discounts</span>
+                                        </h3>
+                                        <p class="card-subtitle">Issue discount codes with percentage or flat value, optional cap, minimum spend, expiry date and usage limit. An issued coupon is redeemable immediately on the booking screen.</p>
+                                    </div>
+                                    <div style="display:flex; gap:8px; align-items:center;">
+                                        <span class="admin-badge badge-primary" style="font-size:11px; padding:4px 8px;" id="admin-coupon-total-pill">0 Total</span>
+                                        <span class="admin-badge badge-success" style="font-size:11px; padding:4px 8px;" id="admin-coupon-redeemable-pill">0 Redeemable</span>
+                                        <button type="button" class="btn btn-sm btn-primary" onclick="openCouponModal()">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">add</span>
+                                            <span>Issue Coupon</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="admin-bookings-toolbar" style="padding:10px 16px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                                    <div class="admin-search-box" style="flex:1; max-width:320px;">
+                                        <span class="material-symbols-outlined">search</span>
+                                        <input type="text" id="admin-coupon-search" placeholder="Search coupon code..." oninput="loadAdminCoupons()">
+                                    </div>
+                                    <div class="admin-toolbar-filters">
+                                        <div class="admin-filter-item">
+                                            <label>Status:</label>
+                                            <select id="admin-coupon-status" onchange="loadAdminCoupons()">
+                                                <option value="all">All Statuses</option>
+                                                <option value="active">Active Only</option>
+                                                <option value="inactive">Inactive</option>
+                                            </select>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-outline" onclick="loadAdminCoupons()">
+                                            <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
+                                            <span>Refresh</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="table-responsive">
+                                    <table class="admin-table-compact" id="admin-coupons-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Coupon Code</th>
+                                                <th>Discount</th>
+                                                <th>Minimum Spend</th>
+                                                <th>Expires</th>
+                                                <th>Usage</th>
+                                                <th>Status</th>
+                                                <th style="text-align:right;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="admin-coupons-tbody">
+                                            <tr><td colspan="7" style="text-align:center; padding:20px; color:#64748b;">Open this section to load coupons…</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- MODAL: ISSUE / EDIT COUPON -->
+                        <div class="modal-overlay" id="admin-coupon-modal">
+                            <div class="modal-dialog" style="max-width:540px;">
+                                <div class="modal-header">
+                                    <h3 class="modal-title" id="admin-coupon-modal-title">Issue New Coupon</h3>
+                                    <button type="button" class="modal-close-btn" onclick="closeModal('admin-coupon-modal')">×</button>
+                                </div>
+                                <div class="modal-body">
+                                    <form id="admin-coupon-form" onsubmit="saveCoupon(event)">
+                                        <input type="hidden" id="admin-coupon-id" value="">
+
+                                        <div class="form-group" style="margin-bottom:10px;">
+                                            <label class="form-label" for="admin-coupon-code">Coupon Code *</label>
+                                            <input type="text" id="admin-coupon-code" class="form-control" placeholder="e.g. MONSOON20" style="text-transform:uppercase; font-family:monospace; font-weight:700;" required>
+                                            <span style="font-size:11px; color:#64748b;">Letters, digits, hyphen and underscore only. Stored in uppercase.</span>
+                                        </div>
+
+                                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                            <div class="form-group" style="margin-bottom:10px;">
+                                                <label class="form-label" for="admin-coupon-type">Discount Type *</label>
+                                                <select id="admin-coupon-type" class="form-control" onchange="syncCouponTypeUi()">
+                                                    <option value="percentage">Percentage (%)</option>
+                                                    <option value="flat">Flat amount (₹)</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:10px;">
+                                                <label class="form-label" for="admin-coupon-value">Value *</label>
+                                                <input type="number" step="0.01" min="0.01" id="admin-coupon-value" class="form-control" placeholder="15" required>
+                                            </div>
+                                        </div>
+
+                                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                            <div class="form-group" style="margin-bottom:10px;">
+                                                <label class="form-label" for="admin-coupon-max-discount">Max Discount (₹)</label>
+                                                <input type="number" step="0.01" min="0" id="admin-coupon-max-discount" class="form-control" placeholder="Optional cap">
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:10px;">
+                                                <label class="form-label" for="admin-coupon-min-spend">Minimum Spend (₹)</label>
+                                                <input type="number" step="0.01" min="0" id="admin-coupon-min-spend" class="form-control" value="0">
+                                            </div>
+                                        </div>
+
+                                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                            <div class="form-group" style="margin-bottom:10px;">
+                                                <label class="form-label" for="admin-coupon-expires-at">Expires At</label>
+                                                <input type="datetime-local" id="admin-coupon-expires-at" class="form-control">
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:10px;">
+                                                <label class="form-label" for="admin-coupon-usage-limit">Usage Limit</label>
+                                                <input type="number" min="1" id="admin-coupon-usage-limit" class="form-control" placeholder="Unlimited">
+                                            </div>
+                                        </div>
+
+                                        <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#334155; margin:4px 0 16px;">
+                                            <input type="checkbox" id="admin-coupon-active" checked>
+                                            <span>Active — redeemable immediately at booking</span>
+                                        </label>
+
+                                        <div style="display:flex; gap:8px; justify-content:flex-end;">
+                                            <button type="button" class="btn btn-outline" onclick="closeModal('admin-coupon-modal')">Cancel</button>
+                                            <button type="submit" class="btn btn-primary" id="admin-coupon-submit-btn">Save Coupon</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <script>
+                        (function () {
+                            function esc(value) {
+                                return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+                                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+                                });
+                            }
+
+                            function money(amount) {
+                                return '₹' + Number(amount || 0).toLocaleString('en-IN');
+                            }
+
+                            function adminHeaders(extra) {
+                                var base = { 'Accept': 'application/json' };
+                                if (typeof getAdminCsrfToken === 'function') {
+                                    base['X-CSRF-TOKEN'] = getAdminCsrfToken();
+                                }
+                                return Object.assign(base, extra || {});
+                            }
+
+                            window.loadAdminCoupons = async function () {
+                                var tbody = document.getElementById('admin-coupons-tbody');
+                                if (!tbody) { return; }
+
+                                var search = (document.getElementById('admin-coupon-search') || {}).value || '';
+                                var status = (document.getElementById('admin-coupon-status') || {}).value || 'all';
+                                var qs = new URLSearchParams({ search: search.trim(), status: status });
+
+                                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:#64748b;">Loading coupons…</td></tr>';
+
+                                try {
+                                    var res = await fetch('/api/admin/coupons?' + qs.toString(), { headers: adminHeaders() });
+                                    var data = await res.json();
+                                    if (!res.ok || !data.success) { throw new Error(data.message || 'Failed to load coupons.'); }
+                                    renderCoupons(data.coupons || [], data.meta || {});
+                                } catch (err) {
+                                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:#b91c1c;">' + esc(err.message) + '</td></tr>';
+                                }
+                            };
+
+                            function renderCoupons(coupons, meta) {
+                                var tbody = document.getElementById('admin-coupons-tbody');
+                                var totalPill = document.getElementById('admin-coupon-total-pill');
+                                var redeemPill = document.getElementById('admin-coupon-redeemable-pill');
+                                var navBadge = document.getElementById('admin-badge-coupons-count');
+
+                                if (totalPill) { totalPill.textContent = (meta.total || coupons.length) + ' Total'; }
+                                if (redeemPill) { redeemPill.textContent = (meta.redeemable || 0) + ' Redeemable'; }
+                                if (navBadge) { navBadge.textContent = (meta.redeemable || 0) + ' Live'; }
+
+                                if (!coupons.length) {
+                                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;">No coupons issued yet. Use “Issue Coupon” to create one.</td></tr>';
+                                    return;
+                                }
+
+                                tbody.innerHTML = coupons.map(function (c) {
+                                    var discount = c.type === 'percentage'
+                                        ? Number(c.value) + '%' + (c.max_discount ? ' up to ' + money(c.max_discount) : '')
+                                        : money(c.value);
+
+                                    var usage = c.usage_limit
+                                        ? (c.used_count || 0) + ' / ' + c.usage_limit
+                                        : (c.used_count || 0) + ' / ∞';
+
+                                    var statusPill = c.is_active
+                                        ? '<span class="admin-badge badge-success" style="font-size:10.5px;">Active</span>'
+                                        : '<span class="admin-badge badge-secondary" style="font-size:10.5px;">Inactive</span>';
+
+                                    var reason = '';
+                                    if (c.is_active && !c.redeemable) {
+                                        reason = '<div style="font-size:10px; color:#b45309; font-weight:600; margin-top:2px;">not redeemable now</div>';
+                                    }
+
+                                    return '<tr id="admin-coupon-row-' + c.id + '">' +
+                                        '<td><span style="font-family:monospace; font-weight:700; color:var(--primary); font-size:12.5px;">' + esc(c.code) + '</span></td>' +
+                                        '<td><strong style="color:#0f172a; font-size:12.5px;">' + esc(discount) + '</strong><div style="font-size:10.5px; color:#64748b;">' + esc(c.type_label) + '</div></td>' +
+                                        '<td><span style="font-size:12px; color:#334155; font-weight:600;">' + money(c.min_spend) + '</span></td>' +
+                                        '<td><span style="font-size:11.5px; color:#475569;">' + (c.expires_at_display ? esc(c.expires_at_display) : '<span style="color:#94a3b8;">Never</span>') + '</span></td>' +
+                                        '<td><span style="font-size:11.5px; color:#475569; font-weight:600;">' + esc(usage) + '</span></td>' +
+                                        '<td>' + statusPill + reason + '</td>' +
+                                        '<td style="text-align:right; white-space:nowrap;">' +
+                                            '<button type="button" class="btn btn-xs btn-outline" onclick="openCouponModal(' + c.id + ')" title="Edit"><span class="material-symbols-outlined" style="font-size:15px;">edit</span></button> ' +
+                                            '<button type="button" class="btn btn-xs btn-outline" onclick="toggleCouponStatus(' + c.id + ')" title="Toggle active"><span class="material-symbols-outlined" style="font-size:15px;">power_settings_new</span></button> ' +
+                                            '<button type="button" class="btn btn-xs btn-outline" onclick="deleteCoupon(' + c.id + ')" title="Delete" style="color:#b91c1c;"><span class="material-symbols-outlined" style="font-size:15px;">delete</span></button>' +
+                                        '</td>' +
+                                    '</tr>';
+                                }).join('');
+                            }
+
+                            window.syncCouponTypeUi = function () {
+                                var type = (document.getElementById('admin-coupon-type') || {}).value;
+                                var hint = document.getElementById('admin-coupon-value');
+                                if (hint) { hint.max = type === 'percentage' ? '100' : ''; }
+                            };
+
+                            window.openCouponModal = async function (id) {
+                                var title = document.getElementById('admin-coupon-modal-title');
+                                var idField = document.getElementById('admin-coupon-id');
+                                var codeField = document.getElementById('admin-coupon-code');
+
+                                document.getElementById('admin-coupon-form').reset();
+                                idField.value = '';
+                                document.getElementById('admin-coupon-active').checked = true;
+                                if (title) { title.textContent = 'Issue New Coupon'; }
+
+                                if (id) {
+                                    try {
+                                        var res = await fetch('/api/admin/coupons/' + id, { headers: adminHeaders() });
+                                        var data = await res.json();
+                                        if (!res.ok || !data.success) { throw new Error(data.message || 'Coupon not found.'); }
+                                        var c = data.coupon;
+
+                                        idField.value = c.id;
+                                        codeField.value = c.code || '';
+                                        document.getElementById('admin-coupon-type').value = c.type || 'percentage';
+                                        document.getElementById('admin-coupon-value').value = c.value;
+                                        document.getElementById('admin-coupon-max-discount').value = c.max_discount || '';
+                                        document.getElementById('admin-coupon-min-spend').value = c.min_spend || 0;
+                                        document.getElementById('admin-coupon-usage-limit').value = c.usage_limit || '';
+                                        document.getElementById('admin-coupon-active').checked = Boolean(c.is_active);
+
+                                        if (c.expires_at) {
+                                            document.getElementById('admin-coupon-expires-at').value = String(c.expires_at).slice(0, 16);
+                                        }
+
+                                        if (title) { title.textContent = 'Edit Coupon — ' + c.code; }
+                                    } catch (err) {
+                                        showToast(err.message, 'warning');
+                                        return;
+                                    }
+                                }
+
+                                syncCouponTypeUi();
+                                var modal = document.getElementById('admin-coupon-modal');
+                                if (modal) { modal.classList.add('active'); }
+                            };
+
+                            window.saveCoupon = async function (event) {
+                                event.preventDefault();
+
+                                var id = document.getElementById('admin-coupon-id').value;
+                                var expiresVal = document.getElementById('admin-coupon-expires-at').value;
+                                var usageVal = document.getElementById('admin-coupon-usage-limit').value;
+                                var maxDiscountVal = document.getElementById('admin-coupon-max-discount').value;
+
+                                var payload = {
+                                    code: document.getElementById('admin-coupon-code').value.trim(),
+                                    type: document.getElementById('admin-coupon-type').value,
+                                    value: document.getElementById('admin-coupon-value').value,
+                                    max_discount: maxDiscountVal === '' ? null : maxDiscountVal,
+                                    min_spend: document.getElementById('admin-coupon-min-spend').value || 0,
+                                    expires_at: expiresVal === '' ? null : expiresVal.replace('T', ' ') + ':00',
+                                    usage_limit: usageVal === '' ? null : usageVal,
+                                    is_active: document.getElementById('admin-coupon-active').checked
+                                };
+
+                                var url = id ? '/api/admin/coupons/' + id : '/api/admin/coupons';
+                                var btn = document.getElementById('admin-coupon-submit-btn');
+                                if (btn) { btn.disabled = true; }
+
+                                try {
+                                    var res = await fetch(url, {
+                                        method: id ? 'PUT' : 'POST',
+                                        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+                                        body: JSON.stringify(payload)
+                                    });
+                                    var data = await res.json();
+
+                                    if (res.ok && data.success) {
+                                        showToast(data.message, 'success');
+                                        closeModal('admin-coupon-modal');
+                                        loadAdminCoupons();
+                                    } else if (res.status === 422 && data.errors) {
+                                        var first = Object.keys(data.errors)[0];
+                                        showToast(data.errors[first][0], 'warning');
+                                    } else {
+                                        showToast(data.message || 'Could not save coupon.', 'warning');
+                                    }
+                                } catch (err) {
+                                    showToast('Network error while saving coupon.', 'warning');
+                                } finally {
+                                    if (btn) { btn.disabled = false; }
+                                }
+                            };
+
+                            window.toggleCouponStatus = async function (id) {
+                                try {
+                                    var res = await fetch('/api/admin/coupons/' + id + '/toggle', {
+                                        method: 'POST',
+                                        headers: adminHeaders()
+                                    });
+                                    var data = await res.json();
+                                    if (res.ok && data.success) {
+                                        showToast(data.message, 'success');
+                                        loadAdminCoupons();
+                                    } else {
+                                        showToast(data.message || 'Could not update coupon.', 'warning');
+                                    }
+                                } catch (err) {
+                                    showToast('Network error while updating coupon.', 'warning');
+                                }
+                            };
+
+                            window.deleteCoupon = async function (id) {
+                                if (!window.confirm('Delete this coupon? Existing bookings keep their discount.')) { return; }
+                                try {
+                                    var res = await fetch('/api/admin/coupons/' + id, {
+                                        method: 'DELETE',
+                                        headers: adminHeaders()
+                                    });
+                                    var data = await res.json();
+                                    if (res.ok && data.success) {
+                                        showToast(data.message, 'success');
+                                        loadAdminCoupons();
+                                    } else {
+                                        showToast(data.message || 'Could not delete coupon.', 'warning');
+                                    }
+                                } catch (err) {
+                                    showToast('Network error while deleting coupon.', 'warning');
+                                }
+                            };
+                        })();
+                        </script>
+
                         <div class="admin-section" id="admin-sec-fleet">
                             <div class="card">
                                 <div class="card-header">
@@ -3051,7 +3564,8 @@
                                     </div>
                                 </div>
 
-                                <div class="card">
+                                @if(config('demo.enabled'))
+                                <div class="card demo-only">
                                     <div class="card-header">
                                         <div>
                                             <h3 class="card-title">
@@ -3074,6 +3588,7 @@
                                         </button>
                                     </div>
                                 </div>
+                                @endif
                             </div>
 
                             <!-- Platform Feature & Booking Module Controls -->
@@ -3747,6 +4262,7 @@
                                                 <th>Plate Number</th>
                                                 <th>Category</th>
                                                 <th>Capacity</th>
+                                                <th>Car Features</th>
                                                 <th>RC Number</th>
                                                 <th>Approval Status</th>
                                                 <th style="text-align:right;">Actions</th>
@@ -3773,6 +4289,21 @@
                                                     <div>{{ $veh->seating_capacity }} Seats</div>
                                                     @if($veh->berth_capacity > 0)
                                                         <div style="font-size:10.5px; color:#16a34a; font-weight:700;">{{ $veh->berth_capacity }} Berths Fitted</div>
+                                                    @endif
+                                                </td>
+                                                <td>
+                                                    @php $vehFeatures = $veh->featureLabels(); @endphp
+                                                    @if(count($vehFeatures) > 0)
+                                                        <div style="display:flex; flex-wrap:wrap; gap:3px; max-width:190px;">
+                                                            @foreach(array_slice($vehFeatures, 0, 3) as $feature)
+                                                                <span class="admin-badge badge-secondary" style="font-size:9.5px; padding:2px 5px; white-space:nowrap;">{{ $feature }}</span>
+                                                            @endforeach
+                                                            @if(count($vehFeatures) > 3)
+                                                                <span class="admin-badge badge-secondary" style="font-size:9.5px; padding:2px 5px;" title="{{ implode(', ', array_slice($vehFeatures, 3)) }}">+{{ count($vehFeatures) - 3 }}</span>
+                                                            @endif
+                                                        </div>
+                                                    @else
+                                                        <span style="font-size:10.5px; color:#94a3b8;">Not listed</span>
                                                     @endif
                                                 </td>
                                                 <td style="font-family:monospace; font-size:11px;" id="admin-veh-rc-{{ $veh->id }}">{{ $veh->rc_number ?: 'Pending Upload' }}</td>
@@ -3807,7 +4338,7 @@
                                                 </td>
                                             </tr>
                                             @empty
-                                            <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">No driver vehicles listed yet.</td></tr>
+                                            <tr><td colspan="9" style="text-align:center; padding:20px; color:#94a3b8;">No driver vehicles listed yet.</td></tr>
                                             @endforelse
                                         </tbody>
                                     </table>
@@ -3833,12 +4364,10 @@
                     <span>Schedules</span>
                 </button>
                 @endif
-                @auth
-                    <button type="button" class="mobile-dock-btn {{ $defaultTab === 'my-bookings' ? 'active' : '' }}" data-target="my-bookings">
-                        <span class="material-symbols-outlined">confirmation_number</span>
-                        <span>My Trips</span>
-                    </button>
-                @endauth
+                <button type="button" class="mobile-dock-btn {{ $defaultTab === 'my-bookings' ? 'active' : '' }}" data-target="my-bookings">
+                    <span class="material-symbols-outlined">confirmation_number</span>
+                    <span>My Trips</span>
+                </button>
             @elseif($userRole === 'driver')
                 <button type="button" class="mobile-dock-btn {{ $defaultTab === 'bidding' ? 'active' : '' }}" data-target="bidding">
                     <span class="material-symbols-outlined">local_offer</span>
@@ -5498,6 +6027,18 @@
                     <input type="text" id="admin-veh-rc" class="form-control" placeholder="e.g. RC-MH12-984129">
                 </div>
 
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label">Car Features / Amenities</label>
+                    <div id="admin-veh-features" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(165px, 1fr)); gap:4px 10px; border:1px solid #e2e8f0; border-radius:6px; padding:8px 10px; max-height:130px; overflow:auto; background:#f8fafc;">
+                        @foreach(\App\Models\DriverVehicle::FEATURES as $feature)
+                            <label style="display:flex; align-items:center; gap:5px; font-size:11.5px; color:#334155; cursor:pointer;">
+                                <input type="checkbox" name="admin-veh-feature" value="{{ $feature }}">
+                                <span>{{ $feature }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                </div>
+
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
                     <div class="form-group">
                         <label class="form-label" for="admin-veh-status">Admin Approval Status *</label>
@@ -5610,6 +6151,18 @@
                 <div class="form-group" style="margin-bottom:14px;">
                     <label class="form-label" for="driver-new-veh-rc">Registration Certificate (RC Number) *</label>
                     <input type="text" id="driver-new-veh-rc" class="form-control" placeholder="e.g. RC-MH12-123456" required>
+                </div>
+
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label class="form-label">Car Features / Amenities</label>
+                    <div id="driver-new-veh-features" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(165px, 1fr)); gap:4px 10px; border:1px solid #e2e8f0; border-radius:6px; padding:8px 10px; max-height:130px; overflow:auto; background:#f8fafc;">
+                        @foreach(\App\Models\DriverVehicle::FEATURES as $feature)
+                            <label style="display:flex; align-items:center; gap:5px; font-size:11.5px; color:#334155; cursor:pointer;">
+                                <input type="checkbox" name="driver-new-veh-feature" value="{{ $feature }}">
+                                <span>{{ $feature }}</span>
+                            </label>
+                        @endforeach
+                    </div>
                 </div>
 
                 <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--outline); padding-top:12px;">

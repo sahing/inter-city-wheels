@@ -340,7 +340,7 @@ const FLEET_TYPES = {
     ratePerKm: 11.0,
     badge: 'Budget Value',
     extraKm: 11,
-    image: 'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&w=400&q=80'
+    image: 'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&w=640&q=80'
   },
   sedan: {
     category: 'sedan',
@@ -351,7 +351,7 @@ const FLEET_TYPES = {
     ratePerKm: 13.0,
     badge: 'Most Popular',
     extraKm: 13,
-    image: 'https://images.unsplash.com/photo-1550355291-bbee04a92027?auto=format&fit=crop&w=400&q=80'
+    image: 'https://images.unsplash.com/photo-1550355291-bbee04a92027?auto=format&fit=crop&w=640&q=80'
   },
   prime: {
     category: 'prime',
@@ -362,7 +362,7 @@ const FLEET_TYPES = {
     ratePerKm: 15.0,
     badge: 'Executive Comfort',
     extraKm: 15,
-    image: 'https://images.unsplash.com/photo-1590362891988-f77804702088?auto=format&fit=crop&w=400&q=80'
+    image: 'https://images.unsplash.com/photo-1590362891988-f77804702088?auto=format&fit=crop&w=640&q=80'
   },
   suv: {
     category: 'suv',
@@ -373,7 +373,7 @@ const FLEET_TYPES = {
     ratePerKm: 17.5,
     badge: 'Family Favorite',
     extraKm: 17,
-    image: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=400&q=80'
+    image: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=640&q=80'
   },
   innova: {
     category: 'innova',
@@ -384,7 +384,7 @@ const FLEET_TYPES = {
     ratePerKm: 21.0,
     badge: 'Highway Champion',
     extraKm: 21,
-    image: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=400&q=80'
+    image: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=640&q=80'
   },
   tempo: {
     category: 'tempo',
@@ -395,7 +395,7 @@ const FLEET_TYPES = {
     ratePerKm: 26.0,
     badge: 'Group Travel',
     extraKm: 26,
-    image: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=400&q=80'
+    image: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=640&q=80'
   },
   luxury: {
     category: 'luxury',
@@ -406,7 +406,7 @@ const FLEET_TYPES = {
     ratePerKm: 38.0,
     badge: 'VIP Experience',
     extraKm: 38,
-    image: 'https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&fit=crop&w=400&q=80'
+    image: 'https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&fit=crop&w=640&q=80'
   }
 };
 
@@ -505,7 +505,7 @@ function switchTab(tabId) {
       tabId = 'driver-trips';
     }
   } else if (!userRole) {
-    const guestTabs = isSchedulesEnabled ? ['cabs', 'schedules'] : ['cabs'];
+    const guestTabs = isSchedulesEnabled ? ['cabs', 'schedules', 'my-bookings'] : ['cabs', 'my-bookings'];
     if (!guestTabs.includes(tabId)) {
       tabId = 'cabs';
     }
@@ -766,13 +766,23 @@ window.openCityPicker = function (inputId) {
 
 window.handleCityPickerInput = function (inputId, val) {
   currentPickerInputId = inputId;
+
+  // Typing invalidates coordinates captured from an earlier suggestion, so a
+  // stale pair can never price a different city.
+  const typedInput = document.getElementById(inputId);
+  if (typedInput) {
+    delete typedInput.dataset.lat;
+    delete typedInput.dataset.lng;
+  }
+
   renderCityPickerDropdown(inputId, val);
 
-  // Debounced server search to retrieve both registered locations and desired regional destinations
+  // Debounced server search: long enough that the geocoder is asked once per
+  // pause rather than once per keystroke.
   clearTimeout(citySearchDebounceTimer);
   citySearchDebounceTimer = setTimeout(() => {
     fetchLocationsFromServer(inputId, val);
-  }, 120);
+  }, 400);
 };
 
 function fetchLocationsFromServer(inputId, val) {
@@ -827,14 +837,21 @@ function renderCityPickerDropdownItems(inputId, filterText = '', serverLocations
     html += uniqueList.map(l => {
       const safeName = (l.name || '').replace(/'/g, "\\'");
       const safeState = (l.state || '').replace(/'/g, "\\'");
-      const lat = l.latitude || 22.5726;
-      const lng = l.longitude || 88.3639;
+      const numericLat = Number(l.latitude);
+      const numericLng = Number(l.longitude);
+      const hasCoords = l.latitude !== null && l.latitude !== undefined &&
+        l.longitude !== null && l.longitude !== undefined &&
+        Number.isFinite(numericLat) && Number.isFinite(numericLng);
 
       let badgeHtml = '';
-      if (l.airport_code) {
+      if (l.needs_geocode) {
+        badgeHtml = `<span class="city-picker-item-badge" style="background:#fee2e2; color:#b91c1c; font-size:10px;">No coordinates</span>`;
+      } else if (l.airport_code) {
         badgeHtml = `<span class="city-picker-item-badge" style="background:#e0f2fe; color:#0284c7;">${l.airport_code}</span>`;
       } else if (l.is_registered || l.badge === 'Registered Hub') {
         badgeHtml = `<span class="city-picker-item-badge" style="background:#dcfce7; color:#15803d; font-size:10px;">Registered Hub</span>`;
+      } else if (l.badge === 'OpenStreetMap') {
+        badgeHtml = `<span class="city-picker-item-badge" style="background:#e0f2fe; color:#0369a1; font-size:10px;">OpenStreetMap</span>`;
       } else if (l.is_custom || l.badge === 'Desired Location') {
         badgeHtml = `<span class="city-picker-item-badge" style="background:#fef3c7; color:#b45309; font-size:10px;">Desired Location</span>`;
       } else {
@@ -844,7 +861,9 @@ function renderCityPickerDropdownItems(inputId, filterText = '', serverLocations
       const icon = l.airport_code ? 'flight' : (l.is_custom ? 'pin_drop' : 'location_city');
 
       return `
-        <div class="city-picker-item" onmousedown="event.preventDefault(); selectCityFromPicker('${inputId}', '${safeName}', '${safeState}', ${lat}, ${lng})">
+        <div class="city-picker-item" ${hasCoords
+          ? `onmousedown="event.preventDefault(); selectCityFromPicker('${inputId}', '${safeName}', '${safeState}', ${numericLat}, ${numericLng})"`
+          : 'style="opacity:.55; cursor:not-allowed;" title="No coordinates for this place — type a nearby town or city"'}>
           <div class="city-picker-item-main">
             <span class="material-symbols-outlined" style="font-size:16px; color:${l.is_custom ? '#f59e0b' : '#64748b'};">${icon}</span>
             <div>
@@ -858,22 +877,9 @@ function renderCityPickerDropdownItems(inputId, filterText = '', serverLocations
     }).join('');
   }
 
-  // If user typed custom text that is not exact match, add explicit "Use desired location" option
-  if (cleanFilter.length >= 2 && !seen.has(cleanFilter)) {
-    const safeCustom = (filterText || '').replace(/'/g, "\\'").trim();
-    html += `
-      <div class="city-picker-item" style="border-top:1px dashed #cbd5e1; background:#f8fafc; margin-top:4px;" onmousedown="event.preventDefault(); selectCityFromPicker('${inputId}', '${safeCustom}', 'Desired Regional Location', 22.5726, 88.3639)">
-        <div class="city-picker-item-main">
-          <span class="material-symbols-outlined" style="font-size:16px; color:#f59e0b;">add_location_alt</span>
-          <div>
-            <span class="city-picker-item-name">Select "${safeCustom}"</span>
-            <span class="city-picker-item-state">(Use this desired regional location)</span>
-          </div>
-        </div>
-        <span class="city-picker-item-badge" style="background:#fef3c7; color:#b45309; font-size:10px;">Desired Location</span>
-      </div>
-    `;
-  }
+  // The server already returns the typed text as a "custom" entry, with real
+  // coordinates when it can ground the name. A client-side extra pinned to a
+  // default city would price an unknown place as that city, so it is gone.
 
   if (!html) {
     html = `<div style="padding:10px 12px; font-size:12px; color:#94a3b8; text-align:center;">No locations found for "${filterText}"</div>`;
@@ -887,18 +893,34 @@ window.selectCityFromPicker = function (inputId, cityName, stateName, lat, lng) 
   const input = document.getElementById(inputId);
   if (!input) return;
 
+  const numericLat = Number(lat);
+  const numericLng = Number(lng);
+  const hasCoords = Number.isFinite(numericLat) && Number.isFinite(numericLng) &&
+    Math.abs(numericLat) <= 90 && Math.abs(numericLng) <= 180 &&
+    !(numericLat === 0 && numericLng === 0);
+
   const formatted = stateName && !stateName.includes('Desired') ? `${cityName}, ${stateName}` : cityName;
   input.value = formatted;
+
+  // Remember the exact coordinates of the suggestion so the quote can be
+  // priced from them instead of re-geocoding the name. Any typing clears them.
+  if (hasCoords) {
+    input.dataset.lat = String(numericLat);
+    input.dataset.lng = String(numericLng);
+  } else {
+    delete input.dataset.lat;
+    delete input.dataset.lng;
+  }
 
   // Cache coordinates in client CITY_DATABASE
   const cleanKey = cityName.toLowerCase().trim();
   const slugKey = cityName.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (lat && lng) {
+  if (hasCoords) {
     const entry = {
       name: cityName,
       state: stateName || '',
-      lat: parseFloat(lat),
-      lng: parseFloat(lng)
+      lat: numericLat,
+      lng: numericLng
     };
     CITY_DATABASE[cleanKey] = entry;
     CITY_DATABASE[slugKey] = entry;
@@ -1195,6 +1217,14 @@ function updateRentalRouteStats() {
 // charge (base, tolls, add-ons, coupon) and renders those numbers. If the
 // server cannot measure the route it says so, and no fare is shown.
 // ------------------------------------------------------------------
+function readInputCoords(el) {
+  if (!el) return null;
+  const lat = parseFloat(el.dataset.lat);
+  const lng = parseFloat(el.dataset.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+}
+
 function cabQuoteParams() {
   const tripType = state.cab.tripType || 'oneway';
   const params = new URLSearchParams();
@@ -1226,6 +1256,23 @@ function cabQuoteParams() {
   params.set('from', from);
   params.set('to', to);
   params.set('trip_type', tripType);
+
+  // When both ends came from a suggestion we know their exact coordinates, so
+  // the server can price the real route without geocoding the names again.
+  if (tripType === 'oneway' || tripType === 'roundtrip') {
+    const fromEl = document.getElementById(tripType === 'roundtrip' ? 'rental-rt-from' : 'rental-from-city');
+    const toEl = document.getElementById(tripType === 'roundtrip' ? 'rental-rt-to' : 'rental-to-city');
+    const fromCoords = readInputCoords(fromEl);
+    const toCoords = readInputCoords(toEl);
+
+    if (fromCoords && toCoords) {
+      params.set('from_lat', fromCoords.lat);
+      params.set('from_lng', fromCoords.lng);
+      params.set('to_lat', toCoords.lat);
+      params.set('to_lng', toCoords.lng);
+    }
+  }
+
   params.set('fleet', state.cab.selectedFleet || 'suv');
   params.set('include_tolls', state.cab.includeTolls ? '1' : '0');
   if (state.cab.petFriendly) params.set('pet_friendly', '1');
@@ -1409,36 +1456,34 @@ window.renderRentalVehicles = function (filterCat = 'all', sortBy = 'recommended
 
   // Render Cards HTML
   grid.innerHTML = fleets.map(f => `
-      <div class="rental-vehicle-card">
-        <div class="rental-vehicle-img-wrap">
-          <img src="${f.image}" alt="${f.name}" class="rental-vehicle-img" loading="lazy">
+      <article class="rental-vehicle-card">
+        <div class="rental-vehicle-media">
+          <img src="${f.image}" alt="${f.name}" class="rental-vehicle-img" loading="lazy" decoding="async">
+          <span class="rental-category-badge rental-category-badge--overlay">${f.badge}</span>
         </div>
-        <div class="rental-vehicle-info">
+        <div class="rental-vehicle-body">
           <div class="rental-vehicle-head">
-            <span class="rental-vehicle-name">${f.name}</span>
-            <span class="rental-category-badge">${f.badge}</span>
+            <h3 class="rental-vehicle-name">${f.name}</h3>
           </div>
-          <div class="rental-vehicle-models">${f.models} or similar</div>
+          <p class="rental-vehicle-models">${f.models} or similar</p>
           <div class="rental-spec-chips">
             <span class="rental-spec-chip"><span class="material-symbols-outlined" style="font-size:14px;">group</span> ${f.seats}</span>
             <span class="rental-spec-chip"><span class="material-symbols-outlined" style="font-size:14px;">luggage</span> ${f.luggage}</span>
-            <span class="rental-spec-chip"><span class="material-symbols-outlined" style="font-size:14px;">ac_unit</span> AC Sanitized</span>
-            <span class="rental-spec-chip"><span class="material-symbols-outlined" style="font-size:14px;">person</span> Chauffeur Included</span>
+            <span class="rental-spec-chip"><span class="material-symbols-outlined" style="font-size:14px;">ac_unit</span> AC</span>
           </div>
           <div class="rental-policy-strip">
-            <span>✓ Fastag Tolls & Taxes Included</span>
-            <span>✓ ₹${f.extraKm}/km after ${dist} km</span>
-            <span>✓ Free Cancellation upto 1 hr prior</span>
+            <span>✓ Tolls &amp; taxes included</span>
+            <span>✓ Free cancellation</span>
           </div>
         </div>
-        <div class="rental-vehicle-pricing">
-          <div class="rental-fare-total">₹${f.totalFare.toLocaleString('en-IN')}</div>
-          <div class="rental-fare-sub">up to ${dist} km • all inclusive</div>
-          <button type="button" class="btn-book-vehicle" onclick="selectRentalVehicle('${f.key}')">
-            <span>BOOK NOW</span>
-          </button>
+        <div class="rental-vehicle-footer">
+          <div class="rental-fare-block">
+            <div class="rental-fare-total">₹${f.totalFare.toLocaleString('en-IN')}</div>
+            <div class="rental-fare-sub">up to ${dist} km • ₹${f.extraKm}/km after</div>
+          </div>
+          <button type="button" class="btn-book-vehicle" onclick="selectRentalVehicle('${f.key}')">Book now</button>
         </div>
-      </div>
+      </article>
     `).join('');
 };
 
@@ -1851,6 +1896,14 @@ async function handleConfirmCabBooking() {
   });
 
   const data = await res.json();
+
+  // Confirming a booking requires a signed-in account. Guests are handed to
+  // the one-tap login gate, and the payload is restored after sign-in.
+  if (res.status === 401) {
+    beginBookingLoginGate(payload);
+    return;
+  }
+
   if (data.success && data.booking) {
     const b = data.booking;
     const localBooking = {
@@ -1867,7 +1920,7 @@ async function handleConfirmCabBooking() {
     };
 
     state.bookings.unshift(localBooking);
-    showToast(`🎉 Cab Booked Successfully! Reference: ${b.booking_reference} (Ride OTP: ${b.start_otp})`, 'success');
+    showToast(`🎉 Booking confirmed! Reference: ${b.booking_reference}`, 'success');
 
     // Update My Trips badge counter in header if present
     const badge = document.querySelector('.nav-tab-badge.badge-primary');
@@ -1875,8 +1928,11 @@ async function handleConfirmCabBooking() {
       badge.textContent = String(parseInt(badge.textContent || '0', 10) + 1);
     }
 
-    showTicketModal(localBooking);
+    // Requirement: after booking, land on the trip history with the new trip on
+    // top (signed-in customers), or the guest tracking panel (guests).
     goToCabStep(1);
+    switchTab('my-bookings');
+    window.showBookingInHistory(b);
   } else {
     showToast(data.message || 'Booking validation error. Please verify input.', 'danger');
   }
@@ -2667,7 +2723,8 @@ window.switchAdminSection = function (sectionId) {
     'berth-routes': 'Berth Routes & Sleeper Schedules',
     'berth-layouts': 'Vehicle Berth & Seat Customizer',
     'vehicles': 'Driver Vehicles & Fleet Approvals',
-    'system': 'System & Platform Health'
+    'system': 'System & Platform Health',
+    'coupons': 'Coupons & Promotions'
   };
   const crumbTitle = document.getElementById('admin-crumb-title');
   if (crumbTitle && titles[sectionId]) {
@@ -2677,6 +2734,11 @@ window.switchAdminSection = function (sectionId) {
   // Lazily refresh the auction board the first time it is opened.
   if (sectionId === 'bidding' && typeof window.renderAdminBiddings === 'function') {
     window.renderAdminBiddings();
+  }
+
+  // Load the coupon register the first time it is opened.
+  if (sectionId === 'coupons' && typeof window.loadAdminCoupons === 'function') {
+    window.loadAdminCoupons();
   }
 
   // 4. On mobile, automatically close sidebar after choosing item
@@ -2940,6 +3002,11 @@ window.confirmMockPayment = async function (method) {
 
       const data = await res.json();
 
+      if (res.status === 401) {
+        beginBookingLoginGate(busPayload);
+        return;
+      }
+
       if (res.ok && data.success && data.booking) {
         booked = data.booking;
       } else {
@@ -2968,9 +3035,9 @@ window.confirmMockPayment = async function (method) {
     state.bookings.unshift(booking);
     showToast(`Payment of ₹${booking.amount.toLocaleString('en-IN')} via ${method} recorded. Reference ${booking.id}.`, 'success');
 
-    setTimeout(() => {
-      showTicketModal(booking);
-    }, 400);
+    // Same destination as cab bookings: the trip history, with this trip on top.
+    switchTab('my-bookings');
+    window.showBookingInHistory(booked);
 
     return;
   }
@@ -3534,6 +3601,12 @@ window.handleFormLogin = async function (event) {
 };
 
 window.quickDemoLogin = async function (role) {
+  // Demo login does not exist in production; send the user to the real form.
+  if (!(window.INTERCITY_CONFIG && window.INTERCITY_CONFIG.demo)) {
+    openLoginModal('customer', 'signin');
+    return;
+  }
+
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
   showToast(`Authenticating as ${role.toUpperCase()}...`, 'info');
 
@@ -3563,6 +3636,100 @@ window.quickDemoLogin = async function (role) {
     window.location.replace('/?auth=' + Date.now());
   }
 };
+
+/* ======================================================== */
+/* BOOKING LOGIN GATE — sign-in required before confirming   */
+/* ======================================================== */
+const PENDING_BOOKING_KEY = 'intercityPendingBooking';
+
+window.beginBookingLoginGate = function (payload) {
+  // Persist the trip so it survives the one-tap login page reload.
+  try {
+    sessionStorage.setItem(PENDING_BOOKING_KEY, JSON.stringify(payload));
+  } catch (err) {
+    console.warn('Could not persist pending booking:', err);
+  }
+
+  const modal = document.getElementById('booking-login-gate-modal');
+  if (modal) {
+    modal.classList.add('active');
+    return;
+  }
+
+  showToast('Please sign in to confirm your booking.', 'warning');
+};
+
+window.oneTapBookingLogin = function () {
+  // One tap only exists in demo mode. In production, use the real sign-in form.
+  const demoEnabled = Boolean(window.INTERCITY_CONFIG && window.INTERCITY_CONFIG.demo);
+
+  if (demoEnabled && typeof window.quickDemoLogin === 'function') {
+    window.quickDemoLogin('customer');
+    return;
+  }
+
+  closeModal('booking-login-gate-modal');
+  openLoginModal('customer', 'signin');
+};
+
+window.resumePendingBooking = async function () {
+  let raw = null;
+  try {
+    raw = sessionStorage.getItem(PENDING_BOOKING_KEY);
+  } catch (err) {
+    return;
+  }
+
+  if (!raw) { return; }
+  if (!(window.INTERCITY_AUTH && window.INTERCITY_AUTH.authenticated)) { return; }
+
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch (err) {
+    try { sessionStorage.removeItem(PENDING_BOOKING_KEY); } catch (e) {}
+    return;
+  }
+
+  try { sessionStorage.removeItem(PENDING_BOOKING_KEY); } catch (e) {}
+
+  showToast('Finishing your booking…', 'info');
+
+  try {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const res = await fetch('/api/bookings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': csrfToken
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+
+    if (res.ok && data.success && data.booking) {
+      showToast(
+        `Booking confirmed. Reference ${data.booking.booking_reference} (Ride OTP: ${data.booking.start_otp})`,
+        'success'
+      );
+      setTimeout(function () {
+        window.location.replace('/?booked=' + encodeURIComponent(data.booking.booking_reference));
+      }, 1000);
+    } else {
+      showToast(data.message || 'Could not complete your pending booking.', 'danger');
+    }
+  } catch (err) {
+    showToast('We could not reach the booking service. Your trip details are saved.', 'danger');
+  }
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function () { window.resumePendingBooking(); });
+} else {
+  window.resumePendingBooking();
+}
 
 /* ======================================================== */
 /* ALTERNATE AUTHENTICATION: FIREBASE & CLERK               */
@@ -3852,38 +4019,170 @@ window.submitAlternateAuth = async function (payload) {
   }
 };
 
+const FIREBASE_PENDING_ROLE_KEY = 'icw_firebase_pending_role';
+
+function firebaseConfig() {
+  return window.ALTERNATE_AUTH_CONFIG?.firebase || {};
+}
+
+/** Turn a Firebase SDK error into the console step that fixes it. */
+function describeFirebaseAuthError(err) {
+  const code = (err && err.code) || '';
+
+  const known = {
+    'auth/unauthorized-domain':
+      'This domain is not authorised in the Firebase project. Open the app at http://localhost:8004 (localhost is pre-authorised), or add this host under Firebase → Authentication → Settings → Authorized domains.',
+    'auth/operation-not-allowed':
+      'Google sign-in is turned off for this Firebase project. Enable it under Authentication → Sign-in method → Google.',
+    'auth/invalid-api-key':
+      'The Firebase API key is missing or invalid. Check FIREBASE_API_KEY in .env.',
+    'auth/app-not-authorized':
+      'These Firebase keys are not authorised for this domain. Add the domain to the Firebase project.',
+    'auth/unauthorized-continue-uri':
+      'The return domain is not authorised for this Firebase project.',
+    'auth/popup-blocked':
+      'The browser blocked the sign-in window. Allow popups for this site and try again.',
+    'auth/popup-closed-by-user':
+      'The sign-in window was closed before Google finished signing you in.',
+    'auth/cancelled-popup-request':
+      'Another sign-in window is already open. Close it and try again.',
+    'auth/network-request-failed':
+      'Could not reach Google. Check the connection and try again.',
+    'auth/account-exists-with-different-credential':
+      'This email already uses a different sign-in method.',
+    'auth/internal-error':
+      'Google rejected the sign-in request. If its page mentioned redirect_uri_mismatch, the project is using an OAuth client that does not list https://<your-auth-domain>/__/auth/handler — add it in Google Cloud → Credentials, or clear the custom client in Firebase → Authentication → Google.'
+  };
+
+  if (known[code]) return known[code];
+
+  if (code === 'auth/unknown' || code === '') {
+    return 'Firebase sign-in failed. If the Google page mentioned redirect_uri_mismatch or access_denied, fix the Firebase project settings — see docs/FIREBASE.md.';
+  }
+
+  return (err && err.message) || 'Firebase sign-in failed. Please try again.';
+}
+
+/** Load the compat SDK and initialise the app once. */
+async function ensureFirebase() {
+  if (typeof firebase === 'undefined') {
+    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+    await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js');
+  }
+
+  const cfg = firebaseConfig();
+
+  if (!cfg.is_configured) {
+    throw new Error('Firebase is not configured on the server.');
+  }
+
+  if (!firebase.apps.length) {
+    firebase.initializeApp(cfg);
+  }
+
+  return firebase;
+}
+
+/** Fetch the SDK while the page is idle so the popup opens inside the click. */
+function warmFirebaseSdk() {
+  const cfg = firebaseConfig();
+
+  if (!cfg.is_configured || typeof firebase !== 'undefined') return;
+
+  ensureFirebase().catch(() => {
+    // The first click retries; nothing to report before the user acts.
+  });
+}
+
+async function finishFirebaseSignIn(user, role) {
+  const idToken = await user.getIdToken();
+
+  await window.submitAlternateAuth({
+    provider: 'firebase',
+    id_token: idToken,
+    uid: user.uid,
+    email: user.email,
+    name: user.displayName || (user.email || '').split('@')[0],
+    photo_url: user.photoURL,
+    role: role
+  });
+}
+
 window.loginWithFirebaseLive = async function (role = 'customer') {
   showToast('Connecting with Google / Firebase...', 'info');
-  try {
-    if (typeof firebase === 'undefined') {
-      await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-      await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js');
-    }
 
-    const fbConfig = window.ALTERNATE_AUTH_CONFIG?.firebase || {};
-    if (!firebase.apps.length) {
-      firebase.initializeApp(fbConfig);
-    }
+  try {
+    await ensureFirebase();
 
     const provider = new firebase.auth.GoogleAuthProvider();
-    const result = await firebase.auth().signInWithPopup(provider);
-    const user = result.user;
-    const idToken = await user.getIdToken();
+    provider.setCustomParameters({ prompt: 'select_account' });
 
-    await window.submitAlternateAuth({
-      provider: 'firebase',
-      id_token: idToken,
-      uid: user.uid,
-      email: user.email,
-      name: user.displayName || user.email.split('@')[0],
-      photo_url: user.photoURL,
-      role: role
-    });
+    let result;
+
+    try {
+      result = await firebase.auth().signInWithPopup(provider);
+    } catch (popupError) {
+      // A blocked popup is recoverable: remember the role and redirect instead.
+      if (popupError && popupError.code === 'auth/popup-blocked') {
+        sessionStorage.setItem(FIREBASE_PENDING_ROLE_KEY, role);
+        showToast('Popup blocked — redirecting to Google...', 'info');
+        await firebase.auth().signInWithRedirect(provider);
+
+        return;
+      }
+
+      throw popupError;
+    }
+
+    await finishFirebaseSignIn(result.user, role);
   } catch (err) {
     console.error('Firebase live login error:', err);
-    showToast(err.message || 'Firebase sign-in was cancelled or encountered an error.', 'warning');
+    showToast(describeFirebaseAuthError(err), 'warning');
   }
 };
+
+/** Completes a sign-in that came back through signInWithRedirect. */
+async function completeFirebaseRedirect() {
+  if (!firebaseConfig().is_configured) return;
+
+  try {
+    await ensureFirebase();
+
+    const result = await firebase.auth().getRedirectResult();
+
+    if (!result || !result.user) return;
+
+    const role = sessionStorage.getItem(FIREBASE_PENDING_ROLE_KEY) || 'customer';
+    sessionStorage.removeItem(FIREBASE_PENDING_ROLE_KEY);
+
+    await finishFirebaseSignIn(result.user, role);
+  } catch (err) {
+    console.error('Firebase redirect completion failed:', err);
+    showToast(describeFirebaseAuthError(err), 'warning');
+  }
+}
+
+// Warm the SDK when the page is idle: early enough that the first click still
+// opens the popup inside the gesture, late enough not to compete with the
+// first paint. The redirect return path must also run on every page load.
+function bootstrapFirebase() {
+  warmFirebaseSdk();
+  completeFirebaseRedirect();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(bootstrapFirebase, { timeout: 3000 });
+    } else {
+      setTimeout(bootstrapFirebase, 1200);
+    }
+  });
+} else if (typeof requestIdleCallback === 'function') {
+  requestIdleCallback(bootstrapFirebase, { timeout: 3000 });
+} else {
+  bootstrapFirebase();
+}
 
 window.loginWithClerkLive = async function (role = 'customer') {
   showToast('Connecting with Clerk Auth...', 'info');
@@ -5526,7 +5825,7 @@ window.openAddCarTypeModal = function () {
   document.getElementById('admin-car-type-rate-km').value = '12.5';
   document.getElementById('admin-car-type-extra-km').value = '12.5';
   document.getElementById('admin-car-type-min-fare').value = '800';
-  document.getElementById('admin-car-type-image').value = 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80';
+  document.getElementById('admin-car-type-image').value = 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=640&q=80';
   document.getElementById('admin-car-type-order').value = '0';
   document.getElementById('admin-car-type-active').checked = true;
 
@@ -6836,6 +7135,27 @@ window.toggleCabRouteStatus = async function (id) {
     updateVehiclePendingBadgeInDOM();
   }
 
+  // Renders the amenity chips stored on a vehicle (shared by the fleet cards
+  // and the admin table row appended after a driver lists a new car).
+  window.vehicleFeatureChips = function (features, limit = 3) {
+    const list = Array.isArray(features) ? features.filter((f) => typeof f === 'string' && f.trim() !== '') : [];
+    if (!list.length) return '';
+
+    const escape = (value) => String(value).replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[ch]));
+
+    const chips = list.slice(0, limit).map((feature) =>
+      `<span class="admin-badge badge-secondary" style="font-size:9.5px; padding:2px 5px; white-space:nowrap;">${escape(feature)}</span>`
+    );
+
+    if (list.length > limit) {
+      chips.push(`<span class="admin-badge badge-secondary" style="font-size:9.5px; padding:2px 5px;">+${list.length - limit}</span>`);
+    }
+
+    return `<div style="display:flex; flex-wrap:wrap; gap:3px; margin-top:4px; max-width:200px;">${chips.join('')}</div>`;
+  };
+
   window.openDriverListVehicleModal = function () {
     const modal = document.getElementById('driver-list-vehicle-modal');
     if (modal) modal.classList.add('active');
@@ -6852,6 +7172,7 @@ window.toggleCabRouteStatus = async function (id) {
       fuel_type: document.getElementById('driver-new-veh-fuel').value,
       model_year: document.getElementById('driver-new-veh-year').value.trim(),
       rc_number: document.getElementById('driver-new-veh-rc').value.trim(),
+      features: Array.from(document.querySelectorAll('#driver-new-veh-features input[type="checkbox"]:checked')).map((cb) => cb.value),
     };
 
     try {
@@ -6888,6 +7209,7 @@ window.toggleCabRouteStatus = async function (id) {
                   <span style="font-family:monospace; font-weight:700; color:#8c5d1e;">${v.vehicle_plate}</span> &bull; 
                   <span>${v.fleet_category.toUpperCase()} (${v.seating_capacity} Seats${v.berth_capacity > 0 ? ', ' + v.berth_capacity + ' Berths' : ''})</span>
                 </div>
+                ${window.vehicleFeatureChips(v.features, 4)}
               </div>
               <div id="driver-my-veh-badge-${v.id}">
                 <span class="admin-badge badge-warning" style="font-size:10.5px; padding:4px 8px;">⏳ Pending Approval</span>
@@ -6916,6 +7238,7 @@ window.toggleCabRouteStatus = async function (id) {
                   <span>${v.seating_capacity} Seats${v.berth_capacity > 0 ? ', ' + v.berth_capacity + ' Berths' : ''}</span> &bull; 
                   <span>${v.fuel_type || 'Diesel'}</span>
                 </div>
+                ${window.vehicleFeatureChips(v.features, 4)}
               </div>
               <div>
                 <span class="admin-badge badge-warning" style="font-size:10px; padding:3px 7px;">⏳ Pending</span>
@@ -6949,6 +7272,9 @@ window.toggleCabRouteStatus = async function (id) {
               <td>
                 <div>${v.seating_capacity} Seats</div>
                 ${v.berth_capacity > 0 ? `<div style="font-size:10.5px; color:#16a34a; font-weight:700;">${v.berth_capacity} Berths Fitted</div>` : ''}
+              </td>
+              <td>
+                ${window.vehicleFeatureChips(v.features, 3) || '<span style="font-size:10.5px; color:#94a3b8;">Not listed</span>'}
               </td>
               <td style="font-family:monospace; font-size:11px;" id="admin-veh-rc-${v.id}">${v.rc_number || 'Pending Upload'}</td>
               <td id="admin-veh-status-cell-${v.id}">
@@ -7032,6 +7358,11 @@ window.toggleCabRouteStatus = async function (id) {
       document.getElementById('admin-veh-notes').value = v.admin_notes || '';
       document.getElementById('admin-veh-active').checked = Boolean(v.is_active);
 
+      const features = Array.isArray(v.features) ? v.features : [];
+      document.querySelectorAll('#admin-veh-features input[type="checkbox"]').forEach((cb) => {
+        cb.checked = features.includes(cb.value);
+      });
+
       const modal = document.getElementById('admin-vehicle-modal');
       if (modal) modal.classList.add('active');
     } catch (err) {
@@ -7054,6 +7385,7 @@ window.toggleCabRouteStatus = async function (id) {
       fuel_type: document.getElementById('admin-veh-fuel').value,
       model_year: document.getElementById('admin-veh-year').value.trim(),
       rc_number: document.getElementById('admin-veh-rc').value.trim() || null,
+      features: Array.from(document.querySelectorAll('#admin-veh-features input[type="checkbox"]:checked')).map((cb) => cb.value),
       status: document.getElementById('admin-veh-status').value,
       admin_notes: document.getElementById('admin-veh-notes').value.trim() || null,
       is_active: document.getElementById('admin-veh-active').checked,
@@ -7190,15 +7522,30 @@ window.toggleCabRouteStatus = async function (id) {
     let b = (state.bookings || []).find(item => item.id === reference || item.booking_reference === reference);
     if (!b) {
       try {
-        const res = await fetch(`/api/bookings/${reference}`);
-        const data = await res.json();
+        // Owner access works for signed-in customers; older bookings that are
+        // only linked by phone need the number that was used to book.
+        const phone = window.CURRENT_USER && window.CURRENT_USER.phone ? window.CURRENT_USER.phone : '';
+        const withPhone = phone ? `?phone=${encodeURIComponent(phone)}` : '';
+
+        let res = await fetch(`/api/bookings/${reference}${withPhone}`);
+        let data = await res.json();
+
+        if ((!res.ok || !data.success) && phone) {
+          res = await fetch(`/api/bookings/${reference}`);
+          data = await res.json();
+        }
+
         if (data && data.success && data.booking) {
           const dbBooking = data.booking;
           b = {
             id: dbBooking.booking_reference,
-            route: `${dbBooking.pickup_city || ''} → ${dbBooking.drop_city || ''}`,
-            operator: dbBooking.driver ? `${dbBooking.driver.name} (${dbBooking.driver.vehicle_model || 'Cab'})` : (dbBooking.service_type === 'berth' ? 'Intercity Sleeper Bus' : 'Intercity Verified Cab'),
-            berths: (dbBooking.seat_numbers && Array.isArray(dbBooking.seat_numbers) && dbBooking.seat_numbers.length) ? dbBooking.seat_numbers : [dbBooking.fleet_category ? dbBooking.fleet_category.toUpperCase() : 'Cab'],
+            route: dbBooking.route_summary || '',
+            operator: dbBooking.driver
+              ? `${dbBooking.driver.name} (${dbBooking.driver.vehicle_model || 'Cab'})`
+              : (dbBooking.service_type === 'bus' ? 'Intercity Sleeper Bus' : 'Intercity Verified Cab'),
+            berths: Array.isArray(dbBooking.selected_units) && dbBooking.selected_units.length
+              ? dbBooking.selected_units
+              : ['Private Cab'],
             amount: Number(dbBooking.total_amount || 0),
             otp: dbBooking.start_otp || '----'
           };
@@ -7850,5 +8197,288 @@ window.cancelBiddingSession = async function () {
   } catch (err) {
     console.error('cancelBiddingSession', err);
     biddingShowError('bidding-detail-error', 'Network error while cancelling the auction.');
+  }
+};
+// ==========================================
+// MY TRIPS — booking history, filters, guest tracking
+// ==========================================
+
+let activeTripFilter = 'all';
+
+function tripsEscape(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function tripsMoney(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '₹0';
+}
+
+function tripBucket(status) {
+  if (status === 'Completed') return 'completed';
+  if (status === 'Cancelled') return 'cancelled';
+  return 'active';
+}
+
+function tripStatusBadgeClass(status) {
+  return {
+    Confirmed: 'badge-success',
+    'Driver Assigned': 'badge-gold',
+    Started: 'badge-info',
+    Bidding: 'badge-info',
+    Completed: 'badge-primary',
+  }[status] || 'badge-secondary';
+}
+
+/**
+ * Recompute the filter counters from the DOM so a freshly injected booking is
+ * reflected everywhere at once.
+ */
+function refreshTripCounters() {
+  const cards = Array.from(document.querySelectorAll('#my-trips-list .customer-trip-card'));
+  const counts = { all: cards.length, active: 0, completed: 0 };
+
+  cards.forEach((card) => {
+    const bucket = card.dataset.bucket || 'active';
+    if (bucket === 'active') counts.active += 1;
+    if (bucket === 'completed') counts.completed += 1;
+  });
+
+  const setText = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = String(value);
+  };
+
+  setText('trips-count-all', counts.all);
+  setText('trips-count-active', counts.active);
+  setText('trips-count-completed', counts.completed);
+
+  const summary = document.getElementById('trips-summary');
+  if (summary) {
+    summary.textContent = counts.all === 0
+      ? 'No trips booked yet'
+      : `${counts.active} active · ${counts.completed} completed`;
+  }
+
+  return counts;
+}
+
+/**
+ * Show only the requested bucket. "All" also reveals cancelled bookings, which
+ * have no dedicated filter of their own.
+ */
+window.filterMyTrips = function (filter) {
+  activeTripFilter = filter || 'all';
+
+  document.querySelectorAll('.trip-filter-pill').forEach((pill) => {
+    const isActive = pill.dataset.filter === activeTripFilter;
+    pill.classList.toggle('active', isActive);
+    pill.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+
+  const list = document.getElementById('my-trips-list');
+  if (!list) return;
+
+  const cards = Array.from(list.querySelectorAll('.customer-trip-card'));
+  let visible = 0;
+
+  cards.forEach((card) => {
+    const bucket = card.dataset.bucket || 'active';
+    const show = activeTripFilter === 'all' || bucket === activeTripFilter;
+    card.style.display = show ? '' : 'none';
+    if (show) visible += 1;
+  });
+
+  const empty = document.getElementById('trips-empty');
+  if (empty) {
+    empty.style.display = visible === 0 ? 'block' : 'none';
+
+    if (visible === 0 && cards.length > 0) {
+      const title = document.getElementById('trips-empty-title');
+      const copy = document.getElementById('trips-empty-copy');
+      if (title) title.textContent = activeTripFilter === 'completed' ? 'No completed trips yet' : 'No active trips right now';
+      if (copy) {
+        copy.textContent = activeTripFilter === 'completed'
+          ? 'Finished rides will appear here once a trip is completed.'
+          : 'All your live bookings will appear here. Book a trip to get started.';
+      }
+    }
+  }
+
+  refreshTripCounters();
+};
+
+window.copyTripReference = async function (reference) {
+  try {
+    await navigator.clipboard.writeText(reference);
+    showToast(`Reference ${reference} copied.`, 'success');
+  } catch (err) {
+    showToast(`Reference: ${reference}`, 'info');
+  }
+};
+
+/**
+ * Render a booking as a trip card. Used for the instant post-booking redirect
+ * and for guest lookups, so the same booking looks identical everywhere.
+ */
+function buildTripCardHtml(booking) {
+  const status = booking.status || 'Requested';
+  const bucket = tripBucket(status);
+  const ref = booking.booking_reference || '';
+  const departure = booking.departure_time
+    ? new Date(booking.departure_time).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+    : 'Scheduled';
+  const driver = booking.driver;
+  const passengers = Array.isArray(booking.passengers) ? booking.passengers.length : 0;
+
+  const driverBlock = driver
+    ? `<div style="margin-top:4px; font-weight:700; color:#0f172a;">${tripsEscape(driver.name)} (★${tripsEscape(driver.rating)})</div>
+       <div style="color:#15803d; font-size:11px; margin-top:2px;">${tripsEscape(driver.vehicle_model)} • <strong>${tripsEscape(driver.vehicle_plate)}</strong></div>`
+    : `<div style="margin-top:4px; color:#d97706; font-weight:600;">${bucket === 'completed' ? 'Trip closed' : 'Allotment in progress'}</div>
+       <div style="font-size:11px; color:#64748b; margin-top:2px;">${bucket === 'completed' ? 'This trip is finished.' : 'A verified chauffeur will be allotted before pickup.'}</div>`;
+
+  const finalBlock = bucket === 'active'
+    ? `<div style="background:#fffbeb; border:1px solid #fef3c7; padding:10px 12px; border-radius:6px; text-align:center;">
+         <div style="font-weight:700; color:#92400e; font-size:10.5px; text-transform:uppercase;">Ride Start Validation OTP</div>
+         <div style="font-family:monospace; font-size:22px; font-weight:800; color:var(--primary); letter-spacing:0.1em; margin:4px 0;">${tripsEscape(booking.start_otp)}</div>
+         <div style="font-size:10px; color:#78350f;">Show this 4-digit OTP to your chauffeur before boarding.</div>
+       </div>`
+    : `<div style="background:${bucket === 'completed' ? '#f0fdf4' : '#f8fafc'}; border:1px solid ${bucket === 'completed' ? '#bbf7d0' : '#e2e8f0'}; padding:10px 12px; border-radius:6px; text-align:center;">
+         <div style="font-weight:700; color:${bucket === 'completed' ? '#166534' : '#475569'}; font-size:10.5px; text-transform:uppercase;">${bucket === 'completed' ? 'Trip completed' : 'Booking cancelled'}</div>
+         <div style="font-size:22px; margin:6px 0;">${bucket === 'completed' ? '✓' : '—'}</div>
+         <div style="font-size:10px; color:#64748b;">${bucket === 'completed' ? 'Thanks for travelling with us.' : 'No ride OTP is issued.'}</div>
+       </div>`;
+
+  return `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:12px; margin-bottom:12px;">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span style="font-family:monospace; font-weight:800; color:var(--primary); font-size:14px;">${tripsEscape(ref)}</span>
+          <span class="admin-badge ${tripStatusBadgeClass(status)}">${tripsEscape(status)}</span>
+          <span class="admin-badge ${booking.service_type === 'cab' ? 'badge-primary' : 'badge-gold'}" style="font-size:9.5px;">${tripsEscape(String(booking.service_type || '').toUpperCase())}</span>
+          <span class="trip-new-flag">Just booked</span>
+        </div>
+        <div style="font-size:16px; font-weight:800; color:#0f172a; margin-top:4px;">${tripsEscape(booking.route_summary)}</div>
+        <div style="font-size:11.5px; color:#64748b; margin-top:2px;">Departure: <strong>${tripsEscape(departure)}</strong></div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:18px; font-weight:800; color:#0f172a;">${tripsMoney(booking.total_amount)}</div>
+        <div style="font-size:10.5px; color:#16a34a; font-weight:600;">✓ Prepaid (Escrow Protected)</div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:14px; font-size:12px;">
+      <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
+        <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Pickup &amp; Drop Details</div>
+        <div style="margin-top:4px; color:#1e293b;"><strong>Pickup:</strong> ${tripsEscape(booking.pickup_location)}</div>
+        <div style="margin-top:2px; color:#1e293b;"><strong>Drop:</strong> ${tripsEscape(booking.drop_location)}</div>
+      </div>
+      <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
+        <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Chauffeur &amp; Vehicle</div>
+        ${driverBlock}
+      </div>
+      ${finalBlock}
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; border-top:1px dashed #e2e8f0; padding-top:10px; flex-wrap:wrap;">
+      <div style="font-size:11px; color:#94a3b8;">${passengers ? passengers + ' passenger(s)' : ''}</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-sm btn-outline" onclick="copyTripReference('${tripsEscape(ref)}')">
+          <span class="material-symbols-outlined" style="font-size:15px;">content_copy</span>
+          <span>Reference</span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-gold" onclick="openTicketModal('${tripsEscape(ref)}')">
+          <span class="material-symbols-outlined" style="font-size:15px;">confirmation_number</span>
+          <span>${bucket === 'active' ? 'Digital Boarding Pass' : 'View Trip Ticket'}</span>
+        </button>
+      </div>
+    </div>`;
+}
+
+/**
+ * Put a booking at the top of the history list (signed-in users) or into the
+ * guest tracking panel, then mark it so the customer sees what just happened.
+ */
+window.showBookingInHistory = function (booking) {
+  if (!booking) return;
+
+  const list = document.getElementById('my-trips-list');
+  const ref = booking.booking_reference || 'new';
+
+  if (list) {
+    const existing = document.getElementById(`trip-card-${ref}`);
+    if (existing) existing.remove();
+
+    const card = document.createElement('div');
+    card.className = 'customer-trip-card is-new';
+    card.id = `trip-card-${ref}`;
+    card.dataset.bucket = tripBucket(booking.status);
+    card.dataset.status = booking.status || 'Requested';
+    card.innerHTML = buildTripCardHtml(booking);
+
+    list.insertBefore(card, list.firstElementChild);
+
+    window.filterMyTrips('all');
+
+    const listTop = document.getElementById('tab-my-bookings');
+    if (listTop) listTop.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    window.setTimeout(() => card.classList.remove('is-new'), 6000);
+    return;
+  }
+
+  // Guest: no history list, so preview the booking in the tracking panel.
+  const result = document.getElementById('trips-track-result');
+  const refInput = document.getElementById('trips-track-reference');
+  const phoneInput = document.getElementById('trips-track-phone');
+
+  if (refInput) refInput.value = ref;
+  if (phoneInput && booking.customer_phone) phoneInput.value = booking.customer_phone;
+
+  if (result) {
+    result.innerHTML = `<div class="customer-trip-card" style="margin-top:6px;">${buildTripCardHtml(booking)}</div>`;
+  }
+};
+
+/**
+ * Guest lookup: reference + the mobile number the booking was made with.
+ */
+window.trackGuestBooking = async function () {
+  const reference = (document.getElementById('trips-track-reference')?.value || '').trim().toUpperCase();
+  const phone = (document.getElementById('trips-track-phone')?.value || '').trim();
+  const result = document.getElementById('trips-track-result');
+
+  if (!result) return;
+
+  if (!reference || !phone) {
+    result.innerHTML = '<div style="font-size:12.5px; color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 12px;">Enter both the booking reference and the mobile number used to book.</div>';
+    return;
+  }
+
+  result.innerHTML = '<div style="font-size:12.5px; color:#64748b; padding:10px 0;">Looking up your booking…</div>';
+
+  try {
+    const res = await fetch('/api/bookings/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ reference: reference, phone: phone })
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success || !data.booking) {
+      result.innerHTML = `<div style="font-size:12.5px; color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 12px;">${tripsEscape(data.message || 'No booking matches that reference and mobile number.')}</div>`;
+      return;
+    }
+
+    result.innerHTML = `<div class="customer-trip-card">${buildTripCardHtml(data.booking)}</div>`;
+  } catch (err) {
+    console.error('trackGuestBooking', err);
+    result.innerHTML = '<div style="font-size:12.5px; color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 12px;">Network error. Please try again.</div>';
   }
 };

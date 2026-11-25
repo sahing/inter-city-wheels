@@ -32,5 +32,9 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- The suite never talks to the public OSM instances; tests that do
+             exercise it opt back in with config(['services.osm.enabled' => true])
+             and stub HTTP. -->
+        <env name="OSM_ENABLED" value="false"/>
     </php>
 </phpunit>

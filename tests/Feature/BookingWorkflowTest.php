@@ -39,7 +39,7 @@ class BookingWorkflowTest extends TestCase
 
     public function test_a_new_booking_starts_as_requested_not_confirmed(): void
     {
-        $response = $this->postJson('/api/bookings', [
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', [
             'service_type' => 'cab',
             'trip_type' => 'oneway',
             'from_city' => 'Pune',

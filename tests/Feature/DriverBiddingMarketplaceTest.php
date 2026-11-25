@@ -68,7 +68,7 @@ class DriverBiddingMarketplaceTest extends TestCase
      */
     private function booking(): Booking
     {
-        $response = $this->postJson('/api/bookings', [
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', [
             'service_type' => 'cab',
             'trip_type' => 'oneway',
             'from_city' => 'Pune',

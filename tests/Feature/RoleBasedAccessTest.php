@@ -32,7 +32,7 @@ class RoleBasedAccessTest extends TestCase
         $response->assertSee('Outstation Cabs');
         $response->assertSee('Schedules & Berths', false);
         $response->assertSee('My Trips');
-        $response->assertSee('My Outstation Trips & Digital Tickets', false);
+        $response->assertSee('My Trips &amp; Booking History', false);
         $response->assertSee('Customer Menu');
         $response->assertSee('My Trips & Tickets', false);
         $response->assertSee('Book Outstation Cab');
@@ -70,8 +70,8 @@ class RoleBasedAccessTest extends TestCase
         $response->assertStatus(200);
 
         // Shows clean empty state for customer
-        $response->assertSee('No active bookings found under your account');
-        $response->assertSee('Book Outstation Cab');
+        $response->assertSee('No trips booked yet');
+        $response->assertSee('Book a Trip');
     }
 
     public function test_driver_sees_only_driver_options(): void

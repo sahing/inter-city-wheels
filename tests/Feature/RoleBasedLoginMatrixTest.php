@@ -245,17 +245,13 @@ class RoleBasedLoginMatrixTest extends TestCase
     {
         $this->assertGuest();
 
-        // Plain `auth` middleware answers with the framework payload.
-        $this->getJson('/api/auth/user')
-            ->assertStatus(401)
-            ->assertJsonPath('message', 'Unauthenticated.');
+        // The `auth` middleware runs first, so guests get the framework 401 on
+        // every privileged route and no role name is revealed to them.
+        foreach (['/api/auth/user', '/api/admin/users', '/api/bids', '/api/driver/profile'] as $uri) {
+            $response = $this->getJson($uri)->assertStatus(401)->assertJsonPath('message', 'Unauthenticated.');
 
-        // The role guard answers with our own payload and leaks no role names.
-        foreach (['/api/admin/users', '/api/bids', '/api/driver/profile'] as $uri) {
-            $this->getJson($uri)
-                ->assertStatus(401)
-                ->assertJsonPath('success', false)
-                ->assertJsonPath('message', 'Unauthenticated.');
+            $this->assertStringNotContainsString('Required role', $response->getContent());
+            $this->assertStringNotContainsString('admin|', $response->getContent());
         }
     }
 

@@ -59,7 +59,7 @@ class BookingIntegrityTest extends TestCase
             'expires_at' => now()->subDay(),
         ]);
 
-        $response = $this->postJson('/api/bookings', $this->cabPayload(['coupon_code' => 'EXPIRED50']));
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->cabPayload(['coupon_code' => 'EXPIRED50']));
 
         $response->assertStatus(200)
             ->assertJsonPath('quote.discount_fare', 0)
@@ -81,7 +81,7 @@ class BookingIntegrityTest extends TestCase
             'used_count' => 1,
         ]);
 
-        $response = $this->postJson('/api/bookings', $this->cabPayload(['coupon_code' => 'ONCEONLY']));
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->cabPayload(['coupon_code' => 'ONCEONLY']));
 
         $response->assertStatus(200)->assertJsonPath('quote.discount_fare', 0);
         $this->assertStringContainsString('usage limit', $response->json('quote.coupon.message'));
@@ -98,7 +98,7 @@ class BookingIntegrityTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->postJson('/api/bookings', $this->cabPayload(['coupon_code' => 'BIGSPEND']));
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->cabPayload(['coupon_code' => 'BIGSPEND']));
 
         $response->assertStatus(200)->assertJsonPath('quote.discount_fare', 0);
         $this->assertStringContainsString('minimum spend', $response->json('quote.coupon.message'));
@@ -116,7 +116,7 @@ class BookingIntegrityTest extends TestCase
             'used_count' => 0,
         ]);
 
-        $response = $this->postJson('/api/bookings', $this->cabPayload(['coupon_code' => 'SAVE100']));
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->cabPayload(['coupon_code' => 'SAVE100']));
 
         $response->assertStatus(200)
             ->assertJsonPath('quote.coupon.applied', true)
@@ -138,7 +138,7 @@ class BookingIntegrityTest extends TestCase
             'is_active' => false,
         ]);
 
-        $response = $this->postJson('/api/bookings', $this->cabPayload(['coupon_code' => 'DISABLED']));
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->cabPayload(['coupon_code' => 'DISABLED']));
 
         $response->assertStatus(200)->assertJsonPath('quote.discount_fare', 0);
         $this->assertStringContainsString('invalid or inactive', $response->json('quote.coupon.message'));
@@ -148,7 +148,7 @@ class BookingIntegrityTest extends TestCase
 
     public function test_berths_are_marked_booked_when_the_booking_succeeds(): void
     {
-        $response = $this->postJson('/api/bookings', [
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', [
             'service_type' => 'bus',
             'from_city' => 'Pune',
             'to_city' => 'Goa',
@@ -185,9 +185,9 @@ class BookingIntegrityTest extends TestCase
             'coach_code' => '8092',
         ];
 
-        $this->postJson('/api/bookings', $payload)->assertStatus(200);
+        $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $payload)->assertStatus(200);
 
-        $second = $this->postJson('/api/bookings', array_merge($payload, [
+        $second = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', array_merge($payload, [
             'customer_name' => 'Second Passenger',
             'customer_phone' => '+91 93333 66666',
         ]));
@@ -203,7 +203,7 @@ class BookingIntegrityTest extends TestCase
     public function test_already_sold_seeded_berth_is_rejected(): void
     {
         // L3 is seeded as is_booked = true.
-        $this->postJson('/api/bookings', [
+        $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', [
             'service_type' => 'bus',
             'from_city' => 'Pune',
             'to_city' => 'Goa',
@@ -217,7 +217,7 @@ class BookingIntegrityTest extends TestCase
 
     public function test_unknown_berth_is_rejected(): void
     {
-        $this->postJson('/api/bookings', [
+        $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', [
             'service_type' => 'bus',
             'from_city' => 'Pune',
             'to_city' => 'Goa',
@@ -235,7 +235,7 @@ class BookingIntegrityTest extends TestCase
             ->whereIn('berth_number', ['L1', 'L2'])
             ->sum('price');
 
-        $response = $this->postJson('/api/bookings', [
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', [
             'service_type' => 'bus',
             'from_city' => 'Pune',
             'to_city' => 'Goa',
@@ -258,7 +258,7 @@ class BookingIntegrityTest extends TestCase
         $references = [];
 
         for ($i = 0; $i < 5; $i++) {
-            $response = $this->postJson('/api/bookings', $this->cabPayload([
+            $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->cabPayload([
                 'customer_name' => 'Ref Tester '.$i,
                 'customer_phone' => '+91 94444 0000'.$i,
                 // Unique coupon-free payload; same trip is fine.
@@ -276,7 +276,7 @@ class BookingIntegrityTest extends TestCase
 
     public function test_ride_otp_is_four_digits(): void
     {
-        $response = $this->postJson('/api/bookings', $this->cabPayload());
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->cabPayload());
 
         $this->assertMatchesRegularExpression('/^\d{4}$/', (string) $response->json('booking.start_otp'));
     }
@@ -285,12 +285,15 @@ class BookingIntegrityTest extends TestCase
 
     public function test_a_reference_alone_does_not_expose_a_booking(): void
     {
-        $created = $this->postJson('/api/bookings', $this->cabPayload([
+        $created = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->cabPayload([
             'customer_name' => 'Private Passenger',
             'customer_phone' => '+91 95555 12345',
         ]))->assertStatus(200);
 
         $reference = $created->json('booking.booking_reference');
+
+        // The caller is now the anonymous stranger holding only a reference.
+        $this->app['auth']->forgetGuards();
 
         // Stranger with only the reference.
         $this->getJson("/api/bookings/{$reference}")
@@ -309,7 +312,7 @@ class BookingIntegrityTest extends TestCase
 
     public function test_signed_lookup_url_from_checkout_is_authorised(): void
     {
-        $created = $this->postJson('/api/bookings', $this->cabPayload())->assertStatus(200);
+        $created = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->cabPayload())->assertStatus(200);
 
         $lookupUrl = $created->json('lookup_url');
         $this->assertNotEmpty($lookupUrl);
@@ -320,7 +323,10 @@ class BookingIntegrityTest extends TestCase
 
     public function test_tampered_signature_is_rejected(): void
     {
-        $created = $this->postJson('/api/bookings', $this->cabPayload())->assertStatus(200);
+        $created = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->cabPayload())->assertStatus(200);
+
+        // Drop the account so the (tampered) signature is the only credential.
+        $this->app['auth']->forgetGuards();
 
         $this->getJson($created->json('lookup_url').'0')->assertStatus(403);
     }
@@ -348,12 +354,14 @@ class BookingIntegrityTest extends TestCase
 
     public function test_guest_lookup_requires_the_reference_and_phone(): void
     {
-        $created = $this->postJson('/api/bookings', $this->cabPayload([
+        $created = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->cabPayload([
             'customer_name' => 'Lookup Guest',
             'customer_phone' => '+91 95555 88888',
         ]))->assertStatus(200);
 
         $reference = $created->json('booking.booking_reference');
+
+        $this->app['auth']->forgetGuards();
 
         $this->postJson('/api/bookings/lookup', [
             'reference' => $reference,
@@ -376,7 +384,7 @@ class BookingIntegrityTest extends TestCase
 
     public function test_unmeasurable_route_fails_instead_of_inventing_a_distance(): void
     {
-        $response = $this->postJson('/api/bookings', $this->cabPayload([
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->cabPayload([
             'from_city' => 'Atlantis',
             'to_city' => 'El Dorado',
         ]));
@@ -392,7 +400,7 @@ class BookingIntegrityTest extends TestCase
 
     public function test_caller_supplied_coordinates_can_measure_an_unlisted_place(): void
     {
-        $response = $this->postJson('/api/bookings', $this->cabPayload([
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->cabPayload([
             'from_city' => 'Atlantis',
             'from_lat' => 22.5726,
             'from_lng' => 88.3639,

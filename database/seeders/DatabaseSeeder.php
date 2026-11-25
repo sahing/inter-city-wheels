@@ -150,39 +150,64 @@ class DatabaseSeeder extends Seeder
             'start_otp' => '8492',
         ]);
 
-        // 8. Seed Role-Based Demo Accounts
-        User::firstOrCreate(
-            ['email' => 'admin@intercitywheels.com'],
-            [
-                'name' => 'Vikram Singhania (Ops Admin)',
-                'password' => Hash::make('password123'),
-                'role' => 'admin',
-                'phone' => '+91 99000 00001',
-                'avatar' => '🛡️',
-            ]
-        );
+        // 8. Accounts
+        // The demo accounts all share a published password, so they exist only in
+        // demo mode. A production deploy provisions its admin from environment
+        // values instead of shipping known credentials.
+        if (config('demo.enabled')) {
+            User::firstOrCreate(
+                ['email' => 'admin@intercitywheels.com'],
+                [
+                    'name' => 'Vikram Singhania (Ops Admin)',
+                    'password' => Hash::make('password123'),
+                    'role' => 'admin',
+                    'phone' => '+91 99000 00001',
+                    'avatar' => '🛡️',
+                ]
+            );
 
-        User::firstOrCreate(
-            ['email' => 'driver@intercitywheels.com'],
-            [
-                'name' => 'Ramesh Patil (Partner Chauffeur)',
-                'password' => Hash::make('password123'),
-                'role' => 'driver',
-                'phone' => '+91 98220 11920',
-                'avatar' => '👨🏽‍✈️',
-            ]
-        );
+            User::firstOrCreate(
+                ['email' => 'driver@intercitywheels.com'],
+                [
+                    'name' => 'Ramesh Patil (Partner Chauffeur)',
+                    'password' => Hash::make('password123'),
+                    'role' => 'driver',
+                    'phone' => '+91 98220 11920',
+                    'avatar' => '👨🏽‍✈️',
+                ]
+            );
 
-        User::firstOrCreate(
-            ['email' => 'customer@intercitywheels.com'],
-            [
-                'name' => 'Rahul Sharma (Traveler)',
-                'password' => Hash::make('password123'),
-                'role' => 'customer',
-                'phone' => '+91 98765 43210',
-                'avatar' => '👤',
-            ]
-        );
+            User::firstOrCreate(
+                ['email' => 'customer@intercitywheels.com'],
+                [
+                    'name' => 'Rahul Sharma (Traveler)',
+                    'password' => Hash::make('password123'),
+                    'role' => 'customer',
+                    'phone' => '+91 98765 43210',
+                    'avatar' => '👤',
+                ]
+            );
+        } else {
+            $adminEmail = env('ADMIN_EMAIL');
+            $adminPassword = env('ADMIN_PASSWORD');
+
+            if ($adminEmail && $adminPassword) {
+                User::firstOrCreate(
+                    ['email' => $adminEmail],
+                    [
+                        'name' => env('ADMIN_NAME', 'Platform Admin'),
+                        'password' => Hash::make($adminPassword),
+                        'role' => 'admin',
+                        'phone' => env('ADMIN_PHONE', ''),
+                        'avatar' => '🛡️',
+                    ]
+                );
+            } else {
+                $this->command?->warn(
+                    'Demo mode is off and ADMIN_EMAIL/ADMIN_PASSWORD are unset — no admin account was created.'
+                );
+            }
+        }
 
         // 9. Seed Service Locations (Setup by Admin for Cabs & Transit)
         $locations = [
@@ -616,5 +641,8 @@ class DatabaseSeeder extends Seeder
         foreach ($carTypes as $ct) {
             CarType::firstOrCreate(['category_key' => $ct['category_key']], $ct);
         }
+
+        // 16. Seed Regional Fleet Scale-Out (100 partner drivers / 500 cars with amenities)
+        $this->call(FleetSeeder::class);
     }
 }

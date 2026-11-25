@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\CarType;
 use App\Models\RouteFare;
 use App\Models\ServiceLocation;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -151,7 +152,7 @@ class RegionalLocationAndDighaBookingTest extends TestCase
             'include_tolls' => true,
         ];
 
-        $response = $this->postJson('/api/bookings', $payload);
+        $response = $this->actingAs(User::factory()->create(['role' => 'customer']))->postJson('/api/bookings', $payload);
         $response->assertStatus(200)
             ->assertJson([
                 'success' => true,
@@ -188,7 +189,7 @@ class RegionalLocationAndDighaBookingTest extends TestCase
             'include_tolls' => true,
         ];
 
-        $response = $this->postJson('/api/bookings', $payload);
+        $response = $this->actingAs(User::factory()->create(['role' => 'customer']))->postJson('/api/bookings', $payload);
         $response->assertStatus(200)
             ->assertJson([
                 'success' => true,

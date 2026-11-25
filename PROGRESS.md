@@ -2,7 +2,7 @@
 
 **This file is generated from `LEDGER.md` (rule P2-4).** It reports only what a command proved. `LEDGER.md` is the source of truth; if the two disagree, the ledger wins.
 
-**Last verified:** 2026-11-24 · Laravel 12.69.3 · PHP 8.2.12 · Node v26.7.0
+**Last verified:** 2026-11-25 · Laravel 12.69.3 · PHP 8.2.12 · Node v26.7.0
 
 ---
 
@@ -15,8 +15,8 @@
 | G1 route audit | `php artisan route:list --json > route-audit.json` | 104 routes emitted; `RouteAuthorizationAuditTest` proves 0 privileged routes without `auth` + `role` |
 | G2 authz | `php artisan test --filter=Authorization` / `RouteAuthorizationAuditTest` | PASS, including 401 (guest) and 403 (wrong role) negatives |
 | G3 logic | `php artisan test --filter=Pricing` / `Booking` / `Workflow` | PASS |
-| G4 suite | `php artisan test` | **213 passed (1,263 assertions)** |
-| G4b quality | `vendor/bin/pint --test` | **PASS — 117 files** |
+| G4 suite | `php artisan test` | **241 passed (1,490 assertions)** |
+| G4b quality | `vendor/bin/pint --test` | **PASS — 125 files** |
 | G5 build | `npm run build` | 61 modules → `public/build/manifest.json` + assets, built in 326 ms |
 | G6 release | `php artisan config:clear && php artisan migrate --pretend` | config cleared; 14 index statements + 3 schema changes, no errors |
 
@@ -35,6 +35,60 @@ BOARD: count=1 lowest=1997 profit=472 bids=1
 AWARD: 200 status=Driver Assigned payout=1997 margin=472 driver=Ramesh Patil
 WINNER_PAGE: revealed=True pii=True phone=True     LOSER_VIEW_PII: False
 ```
+
+### Role-based sign-in matrix (2026-11-25)
+
+`tests/Feature/RoleBasedLoginMatrixTest.php` (10 tests, 143 assertions) drives every role through `POST /login`: each lands on its own tab, each refuses the other two tabs with a named message, wrong passwords fail, logout returns the session to guest, and admin/user-creation paths are covered. A new account was also created during a live run and signed in like a seeded one.
+
+Live HTTP proof (`php -S 127.0.0.1:8765`, real sessions and CSRF tokens):
+
+```
+ROLE customer LOGIN 200 tab=cabs     me=200/customer admin_users=403 logout_after=401
+ROLE driver   LOGIN 200 tab=bidding  me=200/driver   admin_users=403 logout_after=401
+ROLE admin    LOGIN 200 tab=admin    me=200/admin    admin_users=200 logout_after=401
+ADMIN_CREATE_USER 201 id=6 role=customer email=role.smoke.004058@example.com
+NEW_USER LOGIN 200 tab=cabs me=200/customer admin_users=403
+NEW_USER_WRONG_TAB 422 message=This account is registered as a Customer. Please select the Customer tab to log in.
+NEW_USER LOGOUT 200 after_logout=401
+LOG_NEW_BYTES=0
+```
+
+`LOG_NEW_BYTES=0` is a finding, not a failure: the app writes **no** role-scoped log line for sign-in, sign-out or user creation (see “Still open”).
+
+### OpenStreetMap place search and distance (2026-11-25)
+
+Place lookup and road distance come from OpenStreetMap through `App\Services\OsmGeoService`: Nominatim for name↔coordinate, OSRM for driving distance. Design, configuration and the rate-limit policy are in [`docs/OSM.md`](docs/OSM.md).
+
+Pricing resolution order per endpoint: caller-supplied coordinates → `route_fares` → `service_locations` / curated catalogue → Nominatim. Distance then comes from OSRM, and only an unreachable OSRM falls back to the straight-line estimate. `distance_source` reports which path produced the number.
+
+Live proof, real services, no fakes:
+
+```
+HTTP 200
+route: from=Arambagh to=Digha distance_km=205 estimated_time=2h 40m base_toll=189
+       distance_source=osm_geocode+osrm_route
+NOMINATIM Arambagh -> 22.8765856, 87.7908631 (town, Hooghly, West Bengal)
+OSRM Kolkata->Digha -> 181 km, 142 min
+```
+
+Fallbacks proved by `tests/Feature/OsmGeoIntegrationTest.php`: OSRM 503 → straight-line estimate (`source=coordinates`); Nominatim 429 → search still 200 with curated results only; an ungroundable name → `422 distance_unresolvable` rather than a default-city position. Unknown names are no longer pinned to `22.5726, 88.3639` on either the server or the client.
+
+### Durable OpenStreetMap cache (2026-11-25)
+
+A measured route and a geocoded place are written to `geo_route_cache` / `geo_place_cache` **before** the quote is returned, so the first query pays for the map API call and later queries are one indexed read. Keys hash the two endpoints (direction-insensitive, ~1 m rounding); rows expire after 30 days (routes) / 90 days (places) and are ignored on read once expired. Details in [`docs/OSM.md`](docs/OSM.md).
+
+Live proof, three separate PHP processes — the middle flush removes the HTTP cache so only the database can answer, and the map API is switched off:
+
+```
+cold            HTTP 200  1854ms  distance=203  source=osm_geocode+osrm_route  cached=false
+cache:clear     (HTTP cache dropped, DB row kept)
+OSM_ENABLED=false  HTTP 200   133ms  distance=203  source=osm_geocode+osrm_route  cached=true
+OSM_ENABLED=false  HTTP 200   133ms  distance=203  source=osm_geocode+osrm_route  cached=true
+
+geo:cache-stats → routes: 2 rows, 0 expired | places: 1 row, 0 expired
+```
+
+`geo:prune-cache` runs daily and only deletes expired rows. `GeoCachePersistenceTest` (8 tests) covers write-then-read, reverse-trip reuse, expiry/re-measure, place reuse without Nominatim, missing tables, and both commands.
 
 ### Live HTTP smoke test (`php artisan serve`, real browser session)
 
@@ -88,13 +142,14 @@ DOUBLE_BERTH: 409
 | Dead assets (`public/build/**`, `welcome.blade.php`) | Documented in `docs/ASSETS.md`; removal is an owner decision, no gate depends on it. |
 | Customer berth map | The 15 berth cells are server-rendered static HTML that matches the seeded coach layout; a DB-driven, route-aware map is a UI cycle of its own (`PRD_DERIVED.md` G11). |
 | Admin "Fees & Surcharges" edits | UI state only — not persisted (`PRD_DERIVED.md` G19). |
+| Role-based activity log | No audit trail exists for sign-in, sign-out, role changes or account creation: `storage/logs/laravel.log` only receives thrown exceptions (measured `LOG_NEW_BYTES=0` across a full three-role sign-in run), and the admin “audit log” panel is a booking list, not a log. Needs a table + write points + a per-role viewer. |
 
 ## How to verify this yourself
 
 ```bash
 composer install && npm ci
 php artisan migrate --force
-php artisan test                 # 191 passed
+php artisan test                 # 241 passed
 vendor/bin/pint --test           # PASS
 npm run build
 php artisan serve                # then exercise /, /api/routes/calculate, checkout

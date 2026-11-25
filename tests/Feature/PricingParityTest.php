@@ -8,6 +8,7 @@ use App\Models\Coupon;
 use App\Models\LocalPackage;
 use App\Models\PlatformSetting;
 use App\Models\RouteFare;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -62,7 +63,7 @@ class PricingParityTest extends TestCase
 
         $quote = $this->getJson('/api/routes/calculate?'.$query)->assertStatus(200);
 
-        $booking = $this->postJson('/api/bookings', $this->bookingPayload())->assertStatus(200);
+        $booking = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->bookingPayload())->assertStatus(200);
 
         $this->assertEquals($quote->json('quote.total_amount'), (float) $booking->json('booking.total_amount'));
         $this->assertEquals($quote->json('quote.base_fare'), (float) $booking->json('booking.base_fare'));
@@ -74,7 +75,7 @@ class PricingParityTest extends TestCase
     public function test_route_fare_breakdown_matches_legacy_arithmetic(): void
     {
         // Seeded Berhampore -> Digha: 345 km, toll 320, sedan 12.5/km.
-        $response = $this->postJson('/api/bookings', $this->bookingPayload([
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->bookingPayload([
             'pet_friendly' => false,
             'coupon_code' => null,
         ]))->assertStatus(200);
@@ -165,7 +166,7 @@ class PricingParityTest extends TestCase
 
         $quote->assertStatus(200)->assertJsonPath('quote.addon_fare', 950);
 
-        $charge = $this->postJson('/api/bookings', $this->bookingPayload([
+        $charge = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->bookingPayload([
             'pet_friendly' => true,
             'night_allowance' => true,
             'luggage_carrier' => true,
@@ -187,7 +188,7 @@ class PricingParityTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->postJson('/api/bookings', $this->bookingPayload([
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->bookingPayload([
             'coupon_code' => 'SERVERONLY',
             'pet_friendly' => false,
         ]))->assertStatus(200);

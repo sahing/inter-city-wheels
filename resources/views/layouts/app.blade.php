@@ -32,7 +32,34 @@
         default => 'cabs'
     };
 @endphp
-<body class="{{ $defaultTab === 'admin' ? 'role-admin-mode admin-active-view' : '' }}">
+<body class="{{ $defaultTab === 'admin' ? 'role-admin-mode admin-active-view' : '' }}@unless(config('demo.enabled')) no-demo @endunless">
+
+    <script>
+        // Auth state for client-side gates (e.g. booking confirmation).
+        window.INTERCITY_AUTH = {
+            authenticated: @json(Auth::check()),
+            role: @json(Auth::check() ? Auth::user()->role : null),
+            userId: @json(Auth::id()),
+        };
+
+        // Demo affordances (one-tap login, simulated providers) are off in
+        // production. See config/demo.php / INTERCITY_DEMO_MODE.
+        window.INTERCITY_CONFIG = { demo: @json((bool) config('demo.enabled')) };
+    </script>
+
+    @unless(config('demo.enabled'))
+        <style>
+            /* Production: remove every demonstration-only affordance from the UI. */
+            body.no-demo [onclick*="quickDemoLogin"],
+            body.no-demo [onclick*="quickFillDemo"],
+            body.no-demo [onclick*="handleAlternateLogin"],
+            body.no-demo [onclick*="selectAltDemoProfile"],
+            body.no-demo .alternate-auth-section,
+            body.no-demo #alternate-auth-modal,
+            body.no-demo #demo-accounts-row,
+            body.no-demo .demo-only { display: none !important; }
+        </style>
+    @endunless
 
     <!-- Top Announcement Bar -->
     <div class="top-notice-bar">
@@ -79,13 +106,15 @@
                         <span>Schedules & Berths</span>
                     </button>
                     @endif
-                    @auth
-                        <button class="nav-tab-btn {{ $defaultTab === 'my-bookings' ? 'active' : '' }}" data-target="my-bookings">
-                            <span class="material-symbols-outlined">confirmation_number</span>
-                            <span>My Trips</span>
+                    {{-- Trips are reachable without signing in: guests get a sign-in /
+                         track-a-booking panel instead of a history list. --}}
+                    <button class="nav-tab-btn {{ $defaultTab === 'my-bookings' ? 'active' : '' }}" data-target="my-bookings">
+                        <span class="material-symbols-outlined">confirmation_number</span>
+                        <span>My Trips</span>
+                        @if(count($customerBookings ?? []) > 0)
                             <span class="nav-tab-badge badge-primary">{{ count($customerBookings ?? []) }}</span>
-                        </button>
-                    @endauth
+                        @endif
+                    </button>
                 @elseif($userRole === 'driver')
                     {{-- DRIVER / CHAUFFEUR PARTNER VIEW --}}
                     <button class="nav-tab-btn {{ $defaultTab === 'bidding' ? 'active' : '' }}" data-target="bidding">
@@ -214,6 +243,7 @@
                                         <span class="dropdown-item-sub">Fleet, dispatch & financial audit</span>
                                     </div>
                                 </button>
+                                @if(config('demo.enabled'))
                                 <div class="dropdown-divider"></div>
                                 <div class="dropdown-section-title">Role Perspective Preview</div>
                                 <button type="button" class="dropdown-item-btn" onclick="quickDemoLogin('customer')">
@@ -230,6 +260,7 @@
                                         <span class="dropdown-item-sub">Live Bids, Trips & Wallet</span>
                                     </div>
                                 </button>
+                                @endif
                             @endif
                             <div class="dropdown-divider"></div>
                             <form id="logout-form" action="{{ route('logout') }}" method="POST" style="display:none;">
@@ -420,13 +451,15 @@
                         </form>
                     </div>
 
+                    @if(config('demo.enabled'))
                     <!-- Quick 1-Click Demo Helper -->
-                    <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top:10px; font-size:11px; color:#64748b;">
+                    <div id="demo-accounts-row" style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top:10px; font-size:11px; color:#64748b;">
                         <span>Demo Accounts:</span>
                         <button type="button" class="btn btn-xs btn-outline" onclick="quickFillDemo('customer')" style="font-size:10px; padding:2px 7px; border-radius:10px; background:#ffffff;">Passenger</button>
                         <button type="button" class="btn btn-xs btn-outline" onclick="quickFillDemo('driver')" style="font-size:10px; padding:2px 7px; border-radius:10px; background:#ffffff;">Driver</button>
                         <button type="button" class="btn btn-xs btn-outline" onclick="quickFillDemo('admin')" style="font-size:10px; padding:2px 7px; border-radius:10px; background:#ffffff;">Admin</button>
                     </div>
+                    @endif
 
                     <!-- Toggle to Sign Up -->
                     <div style="text-align:center; font-size:12px; color:#475569; margin-top:12px; padding-top:10px; border-top:1px dashed #e2e8f0;">
@@ -580,6 +613,37 @@
     <!-- ======================================================== -->
     <!-- MODAL: ALTERNATE AUTHENTICATION (FIREBASE / CLERK)       -->
     <!-- ======================================================== -->
+    <!-- ======================================================== -->
+    <!-- MODAL: BOOKING LOGIN GATE (one-tap sign-in to confirm)   -->
+    <!-- ======================================================== -->
+    <div class="modal-overlay" id="booking-login-gate-modal">
+        <div class="modal-dialog" style="max-width: 420px;">
+            <div class="modal-header">
+                <h3 class="modal-title">Sign in to confirm your booking</h3>
+                <button type="button" class="modal-close-btn" onclick="closeModal('booking-login-gate-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:12.5px; color:#475569; margin:0 0 14px;">
+                    Your trip details are saved. Sign in to lock your fare, link the trip to your account and receive your ride OTP.
+                </p>
+                @if(config('demo.enabled'))
+                <button type="button" class="btn btn-primary btn-block" onclick="oneTapBookingLogin()" style="height:44px; font-size:13.5px; margin-bottom:10px;">
+                    <span class="material-symbols-outlined" style="font-size:18px;">bolt</span>
+                    <span>Continue with one tap</span>
+                </button>
+                @endif
+                <button type="button" class="btn btn-outline btn-block" onclick="closeModal('booking-login-gate-modal'); openLoginModal('customer','signin')" style="height:40px; font-size:12.5px;">
+                    <span class="material-symbols-outlined" style="font-size:16px;">login</span>
+                    <span>Sign in with mobile or email</span>
+                </button>
+                <p style="font-size:11px; color:#94a3b8; text-align:center; margin:12px 0 0;">
+                    Your pending booking is restored automatically once you are signed in.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    @if(config('demo.enabled'))
     <div class="modal-overlay" id="alternate-auth-modal">
         <div class="modal-dialog auth-modal-dialog" style="max-width: 440px;">
             <div class="modal-header auth-modal-header">
@@ -682,6 +746,7 @@
             </div>
         </div>
     </div>
+    @endif
 
     <!-- Toast Shelf -->
     <div class="toast-shelf" id="toast-shelf"></div>

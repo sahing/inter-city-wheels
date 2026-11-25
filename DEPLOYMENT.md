@@ -79,6 +79,17 @@ php artisan test
    ```
    Access application: `http://localhost:3000`
 
+4. **Maps and distance**: place search and driving distance come from
+   OpenStreetMap (Nominatim + OSRM), configured through `OSM_*` variables. No
+   API key is required for development; see [docs/OSM.md](docs/OSM.md) before
+   pointing production traffic at the public instances.
+
+5. **Firebase sign-in**: Google sign-in uses the `FIREBASE_*` variables and is
+   verified server-side. After changing the Firebase project, run
+   `php artisan firebase:check` — it reproduces `redirect_uri_mismatch`,
+   unauthorized domains and a disabled provider without a browser. See
+   [docs/FIREBASE.md](docs/FIREBASE.md).
+
 ---
 
 ## 5. Production Deployment

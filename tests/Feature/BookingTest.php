@@ -88,7 +88,7 @@ class BookingTest extends TestCase
             'coupon_code' => 'FIRSTWHEELS',
         ];
 
-        $response = $this->postJson('/api/bookings', $payload);
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $payload);
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
@@ -145,7 +145,7 @@ class BookingTest extends TestCase
             ],
         ];
 
-        $response = $this->postJson('/api/bookings', $payload);
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $payload);
         $response->assertStatus(200);
         $response->assertJson(['success' => true]);
 
@@ -265,7 +265,7 @@ class BookingTest extends TestCase
             'coupon_code' => 'FIRSTWHEELS',
         ];
 
-        $response = $this->postJson('/api/bookings', $payload);
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $payload);
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
@@ -299,7 +299,7 @@ class BookingTest extends TestCase
             'flight_number' => '6E-204',
         ];
 
-        $response = $this->postJson('/api/bookings', $payload);
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $payload);
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
@@ -339,7 +339,7 @@ class BookingTest extends TestCase
             ],
         ];
 
-        $response = $this->postJson('/api/bookings', $payload);
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $payload);
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
@@ -361,7 +361,7 @@ class BookingTest extends TestCase
 
     public function test_booking_validation_fails_on_missing_required_fields(): void
     {
-        $response = $this->postJson('/api/bookings', [
+        $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', [
             'service_type' => 'cab',
             // Missing customer_name, customer_phone, from_city, pickup_location
         ]);

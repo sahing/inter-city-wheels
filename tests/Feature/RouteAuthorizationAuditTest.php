@@ -150,8 +150,10 @@ class RouteAuthorizationAuditTest extends TestCase
         $this->assertTrue($this->requiresAuth($route));
     }
 
-    public function test_public_catalogue_and_booking_intake_stay_open(): void
+    public function test_public_catalogue_and_ticket_lookup_stay_open(): void
     {
+        // Booking *creation* now requires an account (see BookingRequiresLoginTest).
+        // Browsing, quoting and reopening a ticket by reference + phone stay anonymous.
         $public = [
             'api/routes/calculate',
             'api/locations',
@@ -159,7 +161,6 @@ class RouteAuthorizationAuditTest extends TestCase
             'api/car-types',
             'api/local-packages',
             'api/airport-hubs',
-            'api/bookings',
             'api/bookings/lookup',
         ];
 

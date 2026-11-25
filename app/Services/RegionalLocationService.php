@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\ServiceLocation;
-use Illuminate\Support\Facades\Http;
 
 class RegionalLocationService
 {
@@ -277,47 +276,38 @@ class RegionalLocationService
                 }
             }
 
-            // Always provide an explicit "Use desired location" option
-            $resolvedCoords = self::findCoordinates($cleanQ) ?: self::guessRegionalCoordinates($cleanQ);
-            $results[] = [
-                'name' => ucwords($cleanQ),
-                'state' => $resolvedCoords['state'] ?? 'West Bengal / Desired Regional Area',
-                'latitude' => $resolvedCoords['lat'],
-                'longitude' => $resolvedCoords['lng'],
-                'airport_code' => null,
-                'is_registered' => false,
-                'is_custom' => true,
-                'badge' => 'Desired Location',
-                'type' => 'custom',
-            ];
+            // Always offer the typed text as a location, but only with a real
+            // position. Pinning an unknown name to the regional centroid used to
+            // invent a distance — and therefore a fare — so an unresolvable name
+            // is returned as unresolved and left to the caller.
+            if (! $hasExact) {
+                $resolvedCoords = self::resolveCoordinatesStrict($cleanQ);
+
+                $custom = [
+                    'name' => ucwords($cleanQ),
+                    'airport_code' => null,
+                    'is_registered' => false,
+                    'is_custom' => true,
+                    'badge' => 'Desired Location',
+                    'type' => 'custom',
+                ];
+
+                if ($resolvedCoords !== null) {
+                    $custom['state'] = $resolvedCoords['state'] ?? 'West Bengal / Desired Regional Area';
+                    $custom['latitude'] = (float) $resolvedCoords['lat'];
+                    $custom['longitude'] = (float) $resolvedCoords['lng'];
+                } else {
+                    $custom['state'] = 'Unresolved — type a nearby town';
+                    $custom['latitude'] = null;
+                    $custom['longitude'] = null;
+                    $custom['needs_geocode'] = true;
+                }
+
+                $results[] = $custom;
+            }
         }
 
         return $results;
-    }
-
-    /**
-     * Resolve latitude and longitude for a city name (checking DB, aliases, regional catalog, or geocoder).
-     *
-     * Lenient: unknown names are pinned to the regional centroid so free-text
-     * search still returns a suggestion. Never use this to price a trip — use
-     * resolveCoordinatesStrict() for that (P1-1).
-     */
-    public static function findCoordinates(string $cityName): ?array
-    {
-        $resolved = self::resolveCoordinatesStrict($cityName);
-
-        if ($resolved !== null) {
-            return $resolved;
-        }
-
-        $clean = trim(explode(',', $cityName)[0]);
-
-        return [
-            'name' => $clean,
-            'state' => 'West Bengal Region',
-            'lat' => 22.9868,
-            'lng' => 87.8550,
-        ];
     }
 
     /**
@@ -413,48 +403,38 @@ class RegionalLocationService
     }
 
     /**
-     * Fast Nominatim OpenStreetMap regional geocoding with strict 1.2s timeout.
+     * OpenStreetMap (Nominatim) place lookup, via OsmGeoService so that the
+     * timeout, identifying User-Agent, one-request-per-second throttle and
+     * caching all live in one place.
+     *
+     * Returns no results when OSM is disabled or unreachable: the curated
+     * catalogue and the registered locations remain the offline answer.
      */
     protected static function geocodeNominatim(string $query): array
     {
-        try {
-            $response = Http::timeout(1.2)
-                ->withHeaders(['User-Agent' => 'IntercityWheels-Mobility/2.0'])
-                ->get('https://nominatim.openstreetmap.org/search', [
-                    'format' => 'json',
-                    'q' => $query,
-                    'countrycodes' => 'in',
-                    'limit' => 3,
-                ]);
+        $service = app(OsmGeoService::class);
 
-            if ($response->successful()) {
-                $data = $response->json();
-                $items = [];
-                foreach ($data as $item) {
-                    $displayName = $item['display_name'] ?? $query;
-                    $parts = array_map('trim', explode(',', $displayName));
-                    $shortName = $parts[0] ?? $query;
-                    $stateName = count($parts) > 2 ? $parts[count($parts) - 3].', '.$parts[count($parts) - 2] : 'India';
-
-                    $items[] = [
-                        'name' => $shortName,
-                        'state' => $stateName,
-                        'latitude' => (float) $item['lat'],
-                        'longitude' => (float) $item['lon'],
-                        'airport_code' => null,
-                        'is_registered' => false,
-                        'badge' => 'Geocoded Location',
-                        'type' => 'geocoded',
-                    ];
-                }
-
-                return $items;
-            }
-        } catch (\Throwable $e) {
-            // Silently fall back if network unavailable or timeout
+        if (! $service->enabled()) {
+            return [];
         }
 
-        return [];
+        $items = [];
+
+        foreach ($service->search($query, 3) as $place) {
+            $items[] = [
+                'name' => $place['name'],
+                'state' => $place['state'] ?? 'India',
+                'latitude' => (float) $place['latitude'],
+                'longitude' => (float) $place['longitude'],
+                'airport_code' => null,
+                'is_registered' => false,
+                'badge' => 'OpenStreetMap',
+                'type' => 'geocoded',
+                'display_name' => $place['display_name'] ?? null,
+            ];
+        }
+
+        return $items;
     }
 
     /**

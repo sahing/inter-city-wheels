@@ -42,20 +42,55 @@ class AlternateAuthService
 
     /**
      * Authenticate or register a user using Firebase credentials / token / Firebase ID.
+     *
+     * A supplied ID token is verified before anything is trusted, and the token
+     * wins over every client-supplied claim. Without a token the caller may only
+     * sign in when `services.firebase.allow_id_only` is enabled (local demos);
+     * otherwise the request is refused, because a posted `firebase_id` proves
+     * nothing and would let anyone claim any account.
      */
     public function authenticateWithFirebase(array $payload): array
     {
-        $firebaseId = trim($payload['firebase_id'] ?? $payload['uid'] ?? '');
-        $email = strtolower(trim($payload['email'] ?? ''));
+        $idToken = trim((string) ($payload['id_token'] ?? ''));
+        $claimedUid = trim((string) ($payload['firebase_id'] ?? $payload['uid'] ?? ''));
+        $claimedEmail = strtolower(trim((string) ($payload['email'] ?? '')));
+
+        $verified = null;
+
+        if ($idToken !== '') {
+            $verified = $this->verifyFirebaseToken($idToken);
+
+            if (isset($verified['error'])) {
+                return ['success' => false, 'message' => $verified['error']];
+            }
+        } elseif (! $this->idOnlyLoginAllowed()) {
+            return [
+                'success' => false,
+                'message' => 'A verified Firebase sign-in is required. Please sign in with Google again.',
+            ];
+        }
+
+        // A verified token is authoritative; client claims fill the gaps only.
+        if ($verified !== null) {
+            $uid = $verified['sub'];
+            $email = $verified['email'] !== '' ? $verified['email'] : $claimedEmail;
+            $name = $verified['name'] !== '' ? $verified['name'] : trim((string) ($payload['name'] ?? ''));
+            $avatar = $verified['picture'] !== ''
+                ? $verified['picture']
+                : ($payload['photo_url'] ?? '');
+        } else {
+            $uid = $claimedUid;
+            $email = $claimedEmail;
+            $name = trim((string) ($payload['name'] ?? ''));
+            $avatar = (string) ($payload['photo_url'] ?? '');
+        }
 
         // If email is missing, resolve by existing user having this Firebase ID
-        if (empty($email) && ! empty($firebaseId)) {
-            $matchedUser = User::findByFirebaseId($firebaseId);
-            if ($matchedUser) {
-                $email = $matchedUser->email;
-            } else {
-                $email = "firebase_{$firebaseId}@intercitywheels.com";
-            }
+        if (empty($email) && ! empty($uid)) {
+            $matchedUser = User::findByFirebaseId($uid);
+            $email = $matchedUser
+                ? $matchedUser->email
+                : "firebase_{$uid}@intercitywheels.com";
         }
 
         if (empty($email) || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -65,33 +100,21 @@ class AlternateAuthService
             ];
         }
 
-        $uid = $firebaseId ?: ($payload['id_token'] ? substr(md5($payload['id_token']), 0, 24) : 'fb_'.bin2hex(random_bytes(6)));
-        $name = trim($payload['name'] ?? '') ?: explode('@', $email)[0];
-        $role = in_array($payload['role'] ?? '', ['customer', 'driver', 'admin']) ? $payload['role'] : 'customer';
-        $phone = ! empty($payload['phone']) ? trim($payload['phone']) : null;
-        $avatar = ! empty($payload['photo_url']) ? $payload['photo_url'] : ($role === 'driver' ? '👨🏽‍✈️' : '👤');
+        $uid = $uid ?: 'fb_'.bin2hex(random_bytes(6));
+        $name = $name ?: explode('@', $email)[0];
 
-        // Optional token verification if Google / Firebase project is active & token provided
-        $projectId = config('services.firebase.project_id');
-        if (! empty($payload['id_token']) && ! empty($projectId) && ! app()->environment('testing')) {
-            try {
-                $verifyRes = Http::timeout(4)->get('https://oauth2.googleapis.com/tokeninfo?id_token='.urlencode($payload['id_token']));
-                if ($verifyRes->successful()) {
-                    $tokenData = $verifyRes->json();
-                    if (! empty($tokenData['email'])) {
-                        $email = strtolower(trim($tokenData['email']));
-                    }
-                    if (! empty($tokenData['sub'])) {
-                        $uid = $tokenData['sub'];
-                    }
-                    if (! empty($tokenData['name']) && empty($payload['name'])) {
-                        $name = $tokenData['name'];
-                    }
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Firebase / Google token verification warning: '.$e->getMessage());
-            }
+        $requestedRole = (string) ($payload['role'] ?? '');
+        $role = in_array($requestedRole, ['customer', 'driver', 'admin'], true) ? $requestedRole : 'customer';
+
+        // A verified Google identity can never mint a new admin account; admin
+        // users are created by an existing admin. The local demo keeps its
+        // "sign in as admin" button because it runs with allow_id_only.
+        if ($role === 'admin' && ! $this->idOnlyLoginAllowed()) {
+            $role = 'customer';
         }
+
+        $phone = ! empty($payload['phone']) ? trim($payload['phone']) : null;
+        $avatar = $avatar !== '' ? $avatar : ($role === 'driver' ? '👨🏽‍✈️' : '👤');
 
         return $this->provisionAndLogin([
             'provider' => 'firebase',
@@ -106,6 +129,110 @@ class AlternateAuthService
             'vehicle_model' => $payload['vehicle_model'] ?? null,
             'vehicle_plate' => $payload['vehicle_plate'] ?? null,
         ]);
+    }
+
+    /**
+     * Is a signed-in identity without an ID token acceptable here?
+     */
+    protected function idOnlyLoginAllowed(): bool
+    {
+        return (bool) config('services.firebase.allow_id_only', false);
+    }
+
+    /**
+     * Verify a Firebase ID token against Google and bind it to this project.
+     *
+     * Google's tokeninfo endpoint validates the signature and expiry and echoes
+     * the claims; this method then enforces the parts tokeninfo does not know
+     * about us: the issuer, the audience (our project's OAuth client), expiry
+     * with clock tolerance and a verified email.
+     *
+     * @return array{sub: string, email: string, name: string, picture: string}|array{error: string}
+     */
+    protected function verifyFirebaseToken(string $idToken): array
+    {
+        $projectId = trim((string) config('services.firebase.project_id', ''));
+        $expectedClientId = trim((string) config('services.firebase.client_id', ''));
+        $tokeninfoUrl = (string) config('services.firebase.tokeninfo_url', 'https://oauth2.googleapis.com/tokeninfo');
+
+        try {
+            $response = Http::timeout(5)
+                ->acceptJson()
+                ->get($tokeninfoUrl, ['id_token' => $idToken]);
+        } catch (\Throwable $e) {
+            Log::warning('Firebase token verification could not reach Google: '.$e->getMessage());
+
+            return ['error' => 'We could not reach Google to verify your sign-in. Please try again.'];
+        }
+
+        if (! $response->successful()) {
+            Log::info('Firebase token rejected by Google with HTTP '.$response->status());
+
+            return ['error' => 'Your Google sign-in could not be verified. Please sign in again.'];
+        }
+
+        $data = $response->json();
+
+        if (! is_array($data)) {
+            return ['error' => 'Your Google sign-in could not be verified. Please sign in again.'];
+        }
+
+        $issuer = (string) ($data['iss'] ?? '');
+        $issuers = ['https://accounts.google.com', 'accounts.google.com'];
+
+        if ($projectId !== '') {
+            $issuers[] = "https://securetoken.google.com/{$projectId}";
+        }
+
+        if (! in_array($issuer, $issuers, true)) {
+            Log::warning('Firebase token issuer rejected: '.$issuer);
+
+            return ['error' => 'That sign-in token was not issued by Google for this app.'];
+        }
+
+        $audience = (string) ($data['aud'] ?? '');
+
+        if ($audience === '') {
+            return ['error' => 'Your Google sign-in token is missing its audience.'];
+        }
+
+        if ($expectedClientId !== '') {
+            if ($audience !== $expectedClientId) {
+                Log::warning('Firebase token audience mismatch: '.$audience);
+
+                return ['error' => 'That Google sign-in belongs to a different app configuration.'];
+            }
+        } elseif ($projectId !== '' && $audience !== $projectId && ! str_starts_with($audience, $projectId.'-')) {
+            Log::warning('Firebase token audience is outside project '.$projectId.': '.$audience);
+
+            return ['error' => 'That Google sign-in belongs to a different Firebase project.'];
+        }
+
+        $expiresAt = (int) ($data['exp'] ?? 0);
+
+        if ($expiresAt > 0 && $expiresAt < time() - 30) {
+            return ['error' => 'Your Google sign-in has expired. Please sign in again.'];
+        }
+
+        $sub = trim((string) ($data['sub'] ?? ''));
+
+        if ($sub === '') {
+            return ['error' => 'Your Google sign-in token has no subject claim.'];
+        }
+
+        $email = strtolower(trim((string) ($data['email'] ?? '')));
+        $emailVerified = filter_var($data['email_verified'] ?? true, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+
+        if ($email !== '' && $emailVerified === false) {
+            return ['error' => 'Your Google email address is not verified.'];
+        }
+
+        return [
+            'sub' => $sub,
+            'email' => $email,
+            'name' => trim((string) ($data['name'] ?? '')),
+            'picture' => trim((string) ($data['picture'] ?? '')),
+        ];
     }
 
     /**

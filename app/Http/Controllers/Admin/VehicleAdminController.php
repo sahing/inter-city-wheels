@@ -22,6 +22,8 @@ class VehicleAdminController extends Controller
             'fuel_type' => 'nullable|string|max:40',
             'model_year' => 'nullable|string|max:10',
             'rc_number' => 'nullable|string|max:60',
+            'features' => 'nullable|array',
+            'features.*' => 'string|max:60',
         ]);
 
         $currentUser = auth()->user();
@@ -41,6 +43,7 @@ class VehicleAdminController extends Controller
             'fuel_type' => $validated['fuel_type'] ?? 'Diesel',
             'model_year' => $validated['model_year'] ?? date('Y'),
             'rc_number' => $validated['rc_number'] ?? null,
+            'features' => $this->normaliseFeatures($request->input('features')),
             'status' => 'Pending', // Pending admin approval!
             'is_active' => false,
         ]);
@@ -96,6 +99,8 @@ class VehicleAdminController extends Controller
             'fuel_type' => 'nullable|string|max:40',
             'model_year' => 'nullable|string|max:10',
             'rc_number' => 'nullable|string|max:60',
+            'features' => 'nullable|array',
+            'features.*' => 'string|max:60',
             'status' => 'required|string|in:Pending,Approved,Rejected',
             'admin_notes' => 'nullable|string',
             'is_active' => 'nullable|boolean',
@@ -103,6 +108,12 @@ class VehicleAdminController extends Controller
 
         $validated['vehicle_plate'] = strtoupper($validated['vehicle_plate']);
         $validated['is_active'] = $request->boolean('is_active', $vehicle->is_active);
+
+        // Only rewrite amenities when the admin form sent them, so a partial
+        // update from another surface never silently drops the feature list.
+        if ($request->has('features')) {
+            $validated['features'] = $this->normaliseFeatures($request->input('features'));
+        }
 
         $vehicle->update($validated);
 
@@ -166,5 +177,45 @@ class VehicleAdminController extends Controller
             'success' => true,
             'message' => "Vehicle '{$plate}' deleted successfully.",
         ]);
+    }
+
+    /**
+     * Keep only amenities from the shared catalogue, matched case-insensitively.
+     * Unknown labels are dropped so the fleet never carries unrenderable data.
+     *
+     * @return array<int, string>
+     */
+    private function normaliseFeatures(mixed $input): array
+    {
+        if (is_string($input)) {
+            $input = preg_split('/[,;\n]+/', $input) ?: [];
+        }
+
+        if (! is_array($input)) {
+            return [];
+        }
+
+        $catalogue = DriverVehicle::FEATURES;
+        $features = [];
+
+        foreach ($input as $candidate) {
+            if (! is_string($candidate)) {
+                continue;
+            }
+
+            $label = trim($candidate);
+
+            foreach ($catalogue as $known) {
+                if ($label !== '' && strcasecmp($known, $label) === 0) {
+                    if (! in_array($known, $features, true)) {
+                        $features[] = $known;
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        return $features;
     }
 }

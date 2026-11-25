@@ -4222,74 +4222,106 @@ h1, h2, h3, h4, .font-display {
   border-color: #20A9D2;
 }
 
-/* Vehicle Comparison Card */
+/* Vehicle Comparison Card — image first */
 .rental-vehicle-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 20px;
+  align-items: stretch;
 }
 
 .rental-vehicle-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  padding: 18px 24px;
-  display: grid;
-  grid-template-columns: 180px 1fr 240px;
-  gap: 20px;
-  align-items: center;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.04);
-  transition: all 0.2s ease;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.05);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 .rental-vehicle-card:hover {
   border-color: #20A9D2;
-  box-shadow: 0 6px 20px rgba(32, 169, 210, 0.14);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.1);
+  transform: translateY(-2px);
 }
 
-.rental-vehicle-img-wrap {
-  width: 100%;
-  height: 120px;
-  border-radius: 8px;
+/* The image owns the top half of the card. */
+.rental-vehicle-media {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  min-width: 0;
+  background: linear-gradient(135deg, #eef2f7, #e2e8f0);
   overflow: hidden;
-  background: #f8fafc;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .rental-vehicle-img {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   height: 100%;
   object-fit: cover;
+  transition: transform 0.35s ease;
+}
+.rental-vehicle-card:hover .rental-vehicle-img {
+  transform: scale(1.04);
 }
 
-.rental-vehicle-info {
+/* Keeps the overlay badge legible on any photo. */
+.rental-vehicle-media::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.32) 0%, rgba(15, 23, 42, 0) 42%);
+  pointer-events: none;
+}
+
+.rental-category-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  background: rgba(32, 169, 210, 0.12);
+  color: #0284c7;
+}
+
+.rental-category-badge--overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  background: rgba(15, 23, 42, 0.72);
+  color: #ffffff;
+  backdrop-filter: blur(6px);
+}
+
+.rental-vehicle-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
+  flex: 1;
+  padding: 16px 18px 14px;
 }
 
 .rental-vehicle-head {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .rental-vehicle-name {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 800;
   color: #0f172a;
-}
-
-.rental-category-badge {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  background: rgba(32, 169, 210, 0.12);
-  color: #0284c7;
+  line-height: 1.2;
 }
 
 .rental-vehicle-models {
@@ -4300,71 +4332,72 @@ h1, h2, h3, h4, .font-display {
 
 .rental-spec-chips {
   display: flex;
-  gap: 12px;
   flex-wrap: wrap;
-  margin: 4px 0;
+  gap: 6px;
+  margin-top: 2px;
 }
 
 .rental-spec-chip {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: 11.5px;
   color: #475569;
-  background: #f1f5f9;
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-weight: 500;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-weight: 600;
 }
 
 .rental-policy-strip {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  font-size: 11.5px;
-  color: #16a34a;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11px;
+  color: #15803d;
   font-weight: 600;
+  margin-top: 2px;
 }
 
-.rental-vehicle-pricing {
+.rental-vehicle-footer {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  border-left: 1px solid #f1f5f9;
-  padding-left: 20px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px 16px;
+  border-top: 1px solid #f1f5f9;
+  background: #fcfdff;
 }
 
 .rental-fare-total {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 800;
   color: #0f172a;
   line-height: 1;
 }
 
 .rental-fare-sub {
-  font-size: 11px;
+  font-size: 10.5px;
   color: #64748b;
-  margin-top: 4px;
-  margin-bottom: 12px;
-  text-align: right;
+  margin-top: 5px;
 }
 
 .btn-book-vehicle {
   background: #F36B21;
   color: #ffffff;
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   border: none;
-  border-radius: 6px;
-  padding: 10px 24px;
+  border-radius: 8px;
+  padding: 11px 18px;
   cursor: pointer;
-  transition: all 0.15s ease;
-  width: 100%;
+  white-space: nowrap;
+  transition: background 0.15s ease, transform 0.15s ease;
 }
 .btn-book-vehicle:hover {
   background: #e05e19;
@@ -4390,15 +4423,8 @@ h1, h2, h3, h4, .font-display {
   .rental-promo-grid {
     grid-template-columns: 1fr;
   }
-  .rental-vehicle-card {
-    grid-template-columns: 1fr;
-  }
-  .rental-vehicle-pricing {
-    border-left: none;
-    border-top: 1px solid #f1f5f9;
-    padding-left: 0;
-    padding-top: 14px;
-    align-items: flex-start;
+  .rental-vehicle-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   }
   .rental-checkout-grid {
     grid-template-columns: 1fr;
@@ -4434,6 +4460,18 @@ h1, h2, h3, h4, .font-display {
     border-bottom: 1px solid #e2e8f0;
     padding-bottom: 10px;
     width: 100%;
+  }
+  .rental-vehicle-grid {
+    grid-template-columns: 1fr;
+  }
+  .rental-vehicle-media {
+    aspect-ratio: 16 / 9;
+  }
+  .rental-vehicle-footer {
+    flex-wrap: wrap;
+  }
+  .btn-book-vehicle {
+    flex: 1 1 100%;
   }
 }
 
@@ -4571,4 +4609,25 @@ h1, h2, h3, h4, .font-display {
   color: #0f172a !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
   font-weight: 700;
+}
+
+/* ===== My Trips / booking history ===== */
+.trips-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 0 4px;}
+.trips-filters{display:flex;gap:6px;background:#f1f5f9;padding:4px;border-radius:999px;}
+.trip-filter-pill{border:0;background:transparent;padding:8px 16px;border-radius:999px;font-size:12.5px;font-weight:700;color:#475569;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:background .18s,color .18s,box-shadow .18s;font-family:inherit;}
+.trip-filter-pill:hover{color:#0f172a;}
+.trip-filter-pill:focus-visible{outline:2px solid #d49b4c;outline-offset:2px;}
+.trip-filter-pill.active{background:#0b0f19;color:#fdfaf5;box-shadow:0 4px 12px rgba(11,15,25,.18);}
+.trip-filter-count{font-size:10.5px;font-weight:800;background:rgba(15,23,42,.08);padding:1px 7px;border-radius:999px;line-height:1.6;}
+.trip-filter-pill.active .trip-filter-count{background:rgba(255,255,255,.2);}
+.trips-summary{font-size:12px;color:#64748b;}
+.customer-trip-card{transition:box-shadow .2s,transform .2s;}
+.customer-trip-card.is-new{box-shadow:0 0 0 2px rgba(212,155,76,.55),0 10px 26px rgba(15,23,42,.10);}
+.trip-new-flag{background:#16a34a;color:#ffffff;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:4px;}
+.trips-empty{padding:44px 20px;text-align:center;color:#94a3b8;background:#f8fafc;border:1px dashed #e2e8f0;border-radius:12px;}
+.trips-guest-card{position:relative;}
+@media (max-width:640px){
+  .trips-filters{width:100%;justify-content:space-between;}
+  .trip-filter-pill{padding:8px 10px;font-size:12px;flex:1;justify-content:center;}
+  .trips-summary{width:100%;}
 }

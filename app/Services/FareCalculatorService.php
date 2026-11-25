@@ -60,6 +60,14 @@ class FareCalculatorService
     /** Reference rate used to scale local/airport package fares across fleets. */
     private const SUV_REFERENCE_RATE = 18.0;
 
+    /** OpenStreetMap access (Nominatim geocoding, OSRM distances). */
+    private readonly OsmGeoService $osm;
+
+    public function __construct(?OsmGeoService $osm = null)
+    {
+        $this->osm = $osm ?? new OsmGeoService;
+    }
+
     /**
      * Resolve the trip geometry (distance, drive time, toll) from a real
      * source: the route_fares table, the curated location dataset, an explicit
@@ -149,6 +157,7 @@ class FareCalculatorService
             'base_toll' => (float) $metrics['base_toll'],
             'roundtrip_discount_pct' => 0.0,
             'source' => $metrics['source'],
+            'cached' => (bool) ($metrics['cached'] ?? false),
             'local_package' => null,
             'route' => null,
             'airport_hub' => null,
@@ -495,47 +504,45 @@ class FareCalculatorService
     }
 
     /**
-     * Derive metrics from coordinates. Caller-supplied coordinates win; then
-     * the curated dataset / registered locations (strict, no guessing).
+     * Derive metrics from coordinates.
+     *
+     * Order of preference for each endpoint: caller-supplied coordinates, the
+     * registered/curated dataset, then Nominatim. Distance comes from OSRM's
+     * driving route when it is reachable, and falls back to the straight-line
+     * road estimate only when routing is unavailable.
      *
      * @param  array<string, mixed>  $input
      * @return array{distance_km: int, estimated_time: string, base_toll: float, source: string}|null
      */
     private function measureFromCoordinates(array $input, string $from, string $to): ?array
     {
-        $fromLat = isset($input['from_lat']) ? (float) $input['from_lat'] : null;
-        $fromLng = isset($input['from_lng']) ? (float) $input['from_lng'] : null;
-        $toLat = isset($input['to_lat']) ? (float) $input['to_lat'] : null;
-        $toLng = isset($input['to_lng']) ? (float) $input['to_lng'] : null;
+        [$fromLat, $fromLng, $fromSource] = $this->coordinatesFor($input, 'from', $from);
+        [$toLat, $toLng, $toSource] = $this->coordinatesFor($input, 'to', $to);
 
-        $source = 'coordinates';
-
-        if ($fromLat === null || $fromLng === null) {
-            $resolved = RegionalLocationService::resolveCoordinatesStrict($from);
-
-            if (! $resolved) {
-                return null;
-            }
-
-            $fromLat = $resolved['lat'];
-            $fromLng = $resolved['lng'];
-            $source = 'location_dataset';
-        }
-
-        if ($toLat === null || $toLng === null) {
-            $resolved = RegionalLocationService::resolveCoordinatesStrict($to);
-
-            if (! $resolved) {
-                return null;
-            }
-
-            $toLat = $resolved['lat'];
-            $toLng = $resolved['lng'];
-            $source = 'location_dataset';
+        if ($fromLat === null || $fromLng === null || $toLat === null || $toLng === null) {
+            return null;
         }
 
         if ($fromLat === $toLat && $fromLng === $toLng) {
             return null;
+        }
+
+        $source = match (true) {
+            $fromSource === 'osm_geocode' || $toSource === 'osm_geocode' => 'osm_geocode',
+            $fromSource === 'coordinates' && $toSource === 'coordinates' => 'coordinates',
+            default => 'location_dataset',
+        };
+
+        $driving = $this->osm->route($fromLat, $fromLng, $toLat, $toLng, $from, $to);
+
+        if ($driving !== null) {
+            return [
+                'distance_km' => (int) $driving['distance_km'],
+                'estimated_time' => $this->osm->formatDuration((int) $driving['duration_min']),
+                'base_toll' => (float) round($driving['distance_km'] * 0.92),
+                'source' => $source.'+osrm_route',
+                'cached' => (bool) ($driving['cached'] ?? false),
+            ];
         }
 
         $metrics = RegionalLocationService::computeRouteMetrics($fromLat, $fromLng, $toLat, $toLng);
@@ -545,7 +552,38 @@ class FareCalculatorService
             'estimated_time' => (string) $metrics['estimated_time'],
             'base_toll' => (float) $metrics['base_toll'],
             'source' => $source,
+            'cached' => false,
         ];
+    }
+
+    /**
+     * Coordinates for one endpoint and how they were obtained.
+     *
+     * @param  array<string, mixed>  $input
+     * @return array{0: ?float, 1: ?float, 2: string}
+     */
+    private function coordinatesFor(array $input, string $prefix, string $name): array
+    {
+        $lat = $input[$prefix.'_lat'] ?? null;
+        $lng = $input[$prefix.'_lng'] ?? null;
+
+        if ($lat !== null && $lng !== null && $lat !== '' && $lng !== '') {
+            return [(float) $lat, (float) $lng, 'coordinates'];
+        }
+
+        $resolved = RegionalLocationService::resolveCoordinatesStrict($name);
+
+        if ($resolved !== null) {
+            return [(float) $resolved['lat'], (float) $resolved['lng'], 'location_dataset'];
+        }
+
+        $geocoded = $this->osm->geocode($name);
+
+        if ($geocoded !== null) {
+            return [(float) $geocoded['lat'], (float) $geocoded['lng'], 'osm_geocode'];
+        }
+
+        return [null, null, 'unresolved'];
     }
 
     /**
