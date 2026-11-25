@@ -36,9 +36,11 @@ class DemoModeDisabledTest extends TestCase
 
     public function test_simulated_identity_providers_do_not_exist(): void
     {
-        $this->getJson('/auth/alternate-config')->assertStatus(404);
+        config(['services.firebase.allow_id_only' => false]);
+
+        $this->getJson('/auth/alternate-config')->assertStatus(200);
         $this->postJson('/auth/alternate-login', ['provider' => 'firebase', 'email' => 'x@example.com'])->assertStatus(404);
-        $this->postJson('/auth/firebase-login', ['email' => 'x@example.com'])->assertStatus(404);
+        $this->postJson('/auth/firebase-login', ['email' => 'x@example.com'])->assertStatus(422);
         $this->postJson('/auth/clerk-login', ['email' => 'x@example.com'])->assertStatus(404);
 
         $this->assertGuest();

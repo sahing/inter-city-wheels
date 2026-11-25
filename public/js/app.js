@@ -3828,6 +3828,10 @@ window.handleAlternateLogin = async function (provider = 'firebase') {
     if (altConfig.firebase && altConfig.firebase.is_configured) {
       return window.loginWithFirebaseLive(role);
     }
+    if (!(window.INTERCITY_CONFIG && window.INTERCITY_CONFIG.demo)) {
+      showToast('Google / Firebase sign-in is not configured.', 'warning');
+      return;
+    }
     // Seamless 1-click Firebase ID sign-in in offline/local mode:
     const profile = window.getRoleFirebaseProfile(role, email, name);
     showToast(`Signing in via Firebase ID as ${role.toUpperCase()}...`, 'info');

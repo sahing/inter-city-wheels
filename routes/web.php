@@ -57,15 +57,16 @@ Route::post('/admin/login', [AuthController::class, 'adminLogin'])->name('admin.
 
 Route::post('/auth/send-otp', [AuthController::class, 'sendMobileOtp'])->name('auth.sendOtp');
 Route::post('/auth/verify-otp', [AuthController::class, 'verifyMobileOtp'])->name('auth.verifyOtp');
+Route::get('/auth/alternate-config', [AuthController::class, 'alternateConfig'])->name('auth.alternateConfig');
+Route::post('/auth/firebase-login', [AuthController::class, 'firebaseLogin'])->name('auth.firebaseLogin');
+
 /*
 | Demo-only authentication surfaces. Each of these can authenticate a caller
 | without credentials, so `demo` middleware answers 404 unless demo mode is on.
 | See config/demo.php and INTERCITY_DEMO_MODE.
 */
 Route::middleware('demo')->group(function () {
-    Route::get('/auth/alternate-config', [AuthController::class, 'alternateConfig'])->name('auth.alternateConfig');
     Route::post('/auth/alternate-login', [AuthController::class, 'alternateLogin'])->name('auth.alternateLogin');
-    Route::post('/auth/firebase-login', [AuthController::class, 'firebaseLogin'])->name('auth.firebaseLogin');
     Route::post('/auth/clerk-login', [AuthController::class, 'clerkLogin'])->name('auth.clerkLogin');
     Route::post('/login/quick-demo', [AuthController::class, 'quickDemoLogin'])->name('login.demo');
 });

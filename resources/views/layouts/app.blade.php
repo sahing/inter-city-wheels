@@ -52,9 +52,7 @@
             /* Production: remove every demonstration-only affordance from the UI. */
             body.no-demo [onclick*="quickDemoLogin"],
             body.no-demo [onclick*="quickFillDemo"],
-            body.no-demo [onclick*="handleAlternateLogin"],
             body.no-demo [onclick*="selectAltDemoProfile"],
-            body.no-demo .alternate-auth-section,
             body.no-demo #alternate-auth-modal,
             body.no-demo #demo-accounts-row,
             body.no-demo .demo-only { display: none !important; }
