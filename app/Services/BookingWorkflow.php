@@ -12,8 +12,12 @@ use App\Models\Booking;
  * operational "Driver Assigned" and "Cancelled" states. Before this class the
  * status was written directly from several controllers, so any endpoint could
  * jump a booking to any string: a booking could be created already
- * "Completed". Every write now goes through transition(), which rejects
- * everything outside the table below.
+ * "Completed". Every customer and driver write now goes through transition(),
+ * which rejects everything outside the table below.
+ *
+ * The admin console is the one deliberate exception: ops staff must be able to
+ * correct a mis-staged trip at any point, so its writes go through
+ * forceTransition() instead.
  */
 class BookingWorkflow
 {
@@ -125,6 +129,34 @@ class BookingWorkflow
         $from = (string) $booking->status;
 
         self::assertTransition($from, $to, $allowSameStatus);
+
+        $booking->fill($attributes);
+        $booking->status = $to;
+        $booking->save();
+
+        return $booking;
+    }
+
+    /**
+     * Admin override: move a booking to any known status, in any direction.
+     *
+     * Operational corrections do not always follow the happy path — a trip may
+     * need reopening after it was completed by mistake, or a chauffeur may need
+     * replacing on a live trip. Only the admin console may call this;
+     * customer and driver surfaces keep using transition(), which still
+     * enforces the stage table above.
+     *
+     * @param  array<string, mixed>  $attributes
+     *
+     * @throws InvalidBookingTransition when $to is not a known status
+     */
+    public function forceTransition(Booking $booking, string $to, array $attributes = []): Booking
+    {
+        $from = (string) $booking->status;
+
+        if (! self::isKnownStatus($to)) {
+            throw new InvalidBookingTransition($from, $to, self::allowedFrom($from));
+        }
 
         $booking->fill($attributes);
         $booking->status = $to;

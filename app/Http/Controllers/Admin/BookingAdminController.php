@@ -9,6 +9,7 @@ use App\Models\Driver;
 use App\Services\BookingReferenceGenerator;
 use App\Services\BookingWorkflow;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class BookingAdminController extends Controller
 {
@@ -197,9 +198,22 @@ class BookingAdminController extends Controller
 
             unset($validated['status']);
 
+            $fromStatus = (string) $booking->status;
+
+            if ($fromStatus !== $newStatus) {
+                // Admin override: the ops console deliberately is not bound by
+                // the stage order, so a trip can be corrected or reopened at
+                // any point. Customer/driver flows still use transition().
+                Log::warning('Admin override: booking stage changed outside the workflow order.', [
+                    'booking' => $booking->booking_reference,
+                    'from' => $fromStatus,
+                    'to' => $newStatus,
+                    'admin_id' => $request->user()?->id,
+                ]);
+            }
+
             try {
-                // P0-5: an admin edit may not teleport a booking between stages.
-                $this->workflow->transition($booking, $newStatus, $validated);
+                $this->workflow->forceTransition($booking, $newStatus, $validated);
             } catch (InvalidBookingTransition $e) {
                 return response()->json([
                     'success' => false,
@@ -231,20 +245,31 @@ class BookingAdminController extends Controller
         ]);
 
         $driverId = $validated['driver_id'] ?? null;
-        $targetStatus = $driverId
-            ? ($validated['status'] ?? BookingWorkflow::DRIVER_ASSIGNED)
-            : BookingWorkflow::CONFIRMED;
+        $driverId = $driverId === null ? null : (int) $driverId;
 
-        if (! BookingWorkflow::isKnownStatus($targetStatus)) {
+        $requestedStatus = $validated['status'] ?? null;
+
+        // The allot-driver form sends "" for "keep the current stage".
+        if ($requestedStatus === '') {
+            $requestedStatus = null;
+        }
+
+        if ($requestedStatus !== null && ! BookingWorkflow::isKnownStatus($requestedStatus)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unknown booking status "'.$targetStatus.'".',
+                'message' => 'Unknown booking status "'.$requestedStatus.'".',
                 'allowed' => BookingWorkflow::STATUSES,
             ], 422);
         }
 
+        $targetStatus = $requestedStatus
+            ?? $this->statusAfterAllotment((string) $booking->status, $driverId);
+
         try {
-            $this->workflow->transition($booking, $targetStatus, [
+            // Admin override: a chauffeur can be allotted or replaced at any
+            // stage, and an explicitly chosen stage wins even when the trip
+            // already moved past it.
+            $this->workflow->forceTransition($booking, $targetStatus, [
                 'assigned_driver_id' => $driverId,
             ]);
         } catch (InvalidBookingTransition $e) {
@@ -262,6 +287,25 @@ class BookingAdminController extends Controller
             'message' => $driverId ? 'Driver allotted successfully!' : 'Driver allotment removed.',
             'booking' => $booking,
         ]);
+    }
+
+    /**
+     * Stage to keep or move to after a driver change when the caller did not
+     * name one explicitly. Pre-pickup bookings advance to "Driver Assigned";
+     * a started, completed or cancelled trip keeps its stage so a correction
+     * never rewrites history by accident.
+     */
+    private function statusAfterAllotment(string $current, ?int $driverId): string
+    {
+        if ($driverId === null) {
+            return $current === BookingWorkflow::DRIVER_ASSIGNED
+                ? BookingWorkflow::CONFIRMED
+                : $current;
+        }
+
+        return in_array($current, [BookingWorkflow::REQUESTED, BookingWorkflow::BIDDING, BookingWorkflow::CONFIRMED], true)
+            ? BookingWorkflow::DRIVER_ASSIGNED
+            : $current;
     }
 
     /**

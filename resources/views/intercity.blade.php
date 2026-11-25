@@ -13,13 +13,20 @@
     };
     $requestedTab = request()->query('tab');
 
-    $defaultTab = $requestedTab && in_array($requestedTab, $allowedTabs, true)
-        ? $requestedTab
-        : match($userRole) {
-            'admin' => 'admin',
-            'driver' => 'bidding',
-            default => 'cabs'
-        };
+    // After checkout the SPA may land with /?booked=ICW-123456 (used by the
+    // sign-in gate resume path). That should open the history and highlight it.
+    $bookedRef = (string) request()->query('booked', '');
+    $bookedRef = preg_match('/^ICW-\d{6}$/', $bookedRef) === 1 ? $bookedRef : null;
+
+    $defaultTab = $bookedRef && $userRole === 'customer'
+        ? 'my-bookings'
+        : ($requestedTab && in_array($requestedTab, $allowedTabs, true)
+            ? $requestedTab
+            : match($userRole) {
+                'admin' => 'admin',
+                'driver' => 'bidding',
+                default => 'cabs'
+            });
 @endphp
 <main id="app-viewport" class="app-viewport" style="width:100%; max-width:100%; margin:0; padding:0;">
 
@@ -1044,6 +1051,7 @@
                 $activeTrips = $myTrips->reject(fn ($b) => in_array($b->status, ['Completed', 'Cancelled'], true));
                 $completedTrips = $myTrips->filter(fn ($b) => $b->status === 'Completed');
                 $completedSpend = (float) $completedTrips->sum('total_amount');
+                $justBooked = $bookedRef && $myTrips->contains(fn ($b) => $b->booking_reference === $bookedRef);
             @endphp
 
             <div class="card" style="margin-bottom:20px;">
@@ -1068,6 +1076,15 @@
                 </div>
 
                 @auth
+                    @if($justBooked)
+                        <div style="display:flex; align-items:center; gap:10px; margin:14px 0 0; padding:12px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px;">
+                            <span class="material-symbols-outlined" style="color:#16a34a; font-size:22px;">check_circle</span>
+                            <div style="font-size:12.5px; color:#166534;">
+                                <strong>Booking {{ $bookedRef }} confirmed.</strong>
+                                It is highlighted below with your ride OTP — you can reopen this page any time from <em>My Trips</em>.
+                            </div>
+                        </div>
+                    @endif
                     <div class="trips-toolbar">
                         <div class="trips-filters" role="tablist" aria-label="Filter your trips">
                             <button type="button" class="trip-filter-pill active" data-filter="all" role="tab" aria-selected="true" onclick="filterMyTrips('all')">
@@ -1110,13 +1127,16 @@
                                     default => 'badge-secondary',
                                 };
                             @endphp
-                            <div class="customer-trip-card" id="trip-card-{{ $cb->booking_reference }}"
+                            <div class="customer-trip-card {{ $bookedRef && $cb->booking_reference === $bookedRef ? 'is-new' : '' }}" id="trip-card-{{ $cb->booking_reference }}"
                                  data-bucket="{{ $bucket }}" data-status="{{ $cb->status }}">
                                 <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:12px; margin-bottom:12px;">
                                     <div>
                                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                             <span style="font-family:monospace; font-weight:800; color:var(--primary); font-size:14px;">{{ $cb->booking_reference }}</span>
                                             <span class="admin-badge {{ $badge }}">{{ $cb->status }}</span>
+                                            @if($bookedRef && $cb->booking_reference === $bookedRef)
+                                                <span class="trip-new-flag">Just booked</span>
+                                            @endif
                                             <span class="admin-badge {{ $cb->service_type === 'cab' ? 'badge-primary' : 'badge-gold' }}" style="font-size:9.5px;">
                                                 {{ strtoupper($cb->service_type) }}
                                             </span>
@@ -1322,14 +1342,23 @@
                         <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px;">hail</span>
                         <span>Available Outstation Trips for Driver Bidding</span>
                     </h3>
-                    <p style="font-size:11.5px; color:#64748b; margin:2px 0 0;">Review passenger pickup (From), destination (To), highway distance (KM), and submit your conclusive ride commitment bid.</p>
+                    <p style="font-size:11.5px; color:#64748b; margin:2px 0 0;">Live auctions published by the operations team: pickup (From), destination (To), highway distance (KM), departure date &amp; time and the current lowest price. Open a card to place or improve your bid.</p>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span class="admin-badge badge-success" style="font-size:11px;">🟢 Live Trip Requests</span>
+                    <button type="button" class="btn btn-sm btn-outline" onclick="refreshDriverAuctions()" title="Reload live auctions">
+                        <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
+                        <span>Refresh</span>
+                    </button>
                 </div>
             </div>
 
             <div class="bidding-cards-list animate-load stagger-3" id="bidding-cards-stream"></div>
+
+            <p style="font-size:11px; color:#64748b; margin:0;">
+                <span class="material-symbols-outlined" style="font-size:13px; vertical-align:-2px; color:#10b981;">lock</span>
+                Passenger name, mobile number and exact pickup address unlock only if you win the auction — bidding never reveals them.
+            </p>
         </section>
 
         <!-- ======================================================== -->
@@ -1371,8 +1400,18 @@
                                 </div>
                             </div>
                             <div style="text-align:right;">
-                                <div style="font-size:18px; font-weight:800; color:#16a34a;">₹{{ number_format($dt->total_amount) }}</div>
-                                <div style="font-size:10.5px; color:#64748b;">Tolls & Taxes Included</div>
+                                @php
+                                    $driverEarning = $dt->driver_payout_amount !== null
+                                        ? (float) $dt->driver_payout_amount
+                                        : (float) $dt->total_amount;
+                                @endphp
+                                <div style="font-size:18px; font-weight:800; color:#16a34a;">₹{{ number_format($driverEarning) }}</div>
+                                <div style="font-size:10.5px; color:#64748b;">
+                                    {{ $dt->driver_payout_amount !== null ? 'Your winning bid payout' : 'Tolls & Taxes Included' }}
+                                </div>
+                                @if($dt->assigned_bid_id)
+                                    <div style="font-size:10px; font-weight:700; color:#b45309; margin-top:2px;">Won via driver bidding</div>
+                                @endif
                             </div>
                         </div>
 
@@ -4439,141 +4478,6 @@
     </div>
 </div>
 
-@if($userRole === 'driver' || $userRole === 'admin')
-<!-- ======================================================== -->
-<!-- MODAL: CONCLUSIVE DRIVER BID & COMMITMENT POPUP          -->
-<!-- ======================================================== -->
-<div class="modal-overlay" id="driver-bid-modal">
-    <div class="modal-dialog" style="max-width: 580px;">
-        <div class="modal-header" style="background:#0b0f19; color:#f8fafc; border-bottom:1px solid #1e293b;">
-            <div style="display:flex; align-items:center; gap:10px;">
-                <div style="width:36px; height:36px; border-radius:8px; background:rgba(212,155,76,0.15); border:1px solid #d49b4c; display:flex; align-items:center; justify-content:center; color:#d49b4c;">
-                    <span class="material-symbols-outlined" style="font-size:22px;">gavel</span>
-                </div>
-                <div>
-                    <h3 class="modal-title" style="color:#ffffff; font-size:16px;">Chauffeur Ride Commitment & Bidding</h3>
-                    <p style="font-size:11px; color:#94a3b8; margin:0;">Conclusive trip agreement & binding fare proposal</p>
-                </div>
-            </div>
-            <button type="button" class="modal-close-btn" style="color:#cbd5e1;" onclick="closeModal('driver-bid-modal')">×</button>
-        </div>
-        <div class="modal-body" style="padding:18px 20px;">
-            <!-- Trip Route & Distance Details Box -->
-            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:16px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <span class="admin-badge badge-primary" id="driver-bid-trip-type" style="font-size:10.5px;">Outstation Trip</span>
-                    <span style="font-size:11.5px; color:#64748b; font-weight:600;" id="driver-bid-trip-schedule">Scheduled Departure</span>
-                </div>
-                
-                <!-- From & To Route Display -->
-                <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; margin-bottom:12px;">
-                    <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px;">
-                        <div style="font-size:10px; font-weight:700; color:#0284c7; text-transform:uppercase; letter-spacing:0.04em;">From (Pickup Location)</div>
-                        <div style="font-size:13px; font-weight:700; color:#0f172a; margin-top:2px;" id="driver-bid-from-loc">Pickup Location</div>
-                    </div>
-                    <div style="text-align:center; color:var(--primary); font-weight:800; font-size:20px;">➔</div>
-                    <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px;">
-                        <div style="font-size:10px; font-weight:700; color:#16a34a; text-transform:uppercase; letter-spacing:0.04em;">To (Drop Location)</div>
-                        <div style="font-size:13px; font-weight:700; color:#0f172a; margin-top:2px;" id="driver-bid-to-loc">Drop Location</div>
-                    </div>
-                </div>
-
-                <!-- Distance, Time & Passenger Budget Row -->
-                <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; border-top:1px dashed #cbd5e1; padding-top:10px;">
-                    <div>
-                        <span style="color:#64748b;">Distance:</span>
-                        <strong style="color:#0f172a; margin-left:4px; font-family:monospace; font-size:14px;" id="driver-bid-distance-km">450 km</strong>
-                        <span style="color:#94a3b8; margin:0 6px;">&bull;</span>
-                        <span style="color:#64748b;">Est. Time:</span>
-                        <strong style="color:#0f172a; margin-left:4px;" id="driver-bid-est-time">9h 15m</strong>
-                    </div>
-                    <div>
-                        <span style="color:#64748b;">Passenger Budget:</span>
-                        <strong style="color:#16a34a; margin-left:4px; font-size:14px;" id="driver-bid-customer-budget">₹4,800</strong>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Driver Fare Input -->
-            <div class="form-group" style="margin-bottom:14px;">
-                <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
-                    <span>Your Proposed Ride Price (₹)</span>
-                    <span style="font-size:11px; color:#64748b;">Enter final all-inclusive trip fare</span>
-                </label>
-                <div class="input-with-icon">
-                    <span class="material-symbols-outlined" style="color:var(--primary);">currency_rupee</span>
-                    <input type="number" id="driver-bid-amount-input" class="form-control" style="font-size:20px; font-weight:800; color:#0f172a; height:46px;" oninput="updateConclusiveWriteup()" min="100" step="50">
-                </div>
-                <!-- Quick Amount Adjusters -->
-                <div style="display:flex; gap:6px; margin-top:8px;">
-                    <button type="button" class="btn btn-xs btn-outline" onclick="adjustDriverBidPrice(-100)">- ₹100</button>
-                    <button type="button" class="btn btn-xs btn-outline-gold" onclick="resetDriverBidToTarget()">Match Budget</button>
-                    <button type="button" class="btn btn-xs btn-outline" onclick="adjustDriverBidPrice(200)">+ ₹200</button>
-                    <button type="button" class="btn btn-xs btn-outline" onclick="adjustDriverBidPrice(500)">+ ₹500</button>
-                </div>
-            </div>
-
-            <!-- Mandatory Conclusive Write-up & Acceptance Box -->
-            <div style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:8px; padding:14px; margin-top:14px;">
-                <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
-                    <span class="material-symbols-outlined" style="color:#d97706; font-size:18px;">verified</span>
-                    <span style="font-size:11px; text-transform:uppercase; font-weight:800; color:#92400e; letter-spacing:0.05em;">Conclusive Ride Commitment Statement</span>
-                </div>
-                <div id="driver-bid-conclusive-statement" style="font-size:13.5px; font-weight:600; color:#1e293b; line-height:1.55; padding:6px 0;">
-                    "I will take and do this ride from <span id="writeup-from" style="color:#0284c7;">Pickup</span> to <span id="writeup-to" style="color:#16a34a;">Drop</span> (<span id="writeup-km" style="font-family:monospace;">0 km</span>) at this price: <span id="writeup-price" style="color:#b45309; font-weight:800; font-size:15px;">₹0</span>. I accept this."
-                </div>
-                <div style="margin-top:10px; display:flex; align-items:flex-start; gap:8px; border-top:1px dashed #fcd34d; padding-top:8px;">
-                    <input type="checkbox" id="driver-bid-accept-checkbox" checked style="width:17px; height:17px; margin-top:2px; accent-color:#d97706; cursor:pointer;" onchange="toggleBidSubmitButton(this.checked)">
-                    <label for="driver-bid-accept-checkbox" style="font-size:11.5px; color:#475569; font-weight:600; cursor:pointer; line-height:1.4;">
-                        I accept this trip and agree to report on schedule with my verified vehicle at the agreed fare.
-                    </label>
-                </div>
-            </div>
-
-            <!-- Privacy Protection Notice -->
-            <div style="background:#f1f5f9; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; margin-top:10px; font-size:11px; color:#475569; display:flex; align-items:center; gap:6px;">
-                <span class="material-symbols-outlined" style="font-size:16px; color:#64748b;">lock</span>
-                <span><strong>Security & Privacy:</strong> Passenger phone number and exact doorstep pickup address remain masked until your bid is accepted and the ride is allotted to you.</span>
-            </div>
-        </div>
-        <div class="modal-footer" style="background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('driver-bid-modal')">Cancel</button>
-            <button type="button" class="btn btn-primary btn-sm" id="btn-submit-conclusive-bid" onclick="submitConclusiveDriverBid()">
-                <span>✓ I Accept & Confirm This Bid (<span id="btn-bid-amount-preview">₹0</span>)</span>
-            </button>
-        </div>
-    </div>
-</div>
-@endif
-
-<!-- ======================================================== -->
-<!-- MODAL: DRIVER COUNTER OFFER                              -->
-<!-- ======================================================== -->
-<div class="modal-overlay" id="counter-modal">
-    <div class="modal-dialog">
-        <div class="modal-header">
-            <h3 class="modal-title">Counter Offer</h3>
-            <button type="button" class="modal-close-btn" onclick="closeModal('counter-modal')">×</button>
-        </div>
-        <div class="modal-body">
-            <p style="font-size:12.5px; color:#64748b; margin-bottom:12px;">
-                Propose your target fare to <strong id="counter-driver-name" style="color:#0f172a;">Driver</strong>. Current bid: <span id="counter-current-bid" style="font-weight:700; color:var(--secondary);" class="text-tabular">₹5,200</span>.
-            </p>
-            <div class="form-group">
-                <label class="form-label">Target Offer (₹)</label>
-                <div class="input-with-icon">
-                    <span class="material-symbols-outlined">currency_rupee</span>
-                    <input type="number" id="counter-target-input" class="form-control" value="4800">
-                </div>
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('counter-modal')">Cancel</button>
-            <button type="button" class="btn btn-accent btn-sm" onclick="submitCounterOffer()">Send Counter Bid</button>
-        </div>
-    </div>
-</div>
-
 <!-- ======================================================== -->
 <!-- MODAL: DIGITAL BOARDING PASS / TRIP TICKET               -->
 <!-- ======================================================== -->
@@ -4900,6 +4804,7 @@
                         <option value="Driver Assigned" selected>Driver Assigned (Chauffeur dispatched)</option>
                         <option value="Confirmed">Confirmed (Chauffeur queued)</option>
                         <option value="Started">Trip In Progress</option>
+                        <option value="">Keep current stage (no status change)</option>
                     </select>
                 </div>
 
@@ -5170,6 +5075,11 @@
                             @endforeach
                         </select>
                     </div>
+                </div>
+
+                <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:11.5px; color:#1e40af; display:flex; align-items:flex-start; gap:8px;">
+                    <span class="material-symbols-outlined" style="font-size:18px;">admin_panel_settings</span>
+                    <span><strong>Admin override:</strong> any stage can be saved here — including reopening <em>Completed</em> or <em>Cancelled</em> trips and replacing a chauffeur on a live ride. Customer and driver apps keep their normal stage rules.</span>
                 </div>
 
                 <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--outline); padding-top:14px;">

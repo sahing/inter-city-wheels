@@ -110,6 +110,44 @@ class BiddingController extends Controller
     }
 
     /**
+     * Every auction a signed-in driver may bid on right now, in the shape the
+     * driver portal renders. Each entry is still `toDriverPayload()` — route,
+     * distance, money and deadline only — plus the link to its own page.
+     */
+    public function activeAuctions(Request $request)
+    {
+        $driver = $request->user()?->driverProfile();
+
+        $sessions = BiddingSession::with('booking')
+            ->where('status', BiddingSession::STATUS_OPEN)
+            ->where(function ($query) {
+                $query->whereNull('closes_at')->orWhere('closes_at', '>', now());
+            })
+            ->orderBy('closes_at')
+            ->get();
+
+        $auctions = $sessions->map(function (BiddingSession $session) use ($driver) {
+            $payload = $session->toDriverPayload($driver?->id);
+            $myBids = $driver
+                ? $session->bids()->where('driver_id', $driver->id)->count()
+                : 0;
+
+            $payload['bid_url'] = route('bidding.page', ['token' => $session->token]);
+            $payload['my_bids'] = $myBids;
+            $payload['remaining_bids'] = max(0, BiddingSession::MAX_BIDS_PER_DRIVER - $myBids);
+
+            return $payload;
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'count' => $auctions->count(),
+            'can_bid' => (bool) ($driver?->is_verified),
+            'auctions' => $auctions,
+        ]);
+    }
+
+    /**
      * A driver's own bid history for one auction (nothing about competitors).
      */
     public function mine(Request $request, string $token)

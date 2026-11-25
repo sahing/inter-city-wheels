@@ -15,10 +15,25 @@
 | G1 route audit | `php artisan route:list --json > route-audit.json` | 104 routes emitted; `RouteAuthorizationAuditTest` proves 0 privileged routes without `auth` + `role` |
 | G2 authz | `php artisan test --filter=Authorization` / `RouteAuthorizationAuditTest` | PASS, including 401 (guest) and 403 (wrong role) negatives |
 | G3 logic | `php artisan test --filter=Pricing` / `Booking` / `Workflow` | PASS |
-| G4 suite | `php artisan test` | **241 passed (1,490 assertions)** |
-| G4b quality | `vendor/bin/pint --test` | **PASS — 125 files** |
+| G4 suite | `php artisan test` | **295 passed (6,993 assertions)** |
+| G4b quality | `vendor/bin/pint --test` | **PASS — 137 files** |
 | G5 build | `npm run build` | 61 modules → `public/build/manifest.json` + assets, built in 326 ms |
 | G6 release | `php artisan config:clear && php artisan migrate --pretend` | config cleared; 14 index statements + 3 schema changes, no errors |
+
+### Trip history after booking (added 2026-11-25)
+
+Booking now ends on **My Trips** with the new trip on top: `All` / `Active` / `Completed` filters with live counts, per-trip cards (status, route, departure, fare, chauffeur, ride OTP, boarding pass), and per-filter empty states. Signed-out visitors get the same screen with a sign-in form and a reference + mobile tracker.
+
+Live HTTP proof:
+
+```
+BOOKED: ICW-639442 status=Requested
+LANDING: 200
+  history_active:  True      banner: True
+  card_highlight:  True      just_booked_tag: True
+  filters:         True      counts_all: 7
+GUEST: nav_my_trips=True     guest_panel=True
+```
 
 ### Driver bidding marketplace (added 2026-11-25)
 
@@ -35,6 +50,28 @@ BOARD: count=1 lowest=1997 profit=472 bids=1
 AWARD: 200 status=Driver Assigned payout=1997 margin=472 driver=Ramesh Patil
 WINNER_PAGE: revealed=True pii=True phone=True     LOSER_VIEW_PII: False
 ```
+
+### Driver portal auctions (added 2026-11-25)
+
+The driver's **Live Bids & Auctions** tab is now fed by real auctions instead of four hard-coded demo trips (which carried fake passenger names and phone numbers). `GET /api/driver/auctions` returns open auctions only, using the same masked payload as the WhatsApp page: booking reference, From/To city, KM, departure date & time, start price, current lowest, own bid count and the link to the auction page. A won trip appears in **My Assigned Trips** with the customer's contact details and **the winning payout** (not the customer fare), marked *Won via driver bidding*.
+
+Live end-to-end proof (`php -S`, one run through the whole chain):
+
+```
+BOOKING ICW-152049 fare=8580        OPEN_BIDDING 201 start=4000 maxDriver=7293
+WHATSAPP wa.me   SHARE_HAS_PII=False
+FEED 200 count=1   Pune -> Goa   KM=450   departure=2026-12-02T06:30
+FEED_MASKED phone_absent=True name_absent=True address_absent=True
+PAGE 200 route+km+date-time+start price, masked
+BID 200 amount=3900 lowest=3900 you_lowest=True
+AWARD 200 status=Driver Assigned payout=3900
+WINNER_PORTAL name=True phone=True payout_label=True payout_value=True bidding_badge=True
+WINNER_PAGE revealed=True phone=True payout=True
+SECOND_DRIVER feed count=0   LOSER_PORTAL name=False phone=False ref=False
+LOSER_PAGE awarded_to_other=True phone=False
+```
+
+`DriverAuctionFeedTest` (9 tests) pins all of it: masking, own-bid accounting, open-only filtering, driver-only access, the portal tab, the winner's card and the loser's empty view.
 
 ### Role-based sign-in matrix (2026-11-25)
 

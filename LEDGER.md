@@ -64,6 +64,23 @@ Specified by the product owner on 2026-11-25: admin publishes a booking with a s
 
 ---
 
+## UI — Post-booking trip history (All / Active / Completed)
+
+Requested by the product owner on 2026-11-25: after a customer books a car, land them on their booking history, with All / Active / Completed filters.
+
+| ID | Task | Gate | Status | Evidence | Notes |
+|----|------|------|--------|----------|-------|
+| UI-1 | Trip history screen rebuilt | G4/G5 | **PASS** | `resources/views/intercity.blade.php` (`#tab-my-bookings`): filter pills with live counts, per-trip cards (status badge, route, departure, fare, chauffeur/vehicle, ride OTP, actions), per-filter empty states | server-rendered, so it is correct with JavaScript disabled |
+| UI-2 | Bucketing + counts | G3 | **PASS** | `MyTripsHistoryTest` → active 1 / completed 1 / all 2 with one of each; cancelled counted only under All; another customer's booking never appears | bucket = `Completed` → completed, `Cancelled` → cancelled, everything else → active |
+| UI-3 | Redirect after booking | G5 | **PASS** | live smoke: booking `ICW-639442` → `/?booked=ICW-639442` returns `history_active: True`, banner, `card_highlight: True`, `just_booked_tag: True` | SPA path injects the card and switches tab; the sign-in-gate resume path reloads `/?booked=` and the server highlights it |
+| UI-4 | Guest experience on the same screen | G4 | **PASS** | `MyTripsHistoryTest` → guest sees sign-in panel + reference/phone tracker instead of a list; `POST /api/bookings/lookup` returns the booking; live smoke `guest_panel=True` | My Trips is now reachable without an account; booking itself requires sign-in (see MKT/E3) |
+| UI-5 | Deep link + safe inputs | G2 | **PASS** | `?tab=` whitelisted per role (a customer cannot deep-link to `admin`); `?booked=` accepted only as `^ICW-\d{6}$` and rendered escaped | `MyTripsHistoryTest::test_a_malformed_booked_parameter_is_ignored` |
+| UI-6 | Ticket fallback fixed | G3 | **PASS** | `openTicketModal` now retries with the account phone and reads `route_summary` / `selected_units` (was `pickup_city` / `seat_numbers`, which rendered blanks) | retired PRD gap G26 |
+
+**Totals after this cycle:** `php artisan test` → **286 passed (6,896 assertions)**; `vendor/bin/pint --test` → PASS 136 files; `npm run build` → 367 ms.
+
+---
+
 ## Cycle log
 
 | Cycle | Date | Task | Gate | Result | Evidence | Next |
@@ -75,9 +92,22 @@ Specified by the product owner on 2026-11-25: admin publishes a booking with a s
 | 4 | 2026-11-24 | P0-4/5/6/8, P1-1/2/3/5 + services + migrations + CSRF + SPA pricing | G3/G4 | PASS | `php artisan test` → 191 passed (1081 assertions) | gates |
 | 5 | 2026-11-24 | G4b/G5/G6 + live smoke | G4b/G5/G6 | PASS | `vendor/bin/pint --test` → PASS 107 files; `npm run build` → 61 modules, 351ms, manifest written; `php artisan migrate --pretend` → clean; live: home 200, CSRF 419/200, booking `Requested`, lookup 403/200, berth double-book 409, admin toggle 200 | release |
 | 6 | 2026-11-25 | MKT-1…MKT-8 driver bidding marketplace | G2/G3/G4/G5/G6 | **PASS** | `php artisan test` → **213 passed (1,263 assertions)**; `vendor/bin/pint --test` → PASS 117 files; `npm run build` → 326ms; `migrate --pretend` → clean; live HTTP: fare 2469 → start 2097 → bid 1997 → award payout 1997 / margin 472, winner sees PII, other viewer does not | release |
+| 7 | 2026-11-25 | UI-1…UI-6 post-booking trip history | G3/G4/G5 | **PASS** | `php artisan test` → **286 passed (6,896 assertions)**; `pint --test` → PASS 136 files; `npm run build` → 367ms; live: `?booked=` lands on the history with the new card highlighted, filters and counts render, guest panel renders | release |
 | 7 | 2026-11-25 | Role-based sign-in matrix, all three roles, plus a user created during the run | G2/G4 | **PASS** | `tests/Feature/RoleBasedLoginMatrixTest.php` → 10 passed (143 assertions); `php artisan test` → **223 passed (1,406 assertions)**; `vendor/bin/pint --test` on the new file → PASS; live HTTP `php -S`: customer 200 tab=cabs → `/api/admin/users` 403; driver 200 tab=bidding → 403; admin 200 tab=admin → 200; every cross-role login tab 422; logout → 401. Admin created `role.smoke.004058@example.com` (201), that account then logged in 200 tab=cabs, got 403 on admin, 422 on the driver tab, and 401 after logout. `storage/logs/laravel.log` grew **0 bytes** across the whole run | no role-scoped audit trail exists — sign-in/out and user creation write no log line; logged as a gap in `PROGRESS.md`. Harness kept at `storage/app/qa/role-login-smoke.ps1` |
 | 8 | 2026-11-25 | OSM-1…OSM-4 OpenStreetMap place search (Nominatim) + real driving distance (OSRM) | G3/G4/G4b | **PASS** | `tests/Feature/OsmGeoIntegrationTest.php` → 10 passed (39 assertions); `php artisan test` → **233 passed (1,445 assertions)**; `vendor/bin/pint --test` → PASS 120 files; `node --check public/js/app.js` → OK. Live, no fakes: `GET /api/routes/calculate?from=Arambagh&to=Digha` → 200 `distance_km=205 estimated_time=2h 40m source=osm_geocode+osrm_route toll=189`; Nominatim `Arambagh` → 22.8766/87.7909; OSRM Kolkata→Digha → 181 km / 142 min; OSRM 503 → straight-line fallback with `source=coordinates`. Removed the fabricated path where an unknown name was pinned to a default city (`findCoordinates`, client-side `22.5726,88.3639` option) | public Nominatim policy forbids heavy use — production needs self-hosted Nominatim/OSRM; documented in `docs/OSM.md` |
 | 9 | 2026-11-25 | OSM-5 durable route/place cache (`geo_route_cache`, `geo_place_cache`) | G3/G4/G4b | **PASS** | `tests/Feature/GeoCachePersistenceTest.php` → 8 passed (45 assertions); `php artisan test` → **241 passed (1,490 assertions)**; `vendor/bin/pint --test` → PASS 125 files. Live, three separate PHP processes: cold quote `Arambagh→Tajpur` **1854 ms** `cached=false`; `cache:clear` + `OSM_ENABLED=false` → **133 ms** `cached=true` `distance=203` unchanged; `geo:cache-stats` → routes 2 / places 1. `geo:prune-cache` (daily) deletes expired rows; expired rows are already ignored on read | Nominatim/OSRM remain single points of failure for *new* pairs only — stored pairs answer with the API off |
+
+## BID - Driver portal auction feed (2026-11-25)
+
+The portal's Live Bids & Auctions tab is driven by the real marketplace (`GET /api/driver/auctions`) instead of hard-coded demo trips. A won trip lands in My Assigned Trips showing the winning payout (not the customer fare).
+
+| ID | Task | Gate | Status | Evidence | Notes |
+|----|------|------|--------|----------|-------|
+| BID-1 | Live auction feed for the portal | G2 | **PASS** | `GET /api/driver/auctions` (auth + role:driver,admin) returns open auctions only, masked payload; `DriverAuctionFeedTest` -> 9 tests, 95 assertions | closed / cancelled / expired excluded; own bid count + lowest flag |
+| BID-2 | Portal tab rebuilt on the feed | G5 | **PASS** | `public/js/app.js` `renderBiddingList()` fetches the feed; cards show ref, From/To, KM, departure date & time, start price, current lowest and the link to `/bid/{token}`; demo bid modal + counter-offer modal deleted | four fake trips with fake passenger names and phones removed |
+| BID-3 | Winner's portal card | G3 | **PASS** | `intercity.blade.php` driver trip card uses `driver_payout_amount` when set, labelled "Your winning bid payout", plus "Won via driver bidding" | customer fare no longer shown to the driver |
+| BID-4 | Departure date & time on the auction page | G5 | **PASS** | `BiddingSession::toDriverPayload()` gains `departure_at`; `bidding.blade.php` renders `d M Y, h:i A` | WhatsApp share text unchanged |
+| BID-5 | Live end-to-end proof | G4/G5 | **PASS** | `php artisan test` -> **295 passed (6,993 assertions)**; `vendor/bin/pint --test` -> PASS 137 files; live run: share no PII, feed masked, bid 3900, award payout 3900, winner sees name/phone/payout, loser feed count 0 and no PII | harness `storage/app/qa/bidding-e2e.ps1` |
 
 ## Escalations
 

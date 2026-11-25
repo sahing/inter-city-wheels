@@ -183,6 +183,9 @@ Route::prefix('api')->middleware(['auth', 'role:driver'])->group(function () {
 */
 
 Route::prefix('api')->middleware(['auth', 'role:driver,admin'])->group(function () {
+    // Live auctions for the driver portal: masked, open auctions only.
+    Route::get('/driver/auctions', [BiddingController::class, 'activeAuctions'])->name('api.driver.auctions');
+
     Route::get('/bids', [DriverBiddingController::class, 'getActiveBids'])->name('api.bids.active');
     Route::post('/bids/counter', [DriverBiddingController::class, 'counterOffer'])->name('api.bids.counter');
     Route::post('/bids/submit', [DriverBiddingController::class, 'submitDriverBid'])->name('api.bids.submit');

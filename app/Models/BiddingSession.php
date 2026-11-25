@@ -145,6 +145,7 @@ class BiddingSession extends Model
             'drop_city' => $this->drop_city,
             'distance_km' => $this->distance_km,
             'departure_date' => $this->booking->departure_time?->toDateString(),
+            'departure_at' => $this->booking->departure_time?->toIso8601String(),
             'start_amount' => (float) $this->start_amount,
             'max_driver_price' => $this->maxDriverPrice(),
             'current_lowest' => $lowest === null ? null : (float) $lowest->bid_amount,

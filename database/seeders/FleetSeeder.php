@@ -117,6 +117,14 @@ class FleetSeeder extends Seeder
             DriverVehicle::insert($chunk);
         }
 
+        // Cars listed before the features column existed get a catalogue set
+        // too, so no card in the fleet renders as "Not listed".
+        DriverVehicle::whereNull('features')->get()->each(function (DriverVehicle $vehicle) {
+            $vehicle->update([
+                'features' => $this->featuresFor($vehicle->fleet_category ?: 'sedan', (int) $vehicle->id),
+            ]);
+        });
+
         $this->command?->info(sprintf(
             'FleetSeeder: %d new drivers (of %d) and %d new cars (of %d).',
             count($newDrivers),

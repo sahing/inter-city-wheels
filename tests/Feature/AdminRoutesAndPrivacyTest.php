@@ -114,10 +114,14 @@ class AdminRoutesAndPrivacyTest extends TestCase
         $response = $this->actingAs($driverUser)->get('/');
         $response->assertStatus(200);
 
-        // Ensure passenger privacy notice is rendered in the driver view
-        $response->assertSee('Passenger phone number and exact doorstep pickup address remain masked until your bid is accepted', false);
-        $response->assertSee('Chauffeur Ride Commitment', false);
-        $response->assertSee('Conclusive Ride Commitment Statement', false);
+        // The auctions tab renders live, masked auctions only.
+        $response->assertSee('Available Outstation Trips for Driver Bidding');
+        $response->assertSee('id="bidding-cards-stream"', false);
+        $response->assertSee('unlock only if you win the auction', false);
+
+        // The old demo bid modal (fake trips, fake passenger phones) is gone.
+        $response->assertDontSee('id="driver-bid-modal"', false);
+        $response->assertDontSee('Chauffeur Ride Commitment', false);
     }
 
     public function test_driver_conclusive_bid_submission_statement()

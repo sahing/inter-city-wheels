@@ -68,6 +68,7 @@ driver payout       = 1997
 | Booking ID | ✅ | ✅ | ✅ |
 | Pickup / drop **city** | ✅ | ✅ | ✅ |
 | Distance (km) | ✅ | ✅ | ✅ |
+| Departure date & time | ✅ | ✅ | ✅ |
 | Start price | ✅ | ✅ | ✅ |
 | Current lowest bid (amount only) | ✅ | ✅ | ✅ |
 | Own bid history | ✅ | ✅ | ✅ |
@@ -120,6 +121,7 @@ Unverified, guest and customer attempts are refused: `401` (no session), `403` (
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `GET` | `/bid/{token}` | public | Mobile bidding page (masked) |
+| `GET` | `/api/driver/auctions` | `auth` + `role:driver` | Live auctions for the driver portal (masked, open only) |
 | `GET` | `/api/bidding/{token}` | public | Masked JSON payload |
 | `POST` | `/api/bidding/{token}/bids` | `auth` + `role:driver` | Place a bid `{amount}` |
 | `GET` | `/api/bidding/{token}/mine` | `auth` + `role:driver` | Own bids + remaining allowance |
@@ -128,8 +130,7 @@ Unverified, guest and customer attempts are refused: `401` (no session), `403` (
 
 ## 6. WhatsApp flow
 
-1. Admin opens the auction → modal shows the link, a copy button and a **Share on WhatsApp** button.
-2. Message (auto-generated, no customer identity):
+1. Admin opens the auction → modal shows the link, a copy button and a **Share on WhatsApp** button.2. Message (auto-generated, no customer identity):
 
 ```
 IntercityWheels bidding
@@ -140,7 +141,8 @@ Bid your lowest price — every bid must undercut the current lowest.
 https://<host>/bid/<48-char-token>
 ```
 
-3. Driver opens the link on mobile: sees the route, price and deadline; signs in with the inline form if not already signed in (`?next=/bid/<token>` is validated as a local path — no open redirect).
+3. Driver opens the link on mobile: sees the route, distance, **departure date & time**, price and deadline; signs in with the inline form if not already signed in (`?next=/bid/<token>` is validated as a local path — no open redirect).
+   A signed-in driver also sees the same auction in the portal's **Live Bids & Auctions** tab (`GET /api/driver/auctions`): From/To city, KM, departure date & time, start price, current lowest and a link to this page. The tab is server-fed — the four hard-coded demo trips (fake passenger names and phone numbers) are gone.
 4. Bid submitted → page reloads with the new lowest price locked in.
 5. Admin approves → driver's page shows the customer's name, mobile, addresses, departure time and their payout.
 
@@ -174,7 +176,26 @@ bookings     (+ driver_payout_amount, assigned_bid_id → driver_bids)
 
 `tests/Feature/DriverBiddingMarketplaceTest.php` — 21 tests covering: opening (fee ceiling, duplicate open, non-biddable booking), masking (keys + values, both JSON and rendered page), bidding rules (descending, equal-bid rejection, unverified driver, guest/customer refusal, deadline close, manual close), awarding (assignment, payout, profit, double-award refusal, no-bids refusal), the reveal boundary (winner sees PII, loser does not), same-IP flagging, cancellation, and admin-only access for every admin endpoint.
 
-Live smoke (real HTTP session, `php artisan serve`):
+`tests/Feature/DriverAuctionFeedTest.php` — 9 tests covering the portal feed: masked payload (keys + values), own-bid count and lowest flag per viewer, only-open filtering (closed, cancelled and expired excluded), driver-only access, the portal's auction tab, the winner's portal card (contact details + locked payout + bidding badge), the loser's portal, the bidding-page reveal, and departure date & time.
+
+Live end-to-end proof (real HTTP sessions, `php -S`, one run through the whole chain):
+
+```
+BOOKING ICW-152049 fare=8580
+OPEN_BIDDING 201 start=4000 maxDriver=7293
+WHATSAPP wa.me  SHARE_HAS_PII=False
+FEED 200 count=1  Pune -> Goa  KM=450  departure=2026-12-02T06:30  start=4000
+FEED_MASKED phone_absent=True name_absent=True address_absent=True
+PAGE 200 route+km+date-time, start price, masked
+BID 200 amount=3900 lowest=3900 you_lowest=True
+AWARD 200 status=Driver Assigned payout=3900
+WINNER_PORTAL name=True phone=True payout_label=True payout_value=True bidding_badge=True
+WINNER_PAGE revealed=True phone=True payout=True
+SECOND_DRIVER feed count=0  LOSER_PORTAL name=False phone=False ref=False
+LOSER_PAGE awarded_to_other=True phone=False
+```
+
+Earlier cycle (admin board + single-driver smoke) left intact for the record:
 
 ```
 BOOKING: ICW-213822 fare=2469

@@ -16,6 +16,10 @@ use Tests\TestCase;
  * Before: BookingController wrote status => 'Confirmed' on creation, the admin
  * screens could PATCH any status string onto any booking, and nothing rejected
  * Confirmed -> Completed. The five stages in workflow_stages were decorative.
+ *
+ * Customer and driver writes are still guarded by the stage table. The admin
+ * console now has an explicit, logged override so ops can correct (or reopen)
+ * a booking at any stage — see BookingWorkflow::forceTransition().
  */
 class BookingWorkflowTest extends TestCase
 {
@@ -80,19 +84,70 @@ class BookingWorkflowTest extends TestCase
         $response->assertStatus(201)->assertJsonPath('booking.status', 'Confirmed');
     }
 
-    public function test_admin_cannot_jump_a_booking_straight_to_completed(): void
+    public function test_admin_can_place_a_booking_at_any_stage_even_skipping_the_order(): void
     {
         $booking = Booking::where('status', 'Confirmed')->firstOrFail();
 
+        // Ops override: the admin console is explicitly not bound by the stage
+        // order, so a mis-staged trip can be corrected in one save.
         $response = $this->actingAs($this->admin())->putJson("/api/admin/bookings/{$booking->id}", [
             'status' => 'Completed',
+            'base_fare' => 2750,
         ]);
 
-        $response->assertStatus(422)
-            ->assertJsonPath('transition.from', 'Confirmed')
-            ->assertJsonPath('transition.to', 'Completed');
+        $response->assertStatus(200)->assertJsonPath('booking.status', 'Completed');
 
-        $this->assertSame('Confirmed', $booking->fresh()->status);
+        $fresh = $booking->fresh();
+        $this->assertSame('Completed', $fresh->status);
+        $this->assertSame(2750.0, $fresh->base_fare);
+    }
+
+    public function test_admin_can_reopen_a_terminal_booking_and_edit_its_details(): void
+    {
+        $booking = Booking::where('status', 'Confirmed')->firstOrFail();
+        $booking->forceFill([
+            'status' => BookingWorkflow::COMPLETED,
+            'total_amount' => 3000,
+        ])->save();
+
+        $this->actingAs($this->admin())
+            ->putJson("/api/admin/bookings/{$booking->id}", [
+                'customer_name' => 'Corrected Passenger',
+                'status' => 'Started',
+            ])
+            ->assertStatus(200)
+            ->assertJsonPath('booking.status', 'Started')
+            ->assertJsonPath('booking.customer_name', 'Corrected Passenger');
+
+        $fresh = $booking->fresh();
+        $this->assertSame('Started', $fresh->status);
+        $this->assertSame('Corrected Passenger', $fresh->customer_name);
+    }
+
+    public function test_admin_can_reassign_a_driver_on_a_completed_booking_without_changing_stage(): void
+    {
+        $booking = Booking::where('status', 'Confirmed')->firstOrFail();
+        $driver = Driver::firstOrFail();
+
+        $booking->forceFill([
+            'status' => BookingWorkflow::COMPLETED,
+            'assigned_driver_id' => null,
+        ])->save();
+
+        // The form sends "" for "keep the current stage": the trip already
+        // finished, so only the chauffeur record is corrected.
+        $this->actingAs($this->admin())
+            ->postJson("/api/admin/bookings/{$booking->id}/allot-driver", [
+                'driver_id' => $driver->id,
+                'status' => '',
+            ])
+            ->assertStatus(200)
+            ->assertJsonPath('booking.assigned_driver_id', $driver->id)
+            ->assertJsonPath('booking.status', BookingWorkflow::COMPLETED);
+
+        $fresh = $booking->fresh();
+        $this->assertSame(BookingWorkflow::COMPLETED, $fresh->status);
+        $this->assertSame($driver->id, $fresh->assigned_driver_id);
     }
 
     public function test_admin_cannot_set_an_unknown_status(): void

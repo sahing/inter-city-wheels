@@ -162,130 +162,9 @@ const state = {
     ]
   },
 
-  // Driver Bidding State
+  // Driver Bidding State (live auctions from /api/driver/auctions)
   bidding: {
-    activeTripId: null,
-    availableTrips: [
-      {
-        id: 'trip-wb-101',
-        tripType: 'Outstation Cab',
-        fromLocation: 'Baharampur (Mohona Central Bus Stand)',
-        fromCity: 'Baharampur',
-        toLocation: 'Kolkata (Netaji Subhash Chandra Bose Intl Airport, CCU)',
-        toCity: 'Kolkata',
-        distanceKm: 205,
-        estimatedTime: '5h 15m',
-        fleetCategory: 'Prime Sedan / Ertiga',
-        customerName: 'Anirban Banerjee',
-        customerPhone: '+91 98301 22334',
-        customerBudget: 3800,
-        departureTime: 'Tomorrow, 06:30 AM',
-        tollEstimate: '₹180 (Included)',
-        notes: 'Airport transit drop by 01:00 PM. 2 standard luggage bags.',
-        status: 'Open for Bids',
-        bidPlaced: null
-      },
-      {
-        id: 'trip-mh-202',
-        tripType: 'Outstation Direct',
-        fromLocation: 'Swargate Bus Terminal, Pune',
-        fromCity: 'Pune',
-        toLocation: 'Panjim KTC Bus Stand / Calangute, Goa',
-        toCity: 'Goa',
-        distanceKm: 450,
-        estimatedTime: '9h 15m',
-        fleetCategory: 'Toyota Innova Crysta / SUV',
-        customerName: 'Rahul Sharma',
-        customerPhone: '+91 98765 43210',
-        customerBudget: 4800,
-        departureTime: 'Tonight, 09:30 PM',
-        tollEstimate: '₹480 (Included)',
-        notes: 'Family holiday trip. Smooth highway driving required.',
-        status: 'Open for Bids',
-        bidPlaced: null
-      },
-      {
-        id: 'trip-wb-303',
-        tripType: 'Heritage Intercity',
-        fromLocation: 'Murshidabad (Hazarduari Palace Heritage Gate)',
-        fromCity: 'Murshidabad',
-        toLocation: 'Kolkata (Howrah Railway Station / Central)',
-        toCity: 'Kolkata',
-        distanceKm: 218,
-        estimatedTime: '5h 30m',
-        fleetCategory: 'AC Sedan (Dzire / Etios)',
-        customerName: 'Poulomi Mukherjee',
-        customerPhone: '+91 98310 99887',
-        customerBudget: 3950,
-        departureTime: 'Tomorrow, 04:00 PM',
-        tollEstimate: '₹180 (Included)',
-        notes: 'Pickup from hotel lobby. Doorstep drop at Howrah Station.',
-        status: 'Open for Bids',
-        bidPlaced: null
-      },
-      {
-        id: 'trip-mh-404',
-        tripType: 'Expressway Transit',
-        fromLocation: 'Koregaon Park, Pune',
-        toLocation: 'Chhatrapati Shivaji Maharaj Intl Airport (T2), Mumbai',
-        distanceKm: 152,
-        estimatedTime: '2h 45m',
-        fleetCategory: 'Prime SUV',
-        customerName: 'Dr. Vikram Singhania',
-        customerPhone: '+91 99000 00001',
-        customerBudget: 2900,
-        departureTime: 'Today, 11:00 PM',
-        tollEstimate: '₹320 (Included)',
-        notes: 'Fastag expressway lane. Flight departure 04:30 AM.',
-        status: 'Open for Bids',
-        bidPlaced: null
-      }
-    ],
-    activeTrip: {
-      route: 'Pune to Goa (Outstation Cab)',
-      date: 'Tomorrow, 07:00 AM',
-      requestedBudget: '₹4,800',
-      status: 'Collecting Bids (Active)'
-    },
-    drivers: [
-      {
-        id: 'drv-1',
-        name: 'Ramesh Patil',
-        avatar: '👨🏽‍✈️',
-        rating: 4.9,
-        trips: 840,
-        car: 'Toyota Innova Crysta (White)',
-        plate: 'MH 12 QX 4920',
-        bid: 5200,
-        eta: '10 mins away',
-        status: 'pending'
-      },
-      {
-        id: 'drv-2',
-        name: 'Ajay Solanki',
-        avatar: '🧔🏻‍♂️',
-        rating: 4.8,
-        trips: 512,
-        car: 'Maruti Ertiga Hybrid (Silver)',
-        plate: 'MH 14 BT 8812',
-        bid: 4750,
-        eta: '15 mins away',
-        status: 'pending'
-      },
-      {
-        id: 'drv-3',
-        name: 'Vikram Deshmukh',
-        avatar: '👨🏻‍🦱',
-        rating: 4.95,
-        trips: 1240,
-        car: 'Honda City ZX (Golden Sand)',
-        plate: 'MH 02 CK 1009',
-        bid: 4900,
-        eta: '8 mins away',
-        status: 'pending'
-      }
-    ],
-    countdownSec: 290
+    availableTrips: []
   },
 
   // Dynamic Form Builder & Workflow Config (gemini.md requirements)
@@ -2303,350 +2182,153 @@ window.setPassengerGender = function (idx, gender) {
 // ==========================================
 // 3. Driver Bidding Marketplace
 // ==========================================
+// ==========================================
+// 3. Driver Bidding Marketplace (live auctions)
+// ==========================================
+// The portal renders the auctions the operations team has actually published
+// (`GET /api/driver/auctions`, masked payload). Bidding itself happens on the
+// auction's own page, so there is exactly one bid flow and one reveal rule.
 function initBiddingModule() {
   renderBiddingList();
-
-  const postTripBtn = document.getElementById('post-custom-trip-btn');
-  if (postTripBtn) {
-    postTripBtn.addEventListener('click', () => {
-      const budget = prompt('Enter your target budget for this trip (e.g., ₹4500):', '₹4,500');
-      if (budget) {
-        state.bidding.activeTrip.requestedBudget = budget;
-        document.getElementById('bidding-target-budget').textContent = budget;
-        showToast(`Trip request updated with target budget ${budget}!`, 'success');
-
-        // Simulate new incoming driver bid after 3 seconds
-        setTimeout(() => {
-          simulateIncomingBid();
-        }, 3000);
-      }
-    });
-  }
 }
 
-function renderBiddingList() {
+// Legacy call site in the app bootstrap. Each auction card shows its own
+// deadline, so there is no page-level countdown to run any more.
+function startBiddingCountdown() {
+  /* no-op */
+}
+
+window.refreshDriverAuctions = function () {
+  return renderBiddingList();
+};
+
+function auctionEscape(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function auctionMoney(value) {
+  const amount = Number(value || 0);
+  return '₹' + amount.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+}
+
+function auctionDateTime(iso) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function auctionTimeLeft(iso) {
+  if (!iso) return 'no deadline';
+  const ms = new Date(iso).getTime() - Date.now();
+  if (isNaN(ms)) return 'no deadline';
+  if (ms <= 0) return 'closed';
+  const mins = Math.floor(ms / 60000);
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return 'closes in ' + days + 'd ' + (hours % 24) + 'h';
+  if (hours > 0) return 'closes in ' + hours + 'h ' + (mins % 60) + 'm';
+  return 'closes in ' + Math.max(1, mins) + 'm';
+}
+
+async function renderBiddingList() {
   const container = document.getElementById('bidding-cards-stream');
   if (!container) return;
 
-  if (!state.bidding.availableTrips || !state.bidding.availableTrips.length) {
-    container.innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8;">No active trip requests available for bidding at the moment.</div>`;
-    return;
-  }
-
-  container.innerHTML = state.bidding.availableTrips.map(trip => {
-    const isBidPlaced = Boolean(trip.bidPlaced);
-    return `
-      <div class="bid-card" id="card-${trip.id}" style="display:flex; flex-direction:column; gap:12px; padding:16px 18px; border:1px solid ${isBidPlaced ? '#86efac' : '#e2e8f0'}; background:${isBidPlaced ? '#f0fdf4' : '#ffffff'}; border-radius:10px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
-        <!-- Top Metadata Row -->
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span class="admin-badge badge-primary" style="font-size:10.5px; font-weight:700;">${trip.tripType}</span>
-            <span style="font-size:11.5px; color:#64748b; font-weight:600;">📅 ${trip.departureTime}</span>
-          </div>
-          <div>
-            ${isBidPlaced
-        ? `<span class="admin-badge badge-success" style="font-size:11px; padding:4px 8px;">✓ Your Bid Placed: ₹${trip.bidPlaced.amount.toLocaleString('en-IN')} (Accepted)</span>`
-        : `<span class="admin-badge badge-gold" style="font-size:10.5px;">⚡ Bidding Live</span>`
-      }
-          </div>
-        </div>
-
-        <!-- From -> To & KM Display Row -->
-        <div style="display:grid; grid-template-columns: 1fr auto 1fr; gap:12px; align-items:center; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px;">
-          <!-- FROM LOCATION -->
-          <div>
-            <div style="font-size:10px; font-weight:800; color:#0284c7; text-transform:uppercase; display:flex; align-items:center; gap:4px; letter-spacing:0.04em;">
-              <span class="material-symbols-outlined" style="font-size:14px;">trip_origin</span>
-              <span>Pickup (From)</span>
-            </div>
-            <div style="font-size:13.5px; font-weight:700; color:#0f172a; margin-top:2px;">
-              ${trip.fromLocation}
-            </div>
-          </div>
-
-          <!-- DISTANCE IN KM PILL -->
-          <div style="text-align:center; padding:0 8px;">
-            <div style="background:#0b0f19; color:#f8fafc; border:1px solid rgba(212,155,76,0.4); border-radius:20px; padding:4px 12px; font-size:12px; font-weight:800; font-family:monospace; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
-              <span>🛣️</span>
-              <span style="color:#d49b4c;">${trip.distanceKm} KM</span>
-            </div>
-            <div style="font-size:10.5px; color:#64748b; margin-top:3px; font-weight:600;">⏱️ ${trip.estimatedTime}</div>
-          </div>
-
-          <!-- TO LOCATION -->
-          <div>
-            <div style="font-size:10px; font-weight:800; color:#16a34a; text-transform:uppercase; display:flex; align-items:center; gap:4px; letter-spacing:0.04em;">
-              <span class="material-symbols-outlined" style="font-size:14px;">location_on</span>
-              <span>Drop (To)</span>
-            </div>
-            <div style="font-size:13.5px; font-weight:700; color:#0f172a; margin-top:2px;">
-              ${trip.toLocation}
-            </div>
-          </div>
-        </div>
-
-        <!-- Trip Details & Actions Row -->
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-top:1px dashed #e2e8f0; padding-top:10px;">
-          <div style="font-size:12px; color:#475569;">
-            <span>Passenger: <strong style="color:#0284c7;">Verified Traveler 🔒 (Masked until Bid Won)</strong></span> &bull; 
-            <span>Vehicle: <strong>${trip.fleetCategory}</strong></span> &bull; 
-            <span style="color:#64748b; font-style:italic;">"${trip.notes}"</span>
-            <div style="font-size:10.5px; color:#64748b; margin-top:3px; display:flex; align-items:center; gap:4px;">
-              <span class="material-symbols-outlined" style="font-size:13px; color:#10b981;">lock</span>
-              <span>Passenger phone & exact pickup address remain masked until you win the bid.</span>
-            </div>
-          </div>
-
-          <div style="display:flex; align-items:center; gap:12px;">
-            <div style="text-align:right;">
-              <div style="font-size:10px; text-transform:uppercase; color:#64748b; font-weight:700;">Customer Budget</div>
-              <div style="font-size:18px; font-weight:800; color:#16a34a;">₹${trip.customerBudget.toLocaleString('en-IN')}</div>
-            </div>
-
-            <div style="display:flex; gap:8px;">
-              <button type="button" class="btn btn-sm btn-outline-gold" onclick="openDriverBidModal('${trip.id}')" title="Place your binding bid">
-                <span class="material-symbols-outlined" style="font-size:15px;">gavel</span>
-                <span>${isBidPlaced ? 'Modify Bid' : 'Bid on This Ride'}</span>
-              </button>
-              <button type="button" class="btn btn-sm btn-primary" onclick="quickAcceptTrip('${trip.id}')" title="Conclusively accept at passenger budget">
-                <span class="material-symbols-outlined" style="font-size:15px;">check_circle</span>
-                <span>Accept at ₹${trip.customerBudget.toLocaleString('en-IN')}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-      `;
-  }).join('');
-}
-
-window.openDriverBidModal = function (tripId) {
-  const trip = state.bidding.availableTrips.find(t => t.id === tripId);
-  if (!trip) return;
-
-  state.bidding.activeTripId = tripId;
-
-  document.getElementById('driver-bid-trip-type').textContent = trip.tripType;
-  document.getElementById('driver-bid-trip-schedule').textContent = `📅 ${trip.departureTime}`;
-  document.getElementById('driver-bid-from-loc').textContent = trip.fromLocation;
-  document.getElementById('driver-bid-to-loc').textContent = trip.toLocation;
-  document.getElementById('driver-bid-distance-km').textContent = `${trip.distanceKm} km`;
-  document.getElementById('driver-bid-est-time').textContent = trip.estimatedTime;
-  document.getElementById('driver-bid-customer-budget').textContent = `₹${trip.customerBudget.toLocaleString('en-IN')}`;
-
-  const input = document.getElementById('driver-bid-amount-input');
-  input.value = trip.bidPlaced ? trip.bidPlaced.amount : trip.customerBudget;
-
-  const chk = document.getElementById('driver-bid-accept-checkbox');
-  if (chk) chk.checked = true;
-  toggleBidSubmitButton(true);
-
-  updateConclusiveWriteup();
-
-  const modal = document.getElementById('driver-bid-modal');
-  if (modal) modal.classList.add('active');
-};
-
-window.quickAcceptTrip = function (tripId) {
-  const trip = state.bidding.availableTrips.find(t => t.id === tripId);
-  if (!trip) return;
-
-  openDriverBidModal(tripId);
-  const input = document.getElementById('driver-bid-amount-input');
-  if (input) input.value = trip.customerBudget;
-  updateConclusiveWriteup();
-};
-
-window.updateConclusiveWriteup = function () {
-  const tripId = state.bidding.activeTripId;
-  const trip = state.bidding.availableTrips.find(t => t.id === tripId);
-  if (!trip) return;
-
-  const input = document.getElementById('driver-bid-amount-input');
-  const amount = parseInt(input.value, 10) || trip.customerBudget;
-
-  document.getElementById('writeup-from').textContent = trip.fromLocation;
-  document.getElementById('writeup-to').textContent = trip.toLocation;
-  document.getElementById('writeup-km').textContent = `${trip.distanceKm} km`;
-  document.getElementById('writeup-price').textContent = `₹${amount.toLocaleString('en-IN')}`;
-  document.getElementById('btn-bid-amount-preview').textContent = `₹${amount.toLocaleString('en-IN')}`;
-};
-
-window.adjustDriverBidPrice = function (delta) {
-  const input = document.getElementById('driver-bid-amount-input');
-  let val = parseInt(input.value, 10) || 1000;
-  val = Math.max(100, val + delta);
-  input.value = val;
-  updateConclusiveWriteup();
-};
-
-window.resetDriverBidToTarget = function () {
-  const tripId = state.bidding.activeTripId;
-  const trip = state.bidding.availableTrips.find(t => t.id === tripId);
-  if (!trip) return;
-
-  const input = document.getElementById('driver-bid-amount-input');
-  input.value = trip.customerBudget;
-  updateConclusiveWriteup();
-};
-
-window.toggleBidSubmitButton = function (checked) {
-  const btn = document.getElementById('btn-submit-conclusive-bid');
-  if (btn) {
-    btn.disabled = !checked;
-    btn.style.opacity = checked ? '1' : '0.5';
-  }
-};
-
-window.submitConclusiveDriverBid = async function () {
-  const tripId = state.bidding.activeTripId;
-  const trip = state.bidding.availableTrips.find(t => t.id === tripId);
-  if (!trip) return;
-
-  const chk = document.getElementById('driver-bid-accept-checkbox');
-  if (chk && !chk.checked) {
-    showToast('Please check the acceptance declaration to confirm this bid.', 'warning');
-    return;
-  }
-
-  const input = document.getElementById('driver-bid-amount-input');
-  const amount = parseInt(input.value, 10);
-  if (!amount || amount < 100) {
-    showToast('Please enter a valid fare proposal.', 'warning');
-    return;
-  }
+  container.innerHTML = '<div style="text-align:center; padding:26px; color:#94a3b8; font-size:12.5px;">Loading live auctions…</div>';
 
   try {
-    const res = await fetch('/api/bids/submit', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'X-CSRF-TOKEN': getAdminCsrfToken()
-      },
-      body: JSON.stringify({
-        trip_id: trip.id,
-        from_location: trip.fromLocation,
-        to_location: trip.toLocation,
-        distance_km: trip.distanceKm,
-        bid_amount: amount
-      })
-    });
+    const res = await fetch('/api/driver/auctions', { headers: { 'Accept': 'application/json' } });
+    const data = await res.json().catch(() => ({}));
 
-    const data = await res.json();
-    if (res.ok && data.success) {
-      trip.bidPlaced = {
-        amount: amount,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        statement: data.bid?.conclusive_statement || `I will take and do this ride from ${trip.fromLocation} to ${trip.toLocation} (${trip.distanceKm} km) at this price: ₹${amount.toLocaleString('en-IN')}. I accept this.`
-      };
-
-      closeModal('driver-bid-modal');
-      renderBiddingList();
-
-      showToast(`🤝 Bid Confirmed: "I will take and do this ride from ${trip.fromLocation} to ${trip.toLocation} (${trip.distanceKm} km) at ₹${amount.toLocaleString('en-IN')}. I accept this."`, 'success');
-    } else {
-      showToast(data.message || 'Failed to submit bid.', 'warning');
+    if (!res.ok) {
+      container.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">Live auctions are available to driver partners only.</div>';
+      return;
     }
+
+    const auctions = Array.isArray(data.auctions) ? data.auctions : [];
+    state.bidding.availableTrips = auctions;
+
+    const verificationBanner = data.can_bid === false
+      ? '<div style="text-align:center; padding:14px 16px; margin-bottom:12px; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; font-size:12.5px;">Your driver profile is pending verification. Auctions are visible now; bidding unlocks once operations approves your profile.</div>'
+      : '';
+
+    if (!auctions.length) {
+      container.innerHTML = verificationBanner
+        + '<div style="text-align:center; padding:38px 20px; color:#94a3b8; background:#f8fafc; border-radius:8px;">'
+        + '<span class="material-symbols-outlined" style="font-size:38px; color:#cbd5e1; display:block; margin-bottom:6px;">gavel</span>'
+        + '<div style="font-weight:700; font-size:14px; color:#475569;">No auctions are open right now</div>'
+        + '<p style="font-size:12px; margin:4px 0 0;">New bidding links are sent on WhatsApp when operations publishes a trip. Press Refresh to check again.</p>'
+        + '</div>';
+      return;
+    }
+
+    container.innerHTML = verificationBanner + auctions.map(function (auction) {
+      const lowest = (auction.current_lowest === null || auction.current_lowest === undefined)
+        ? '—'
+        : auctionMoney(auction.current_lowest);
+
+      const badge = auction.you_are_lowest
+        ? '<span class="admin-badge badge-success" style="font-size:10.5px;">✓ You hold the lowest bid</span>'
+        : '<span class="admin-badge badge-gold" style="font-size:10.5px;">⚡ Bidding live</span>';
+
+      const distance = auction.distance_km
+        ? '<span style="color:#d49b4c;">' + auction.distance_km + ' KM</span>'
+        : '<span style="color:#94a3b8;">distance on request</span>';
+
+      const departure = auction.departure_at ? auctionDateTime(auction.departure_at) : 'date to be confirmed';
+      const action = auction.my_bids > 0 ? 'Improve your bid' : 'Open bidding page';
+
+      return '<div class="bid-card" style="display:flex; flex-direction:column; gap:12px; padding:16px 18px; border:1px solid #e2e8f0; background:#ffffff; border-radius:10px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">'
+        + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">'
+        + '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">'
+        + '<span class="admin-badge badge-primary" style="font-size:10.5px; font-family:monospace;">' + auctionEscape(auction.booking_reference) + '</span>'
+        + badge
+        + '</div>'
+        + '<span style="font-size:11.5px; color:#64748b; font-weight:700;">⏳ ' + auctionEscape(auctionTimeLeft(auction.closes_at)) + '</span>'
+        + '</div>'
+        + '<div style="display:grid; grid-template-columns: 1fr auto 1fr; gap:12px; align-items:center; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px;">'
+        + '<div>'
+        + '<div style="font-size:10px; font-weight:800; color:#0284c7; text-transform:uppercase; letter-spacing:0.04em;">Pickup (From)</div>'
+        + '<div style="font-size:13.5px; font-weight:700; color:#0f172a; margin-top:2px;">' + auctionEscape(auction.pickup_city) + '</div>'
+        + '</div>'
+        + '<div style="text-align:center; padding:0 8px;">'
+        + '<div style="background:#0b0f19; border:1px solid rgba(212,155,76,0.4); border-radius:20px; padding:4px 12px; font-size:12px; font-weight:800; font-family:monospace; display:inline-flex; align-items:center; gap:4px;">🛣️ ' + distance + '</div>'
+        + '<div style="font-size:10.5px; color:#64748b; margin-top:3px; font-weight:600;">🗓️ ' + auctionEscape(departure) + '</div>'
+        + '</div>'
+        + '<div>'
+        + '<div style="font-size:10px; font-weight:800; color:#16a34a; text-transform:uppercase; letter-spacing:0.04em;">Drop (To)</div>'
+        + '<div style="font-size:13.5px; font-weight:700; color:#0f172a; margin-top:2px;">' + auctionEscape(auction.drop_city) + '</div>'
+        + '</div>'
+        + '</div>'
+        + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-top:1px dashed #e2e8f0; padding-top:10px;">'
+        + '<div style="font-size:12px; color:#475569;">'
+        + 'Start price <strong style="color:#0f172a;">' + auctionMoney(auction.start_amount) + '</strong>'
+        + ' &bull; Current lowest <strong style="color:#16a34a;">' + lowest + '</strong>'
+        + '<div style="font-size:10.5px; color:#64748b; margin-top:3px; display:flex; align-items:center; gap:4px;">'
+        + '<span class="material-symbols-outlined" style="font-size:13px; color:#10b981;">lock</span>'
+        + '<span>Passenger name, mobile and exact addresses unlock only if you win.</span>'
+        + '</div>'
+        + '</div>'
+        + '<a class="btn btn-sm btn-outline-gold" style="text-decoration:none;" href="' + auctionEscape(auction.bid_url) + '">'
+        + '<span class="material-symbols-outlined" style="font-size:15px;">gavel</span>'
+        + '<span>' + action + '</span>'
+        + '</a>'
+        + '</div>'
+        + '</div>';
+    }).join('');
   } catch (err) {
-    console.error('Bid submit error:', err);
-    // Fallback local update if offline or network glitch
-    trip.bidPlaced = {
-      amount: amount,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    closeModal('driver-bid-modal');
-    renderBiddingList();
-    showToast(`🤝 Bid of ₹${amount.toLocaleString('en-IN')} confirmed for ${trip.fromLocation} → ${trip.toLocation}!`, 'success');
+    console.error('renderBiddingList', err);
+    container.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">Could not load live auctions. Check your connection, then press Refresh.</div>';
   }
-};
-
-function startBiddingCountdown() {
-  const timerEl = document.getElementById('bidding-timer-text');
-  if (!timerEl) return;
-
-  setInterval(() => {
-    if (state.bidding.countdownSec > 0) {
-      state.bidding.countdownSec--;
-      const mins = Math.floor(state.bidding.countdownSec / 60);
-      const secs = state.bidding.countdownSec % 60;
-      timerEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    }
-  }, 1000);
 }
-
-function simulateIncomingBid() {
-  const newDriver = {
-    id: `drv-${Date.now()}`,
-    name: 'Santosh Ghadge',
-    avatar: '👨🏻‍🦰',
-    rating: 4.88,
-    trips: 690,
-    car: 'Maruti Suzuki Dzire (Prime)',
-    plate: 'MH 12 PK 2201',
-    bid: 4400,
-    eta: '5 mins away',
-    status: 'pending'
-  };
-
-  state.bidding.drivers.unshift(newDriver);
-  renderBiddingList();
-  showToast('⚡ New Driver Bid received: Santosh offered ₹4,400!', 'gold');
-}
-
-window.openCounterOfferModal = function (driverId, currentBid) {
-  const modal = document.getElementById('counter-modal');
-  const targetDriver = state.bidding.drivers.find(d => d.id === driverId);
-  if (!targetDriver) return;
-
-  document.getElementById('counter-driver-name').textContent = targetDriver.name;
-  document.getElementById('counter-current-bid').textContent = `₹${currentBid}`;
-  document.getElementById('counter-target-input').value = currentBid - 300;
-
-  modal.dataset.driverId = driverId;
-  modal.classList.add('active');
-};
-
-window.submitCounterOffer = function () {
-  const modal = document.getElementById('counter-modal');
-  const driverId = modal.dataset.driverId;
-  const counterVal = parseInt(document.getElementById('counter-target-input').value, 10);
-
-  modal.classList.remove('active');
-  showToast(`Counter offer of ₹${counterVal} sent to driver!`, 'info');
-
-  // Driver response simulation
-  setTimeout(() => {
-    const drv = state.bidding.drivers.find(d => d.id === driverId);
-    if (drv) {
-      drv.bid = counterVal;
-      renderBiddingList();
-      showToast(`🤝 Driver ${drv.name} ACCEPTED your counter-bid of ₹${counterVal}!`, 'success');
-    }
-  }, 2000);
-};
-
-window.acceptDriverBid = function (driverId) {
-  const driver = state.bidding.drivers.find(d => d.id === driverId);
-  if (!driver) return;
-
-  const otp = Math.floor(1000 + Math.random() * 9000);
-  const newBooking = {
-    id: `ICW-${Math.floor(10000 + Math.random() * 90000)}`,
-    type: 'Outstation Bidding Cab',
-    route: state.bidding.activeTrip.route,
-    date: state.bidding.activeTrip.date,
-    operator: `${driver.name} (${driver.car})`,
-    berths: [driver.plate],
-    passengers: ['Customer (Confirmed)'],
-    amount: driver.bid,
-    status: 'Driver Assigned',
-    otp: String(otp)
-  };
-
-  state.bookings.unshift(newBooking);
-  showTicketModal(newBooking);
-};
 
 // ==========================================
 // 4. AdminLTE 3 Module & Dynamic Form Builder

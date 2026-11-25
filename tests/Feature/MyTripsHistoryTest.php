@@ -174,4 +174,39 @@ class MyTripsHistoryTest extends TestCase
         $this->assertStringContainsString("openTicketModal('{$booking->booking_reference}')", $html);
         $this->assertStringContainsString('Digital Boarding Pass', $html);
     }
+
+    public function test_checkout_landing_opens_history_and_highlights_the_new_booking(): void
+    {
+        $booking = $this->bookAs($this->customer, ['customer_name' => 'Landing Tester']);
+
+        $response = $this->actingAs($this->customer)->get('/?booked='.$booking->booking_reference);
+        $html = $response->getContent();
+
+        $response->assertStatus(200);
+
+        // The history tab is the active pane.
+        $this->assertMatchesRegularExpression('/<section id="tab-my-bookings" class="tab-pane active"/', $html);
+
+        // The confirmation banner names the booking.
+        $response->assertSee('Booking '.$booking->booking_reference.' confirmed', false);
+
+        // And the card itself carries both the highlight class and the flag.
+        $this->assertMatchesRegularExpression(
+            '/class="customer-trip-card is-new" id="trip-card-'.preg_quote($booking->booking_reference, '/').'"/',
+            $html
+        );
+        $this->assertStringContainsString('trip-new-flag', $html);
+    }
+
+    public function test_a_malformed_booked_parameter_is_ignored(): void
+    {
+        $response = $this->actingAs($this->customer)->get('/?booked="><script>alert(1)</script>');
+        $html = $response->getContent();
+
+        $response->assertStatus(200);
+        $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
+        $this->assertStringNotContainsString('confirmed.</strong>', $html);
+        // Falls back to the default tab, not the history pane.
+        $this->assertDoesNotMatchRegularExpression('/<section id="tab-my-bookings" class="tab-pane active"/', $html);
+    }
 }

@@ -101,6 +101,41 @@ class FleetScaleOutSeederTest extends TestCase
         );
     }
 
+    public function test_reseeding_backfills_features_for_older_cars(): void
+    {
+        $legacy = DriverVehicle::create([
+            'driver_name' => 'Legacy Partner',
+            'driver_phone' => '+91 90000 99999',
+            'vehicle_model' => 'Toyota Qualis',
+            'vehicle_plate' => 'MH 01 OLD 0001',
+            'fleet_category' => 'suv',
+            'seating_capacity' => 7,
+            'fuel_type' => 'Diesel',
+            'model_year' => '2012',
+            'status' => 'Approved',
+            'features' => null,
+            'is_active' => true,
+        ]);
+
+        $this->seed(FleetSeeder::class);
+
+        $this->assertContains('Air Conditioning', $legacy->fresh()->featureLabels());
+    }
+
+    public function test_admin_fleet_page_renders_amenity_chips(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $vehicle = DriverVehicle::where('status', 'Approved')->firstOrFail();
+        $feature = $vehicle->featureLabels()[0];
+
+        $response = $this->actingAs($admin)->get('/');
+
+        $response->assertOk();
+        $response->assertSee('Car Features');
+        $response->assertSee($vehicle->vehicle_plate);
+        $response->assertSee($feature);
+    }
+
     public function test_driver_can_list_a_car_with_features(): void
     {
         $driver = Driver::firstOrFail();

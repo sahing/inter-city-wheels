@@ -122,7 +122,7 @@
             <div class="bid-meta">
                 {{ strtoupper($payload['service_type']) }} · {{ ucfirst($payload['trip_type']) }}
                 @if($payload['distance_km'] !== null) · {{ $payload['distance_km'] }} km @endif
-                @if($payload['departure_date']) · {{ \Illuminate\Support\Carbon::parse($payload['departure_date'])->format('d M Y') }} @endif
+                @if($payload['departure_at'] ?? null) · Pickup {{ \Illuminate\Support\Carbon::parse($payload['departure_at'])->format('d M Y, h:i A') }} @endif
             </div>
 
             <div class="bid-grid">
