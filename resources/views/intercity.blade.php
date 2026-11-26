@@ -4009,6 +4009,17 @@
                                             </label>
                                         </div>
 
+                                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:10px 14px; margin-bottom:12px; background:#0b0f19; border:1px solid #d49b4c; border-radius:8px; color:#f8fafc;">
+                                            <div style="display:flex; align-items:center; gap:8px; font-size:12.5px;">
+                                                <span class="material-symbols-outlined" style="color:#f5d061; font-size:18px;">vpn_key</span>
+                                                <span>Need your Razorpay Key ID &amp; Secret?</span>
+                                            </div>
+                                            <a href="http://mabia.in/m/razorpay" target="_blank" rel="noopener noreferrer" id="get-razorpay-credentials-link" class="btn btn-sm btn-gold" style="text-decoration:none; font-weight:800;">
+                                                <span class="material-symbols-outlined" style="font-size:15px;">open_in_new</span>
+                                                <span>Get Razorpay Credentials — Click Here</span>
+                                            </a>
+                                        </div>
+
                                         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
                                             <div class="form-group" style="margin-bottom:0;">
                                                 <label class="form-label" for="setting-razorpay-mode">Gateway Mode</label>

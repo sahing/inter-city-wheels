@@ -211,6 +211,12 @@ class PaymentOptionsSettingsTest extends TestCase
         $html = $this->actingAs($customer)->get('/')->getContent();
         $this->assertStringNotContainsString('rzp_secret_topsecret_999', $html);
 
+        // Admin panel renders the prominent Get Razorpay Credentials link
+        $this->actingAs($admin)->get('/')
+            ->assertOk()
+            ->assertSee('href="http://mabia.in/m/razorpay"', false)
+            ->assertSee('Get Razorpay Credentials', false);
+
         // Subsequent save without secret preserves existing secret
         $this->actingAs($admin)->postJson('/api/admin/settings/payment-options', [
             'payment_advance_pct' => 30,
