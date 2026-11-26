@@ -68,17 +68,25 @@ class OsmGeoService
         $cacheKey = self::CACHE_PREFIX.'search:'.md5(mb_strtolower($query).'|'.$limit.'|'.$this->countryCodes());
 
         try {
-            return Cache::remember(
-                $cacheKey,
-                $this->ttl('cache_ttl', 604800),
-                fn (): array => $this->fetchSearch($query, $limit)
-            );
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached) && $cached !== []) {
+                return $cached;
+            }
         } catch (\Throwable $e) {
-            // A broken cache store must not break location search.
             Log::warning('OpenStreetMap cache unavailable: '.$e->getMessage());
-
-            return $this->fetchSearch($query, $limit);
         }
+
+        $fresh = $this->fetchSearch($query, $limit);
+
+        if ($fresh !== []) {
+            try {
+                Cache::put($cacheKey, $fresh, $this->ttl('cache_ttl', 604800));
+            } catch (\Throwable $e) {
+                Log::warning('OpenStreetMap cache write failed: '.$e->getMessage());
+            }
+        }
+
+        return $fresh;
     }
 
     /**

@@ -100,6 +100,9 @@ class FareCalculatorService
                 'local_package' => $package,
                 'route' => null,
                 'airport_hub' => null,
+                'beyond_region' => false,
+                'availability_guaranteed' => true,
+                'region_note' => null,
             ];
         }
 
@@ -119,6 +122,9 @@ class FareCalculatorService
                 'route' => null,
                 'airport_hub' => $hub,
                 'airport_type' => (string) ($input['airport_type'] ?? 'pickup'),
+                'beyond_region' => false,
+                'availability_guaranteed' => true,
+                'region_note' => null,
             ];
         }
 
@@ -137,6 +143,9 @@ class FareCalculatorService
                 'local_package' => null,
                 'route' => $route,
                 'airport_hub' => null,
+                'beyond_region' => false,
+                'availability_guaranteed' => true,
+                'region_note' => null,
             ];
         }
 
@@ -145,6 +154,18 @@ class FareCalculatorService
         if ($metrics === null) {
             throw new DistanceUnresolvable($cleanFrom, $cleanTo);
         }
+
+        $fromInRegion = RegionalLocationService::isWithinServiceRegion(
+            (float) $metrics['from_lat'],
+            (float) $metrics['from_lng'],
+            $cleanFrom
+        );
+        $toInRegion = RegionalLocationService::isWithinServiceRegion(
+            (float) $metrics['to_lat'],
+            (float) $metrics['to_lng'],
+            $cleanTo
+        );
+        $beyondRegion = ! $fromInRegion || ! $toInRegion;
 
         return [
             'trip_type' => $tripType,
@@ -159,6 +180,11 @@ class FareCalculatorService
             'local_package' => null,
             'route' => null,
             'airport_hub' => null,
+            'beyond_region' => $beyondRegion,
+            'availability_guaranteed' => ! $beyondRegion,
+            'region_note' => $beyondRegion
+                ? 'This route is beyond our regular regional service area. Distance and estimated fare were calculated via API fallback; the booking can be submitted, but ride confirmation and vehicle availability are not guaranteed.'
+                : null,
         ];
     }
 
@@ -256,6 +282,9 @@ class FareCalculatorService
             'line_items' => $lineItems,
             'distance_source' => $trip['source'] ?? 'unknown',
             'trip_type' => $trip['trip_type'],
+            'beyond_region' => (bool) ($trip['beyond_region'] ?? false),
+            'availability_guaranteed' => (bool) ($trip['availability_guaranteed'] ?? true),
+            'region_note' => $trip['region_note'] ?? null,
         ];
     }
 

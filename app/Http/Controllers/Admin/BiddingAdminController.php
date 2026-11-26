@@ -94,6 +94,27 @@ class BiddingAdminController extends Controller
         ], 201);
     }
 
+    /**
+     * Ensure an open auction exists for a booking and return its WhatsApp share package
+     * for one-click copy/share directly from Outstation Bookings & Dispatch Management.
+     */
+    public function share(Request $request, int $bookingId)
+    {
+        $booking = Booking::findOrFail($bookingId);
+
+        try {
+            $session = $this->bidding->ensureShareableSession($booking, $request->user());
+        } catch (BiddingException $e) {
+            return response()->json($e->toArray(), $e->status);
+        }
+
+        return response()->json([
+            'success' => true,
+            'session' => $session->toAdminPayload(),
+            'share' => $this->sharePackage($session),
+        ]);
+    }
+
     public function show(int $id)
     {
         $session = BiddingSession::findOrFail($id);

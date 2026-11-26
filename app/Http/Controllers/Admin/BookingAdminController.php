@@ -240,6 +240,9 @@ class BookingAdminController extends Controller
             }
 
             try {
+                if (in_array($newStatus, [BookingWorkflow::CONFIRMED, BookingWorkflow::DRIVER_ASSIGNED, BookingWorkflow::STARTED, BookingWorkflow::COMPLETED], true)) {
+                    $validated['availability_status'] = 'confirmed';
+                }
                 $this->workflow->forceTransition($booking, $newStatus, $validated);
             } catch (InvalidBookingTransition $e) {
                 return response()->json([
@@ -308,6 +311,7 @@ class BookingAdminController extends Controller
             // already moved past it.
             $this->workflow->forceTransition($booking, $targetStatus, [
                 'assigned_driver_id' => $driverId,
+                'availability_status' => $driverId !== null ? 'confirmed' : ($booking->is_beyond_region ? 'unconfirmed' : $booking->availability_status),
             ]);
         } catch (InvalidBookingTransition $e) {
             return response()->json([

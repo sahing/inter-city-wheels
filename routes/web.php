@@ -332,6 +332,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     // Driver Bidding Marketplace
     Route::get('/admin/biddings', [BiddingAdminController::class, 'index'])->name('api.admin.biddings.index');
     Route::post('/admin/bookings/{bookingId}/bidding', [BiddingAdminController::class, 'store'])->name('api.admin.bidding.store');
+    Route::post('/admin/bookings/{bookingId}/bidding/share', [BiddingAdminController::class, 'share'])->name('api.admin.bidding.share');
     Route::get('/admin/biddings/{id}', [BiddingAdminController::class, 'show'])->name('api.admin.biddings.show');
     Route::post('/admin/biddings/{id}/close', [BiddingAdminController::class, 'close'])->name('api.admin.biddings.close');
     Route::post('/admin/biddings/{id}/award', [BiddingAdminController::class, 'award'])->name('api.admin.biddings.award');
