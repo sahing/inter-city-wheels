@@ -404,7 +404,7 @@ class BookingAdminController extends Controller
             'customer' => [
                 'name' => $booking->customer_name,
                 'phone' => $booking->customer_phone,
-                'email' => $booking->customer_email ?? 'billing@intercitywheels.com',
+                'email' => $booking->customer_email ?? 'intercitywheelscompany@gmail.com',
                 'pickup_location' => $booking->pickup_location,
                 'drop_location' => $booking->drop_location,
                 'trip_type' => strtoupper($booking->trip_type ?? 'One-Way'),
