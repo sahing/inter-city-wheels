@@ -3195,30 +3195,30 @@ function renderFilteredBiddingCards() {
 
   const allottedCardsHtml = filteredAllotted.length
     ? '<div style="margin-top:' + (filteredAuctions.length ? '14px' : '0') + ';">'
-      + '<div class="text-micro" style="color:var(--text-muted); margin-bottom:8px;">Allotted Trips</div>'
-      + filteredAllotted.map(function (item) {
-        const allottedBadge = item.allotted_to_you
-          ? '<span class="admin-badge badge-success" style="font-size:10px;">Allotted to You</span>'
-          : '<span class="admin-badge badge-gold" style="font-size:10px;">Allotted</span>';
-        const dist = item.distance_km ? item.distance_km + ' KM' : 'On request';
-        const payout = (item.allotted_to_you && item.winning_amount !== null && item.winning_amount !== undefined)
-          ? ' &bull; Your payout <strong style="color:var(--success);">' + auctionMoney(item.winning_amount) + '</strong>'
-          : '';
-        return '<div class="auction-card auction-card--allotted auction-card-compact">'
-          + '<div class="auction-card-top">'
-          + '<div class="auction-meta-badges">'
-          + '<span class="admin-badge badge-primary" style="font-size:10px; font-family:monospace;">' + auctionEscape(item.booking_reference) + '</span>'
-          + allottedBadge
-          + '</div>'
-          + '<span class="auction-deadline-pill"><span class="material-symbols-outlined" style="font-size:13px;">verified</span><span>Allotted</span></span>'
-          + '</div>'
-          + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; font-size:12.5px; color:var(--text-main);">'
-          + '<div><strong>' + auctionEscape(item.pickup_city) + '</strong> &rarr; <strong>' + auctionEscape(item.drop_city) + '</strong> <span style="color:var(--text-muted); font-size:11.5px;">(' + auctionEscape(dist) + ')</span></div>'
-          + '<div style="font-size:11.5px; color:#475569;">Status: <strong style="color:var(--gold-dark);">Allotted</strong>' + payout + '</div>'
-          + '</div>'
-          + '</div>';
-      }).join('')
-      + '</div>'
+    + '<div class="text-micro" style="color:var(--text-muted); margin-bottom:8px;">Allotted Trips</div>'
+    + filteredAllotted.map(function (item) {
+      const allottedBadge = item.allotted_to_you
+        ? '<span class="admin-badge badge-success" style="font-size:10px;">Allotted to You</span>'
+        : '<span class="admin-badge badge-gold" style="font-size:10px;">Allotted</span>';
+      const dist = item.distance_km ? item.distance_km + ' KM' : 'On request';
+      const payout = (item.allotted_to_you && item.winning_amount !== null && item.winning_amount !== undefined)
+        ? ' &bull; Your payout <strong style="color:var(--success);">' + auctionMoney(item.winning_amount) + '</strong>'
+        : '';
+      return '<div class="auction-card auction-card--allotted auction-card-compact">'
+        + '<div class="auction-card-top">'
+        + '<div class="auction-meta-badges">'
+        + '<span class="admin-badge badge-primary" style="font-size:10px; font-family:monospace;">' + auctionEscape(item.booking_reference) + '</span>'
+        + allottedBadge
+        + '</div>'
+        + '<span class="auction-deadline-pill"><span class="material-symbols-outlined" style="font-size:13px;">verified</span><span>Allotted</span></span>'
+        + '</div>'
+        + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; font-size:12.5px; color:var(--text-main);">'
+        + '<div><strong>' + auctionEscape(item.pickup_city) + '</strong> &rarr; <strong>' + auctionEscape(item.drop_city) + '</strong> <span style="color:var(--text-muted); font-size:11.5px;">(' + auctionEscape(dist) + ')</span></div>'
+        + '<div style="font-size:11.5px; color:#475569;">Status: <strong style="color:var(--gold-dark);">Allotted</strong>' + payout + '</div>'
+        + '</div>'
+        + '</div>';
+    }).join('')
+    + '</div>'
     : '';
 
   container.innerHTML = verificationBanner + openCardsHtml + allottedCardsHtml;
@@ -8933,6 +8933,61 @@ window.saveAdminLegalPages = async function (e) {
   }
 };
 
+window.toggleClerkAdminBadge = function () {
+  const checked = Boolean(document.getElementById('setting-clerk-enabled')?.checked);
+  const badge = document.getElementById('setting-clerk-status-badge');
+  if (badge) {
+    badge.className = `badge ${checked ? 'badge-success' : 'badge-secondary'}`;
+    badge.textContent = checked ? 'CLERK ENABLED' : 'HIDDEN FROM LOGIN';
+  }
+};
+
+window.saveAdminClerkAuthSettings = async function (e) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const payload = {
+    clerk_login_enabled: Boolean(document.getElementById('setting-clerk-enabled')?.checked),
+    clerk_publishable_key: document.getElementById('setting-clerk-publishable-key')?.value.trim() || '',
+    clerk_secret_key: document.getElementById('setting-clerk-secret-key')?.value.trim() || '',
+  };
+
+  try {
+    const res = await fetch('/api/admin/settings/clerk-auth', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+      const secretInput = document.getElementById('setting-clerk-secret-key');
+      if (secretInput) secretInput.value = '';
+      const hint = document.getElementById('setting-clerk-secret-hint');
+      if (hint && data.settings?.clerk_secret_configured === '1') {
+        hint.textContent = '(Saved — leave blank to keep)';
+        hint.style.color = '#16a34a';
+      }
+      if (window.ALTERNATE_AUTH_CONFIG && window.ALTERNATE_AUTH_CONFIG.clerk) {
+        window.ALTERNATE_AUTH_CONFIG.clerk.enabled = payload.clerk_login_enabled;
+        window.ALTERNATE_AUTH_CONFIG.clerk.publishableKey = payload.clerk_login_enabled ? payload.clerk_publishable_key : '';
+        window.ALTERNATE_AUTH_CONFIG.clerk.is_configured = Boolean(payload.clerk_login_enabled && payload.clerk_publishable_key);
+      }
+      window.toggleClerkAdminBadge();
+      showToast(data.message || 'Clerk auth settings saved!', 'success');
+    } else {
+      showToast(data.message || 'Failed to save Clerk auth settings.', 'warning');
+    }
+  } catch (err) {
+    console.error('saveAdminClerkAuthSettings', err);
+    showToast('Network error while saving Clerk settings.', 'warning');
+  }
+};
+
 // ===== ADMIN DASHBOARD & TABLE PAGINATION =====
 (function () {
   const ADMIN_TABLES_CONFIG = {
@@ -10683,7 +10738,7 @@ window.refreshAdminRouteFareDisplays = function () {
             badge.style.display = unread > 0 ? 'inline-block' : 'none';
           }
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     const dropdown = document.getElementById('app-notif-dropdown');
@@ -10708,7 +10763,7 @@ window.refreshAdminRouteFareDisplays = function () {
       if (res.ok) {
         window.fetchAppNotifications(false);
       }
-    } catch (_) {}
+    } catch (_) { }
   };
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -10717,7 +10772,7 @@ window.refreshAdminRouteFareDisplays = function () {
       setInterval(() => window.fetchAppNotifications(true), 25000);
     }
 
-  window.addEventListener('click', (e) => {
+    window.addEventListener('click', (e) => {
       const menu = document.getElementById('app-notif-menu');
       const dropdown = document.getElementById('app-notif-dropdown');
       if (dropdown && menu && !menu.contains(e.target)) {
