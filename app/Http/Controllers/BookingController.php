@@ -12,6 +12,7 @@ use App\Services\BookingReferenceGenerator;
 use App\Services\BookingWorkflow;
 use App\Services\FareCalculatorService;
 use App\Services\NotificationService;
+use App\Services\RazorpayService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +30,7 @@ class BookingController extends Controller
         private readonly BookingWorkflow $workflow,
         private readonly BiddingService $bidding,
         private readonly NotificationService $notifications,
+        private readonly RazorpayService $razorpay,
     ) {}
 
     /**
@@ -170,6 +172,7 @@ class BookingController extends Controller
                 : $enabledModes[0]
         );
         $configuredAdvancePct = max(1.0, min(99.0, (float) ($paymentConfig['payment_advance_pct'] ?? 20)));
+        $useRazorpay = $paymentMode !== 'cash' && $this->razorpay->isReady();
 
         try {
             [$booking, $quote] = DB::transaction(function () use (
@@ -183,7 +186,8 @@ class BookingController extends Controller
                 $isBus,
                 $selectedUnits,
                 $paymentMode,
-                $configuredAdvancePct
+                $configuredAdvancePct,
+                $useRazorpay
             ) {
                 $berths = new Collection;
 
@@ -213,6 +217,10 @@ class BookingController extends Controller
                     default => [100.0, $totalAmount, 0.0],
                 };
 
+                $initialPaymentStatus = $paymentMode === 'cash'
+                    ? 'pay_on_pickup'
+                    : ($useRazorpay ? 'pending' : ($paymentMode === 'part_pay' ? 'partial_paid' : 'paid'));
+
                 $booking = $this->workflow->create([
                     'booking_reference' => $this->references->generate(),
                     'customer_user_id' => auth()->id(),
@@ -238,6 +246,8 @@ class BookingController extends Controller
                     'advance_percentage' => $advancePct,
                     'advance_amount' => $advanceAmount,
                     'balance_amount' => $balanceAmount,
+                    'payment_gateway' => $useRazorpay ? 'razorpay' : 'manual',
+                    'payment_status' => $initialPaymentStatus,
                     'start_otp' => $this->references->startOtp(),
                     'dynamic_fields_data' => $validated['dynamic_fields'] ?? [],
                 ]);
@@ -257,15 +267,48 @@ class BookingController extends Controller
             ] + $e->toArray(), 409);
         }
 
-        if (! $isBus) {
-            $this->bidding->openForNewBooking($booking);
-        }
+        $razorpayOrder = null;
+        if ($useRazorpay) {
+            try {
+                $razorpayOrder = $this->razorpay->createOrder($booking, (float) $booking->advance_amount);
+                $booking->forceFill(['razorpay_order_id' => $razorpayOrder['order_id']])->save();
+            } catch (\Throwable $e) {
+                $booking->delete();
 
-        $this->notifications->bookingCreated($booking, 'customer');
+                return response()->json([
+                    'success' => false,
+                    'code' => 'razorpay_order_failed',
+                    'message' => 'Razorpay gateway error: '.$e->getMessage(),
+                ], 502);
+            }
+        } else {
+            if (! $isBus) {
+                $this->bidding->openForNewBooking($booking);
+            }
+
+            $this->notifications->bookingCreated($booking, 'customer');
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Trip booked successfully!',
+            'message' => $useRazorpay
+                ? 'Complete Razorpay payment to confirm your trip.'
+                : 'Trip booked successfully!',
+            'requires_razorpay' => $useRazorpay,
+            'razorpay' => $razorpayOrder ? [
+                'key' => $razorpayOrder['key_id'],
+                'order_id' => $razorpayOrder['order_id'],
+                'amount' => $razorpayOrder['amount_paise'],
+                'currency' => $razorpayOrder['currency'],
+                'name' => $razorpayOrder['display_name'],
+                'description' => "Booking {$booking->booking_reference} ({$booking->route_summary})",
+                'payment_mode' => $booking->payment_mode,
+                'prefill' => [
+                    'name' => $booking->customer_name,
+                    'email' => $booking->customer_email ?: (auth()->user()?->email ?? ''),
+                    'contact' => $booking->customer_phone,
+                ],
+            ] : null,
             'booking' => $booking->fresh(),
             'quote' => $quote,
             'lookup_url' => URL::temporarySignedRoute(
@@ -273,6 +316,139 @@ class BookingController extends Controller
                 now()->addDays(7),
                 ['reference' => $booking->booking_reference]
             ),
+        ]);
+    }
+
+    /**
+     * Create (or retrieve) a Razorpay payment order for an unpaid customer booking.
+     */
+    public function createRazorpayOrder(Request $request, string $reference)
+    {
+        $booking = Booking::where('booking_reference', strtoupper(trim($reference)))->firstOrFail();
+
+        if (! $booking->isOwnedBy($request->user())) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not authorized to pay for this booking.',
+            ], 403);
+        }
+
+        if (in_array($booking->payment_status, ['paid', 'partial_paid'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This booking is already paid.',
+            ], 422);
+        }
+
+        $payable = (float) ($booking->advance_amount ?? $booking->total_amount);
+
+        try {
+            $order = $this->razorpay->createOrder($booking, $payable);
+            $booking->forceFill([
+                'payment_gateway' => 'razorpay',
+                'payment_status' => 'pending',
+                'razorpay_order_id' => $order['order_id'],
+            ])->save();
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Razorpay gateway error: '.$e->getMessage(),
+            ], 502);
+        }
+
+        return response()->json([
+            'success' => true,
+            'razorpay' => [
+                'key' => $order['key_id'],
+                'order_id' => $order['order_id'],
+                'amount' => $order['amount_paise'],
+                'currency' => $order['currency'],
+                'name' => $order['display_name'],
+                'description' => "Booking {$booking->booking_reference} ({$booking->route_summary})",
+                'payment_mode' => $booking->payment_mode,
+                'prefill' => [
+                    'name' => $booking->customer_name,
+                    'email' => $booking->customer_email ?: (auth()->user()?->email ?? ''),
+                    'contact' => $booking->customer_phone,
+                ],
+            ],
+            'booking' => $booking->fresh(),
+        ]);
+    }
+
+    /**
+     * Verify Razorpay Checkout signature and confirm the booking.
+     */
+    public function verifyRazorpayPayment(Request $request, string $reference)
+    {
+        $validated = $request->validate([
+            'razorpay_order_id' => 'required|string|max:120',
+            'razorpay_payment_id' => 'required|string|max:120',
+            'razorpay_signature' => 'required|string|max:255',
+        ]);
+
+        $booking = Booking::where('booking_reference', strtoupper(trim($reference)))->firstOrFail();
+
+        if (! $booking->isOwnedBy($request->user())) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not authorized to verify payment for this booking.',
+            ], 403);
+        }
+
+        if ($booking->razorpay_order_id !== $validated['razorpay_order_id']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Razorpay order ID does not match this booking.',
+            ], 422);
+        }
+
+        if (! $this->razorpay->verifySignature(
+            $validated['razorpay_order_id'],
+            $validated['razorpay_payment_id'],
+            $validated['razorpay_signature']
+        )) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid Razorpay payment signature.',
+            ], 422);
+        }
+
+        if (in_array($booking->payment_status, ['paid', 'partial_paid'], true)
+            && $booking->razorpay_payment_id === $validated['razorpay_payment_id']) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment already verified.',
+                'booking' => $booking->fresh(),
+            ]);
+        }
+
+        $confirmedBooking = DB::transaction(function () use ($booking, $validated) {
+            $locked = Booking::whereKey($booking->id)->lockForUpdate()->firstOrFail();
+            $targetStatus = $locked->status === BookingWorkflow::REQUESTED
+                ? BookingWorkflow::CONFIRMED
+                : (string) $locked->status;
+
+            $paidStatus = $locked->payment_mode === 'part_pay' ? 'partial_paid' : 'paid';
+
+            return $this->workflow->transition($locked, $targetStatus, [
+                'payment_gateway' => 'razorpay',
+                'payment_status' => $paidStatus,
+                'razorpay_payment_id' => $validated['razorpay_payment_id'],
+                'razorpay_signature' => $validated['razorpay_signature'],
+            ]);
+        });
+
+        if ($confirmedBooking->service_type !== 'bus') {
+            $this->bidding->openForNewBooking($confirmedBooking);
+        }
+
+        $this->notifications->bookingCreated($confirmedBooking, 'razorpay');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment verified via Razorpay! Trip confirmed.',
+            'booking' => $confirmedBooking->fresh(),
         ]);
     }
 

@@ -153,6 +153,8 @@ Route::prefix('api')->middleware(['auth'])->group(function () {
     // Confirming a booking requires a signed-in customer, so every trip is
     // owned by an account. Guests are sent to the one-tap login gate.
     Route::post('/bookings', [BookingController::class, 'store'])->name('api.bookings.store');
+    Route::post('/bookings/{reference}/razorpay/order', [BookingController::class, 'createRazorpayOrder'])->name('api.bookings.razorpay.order');
+    Route::post('/bookings/{reference}/razorpay/verify', [BookingController::class, 'verifyRazorpayPayment'])->name('api.bookings.razorpay.verify');
 });
 
 /*
@@ -324,6 +326,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::post('/admin/settings/bidding', [PlatformSettingAdminController::class, 'updateBiddingSettings'])->name('api.admin.settings.bidding');
     Route::post('/admin/settings/payment-options', [PlatformSettingAdminController::class, 'updatePaymentSettings'])->name('api.admin.settings.paymentOptions');
     Route::post('/admin/settings/invoice-template', [PlatformSettingAdminController::class, 'updateInvoiceSettings'])->name('api.admin.settings.invoiceTemplate');
+    Route::post('/admin/settings/legal-pages', [PlatformSettingAdminController::class, 'updateLegalPages'])->name('api.admin.settings.legalPages');
 
     // Driver Bidding Marketplace
     Route::get('/admin/biddings', [BiddingAdminController::class, 'index'])->name('api.admin.biddings.index');
@@ -349,19 +352,27 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
 */
 
 Route::get('/privacy-policy', function () {
+    $legal = \App\Models\PlatformSetting::legalSettings();
+
     return view('legal', [
         'pageTitle' => 'Privacy Policy',
-        'contentTitle' => 'IntercityWheels Privacy Policy',
-        'updatedAt' => 'November 2026',
-        'body' => 'IntercityWheels Mobility Services Pvt. Ltd. is committed to protecting your personal information. When you book outstation cabs or sleeper berths through our platform, we collect minimal operational data including name, contact phone, pickup/drop GPS coordinates, and payment receipts solely to deliver and coordinate transport services.',
+        'contentTitle' => $legal['privacy_policy_title'],
+        'updatedAt' => $legal['privacy_policy_updated_at'],
+        'body' => $legal['privacy_policy_body'],
+        'contactHelpline' => $legal['legal_contact_helpline'],
+        'contactEmail' => $legal['legal_contact_email'],
     ]);
 })->name('privacy.policy');
 
 Route::get('/terms-conditions', function () {
+    $legal = \App\Models\PlatformSetting::legalSettings();
+
     return view('legal', [
         'pageTitle' => 'Terms & Conditions (T&Cs)',
-        'contentTitle' => 'IntercityWheels Rider & Chauffeur Terms & Conditions',
-        'updatedAt' => 'November 2026',
-        'body' => 'By accessing or using IntercityWheels.com, customers and driver partners agree to be bound by these Terms of Service. All outstation trips include transparent per-km billing, toll charges, night allowance rules, and real-time OTP validation for verified chauffeur departure.',
+        'contentTitle' => $legal['terms_conditions_title'],
+        'updatedAt' => $legal['terms_conditions_updated_at'],
+        'body' => $legal['terms_conditions_body'],
+        'contactHelpline' => $legal['legal_contact_helpline'],
+        'contactEmail' => $legal['legal_contact_email'],
     ]);
 })->name('terms.conditions');

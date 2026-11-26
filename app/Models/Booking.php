@@ -9,6 +9,10 @@ class Booking extends Model
 {
     use HasFactory;
 
+    protected $hidden = [
+        'razorpay_signature',
+    ];
+
     protected $guarded = [];
 
     protected $appends = ['cab_type'];

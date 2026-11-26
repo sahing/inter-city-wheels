@@ -2204,34 +2204,24 @@ async function handleConfirmCabBooking() {
 
     if (data.success && data.booking) {
       const b = data.booking;
-      const localBooking = {
-        id: b.booking_reference,
-        type: 'Outstation Cab',
-        route: `${fromCityName} → ${toCityName}`,
-        date: 'Scheduled',
-        operator: `${FLEET_TYPES[state.cab.selectedFleet]?.name || 'Executive SUV'} (Intercity Wheels)`,
-        berths: ['Private Car Rental'],
-        passengers: [customerName],
-        amount: Number(b.total_amount),
-        status: b.status || 'Requested',
-        otp: String(b.start_otp)
-      };
 
-      state.bookings.unshift(localBooking);
-      showToast(`🎉 Booking confirmed! Reference: ${b.booking_reference}`, 'success');
-
-      // Update My Trips badge counter in header if present
-      const badge = document.querySelector('.nav-tab-badge.badge-primary');
-      if (badge) {
-        badge.textContent = String(parseInt(badge.textContent || '0', 10) + 1);
+      if (data.requires_razorpay && data.razorpay) {
+        try {
+          const verifiedData = await launchRazorpayCheckout(b.booking_reference, data.razorpay);
+          if (verifiedData && verifiedData.booking) {
+            finalizeCabBookingUi(verifiedData.booking, fromCityName, toCityName, customerName);
+            return;
+          }
+        } catch (rzpErr) {
+          showToast(rzpErr.message || 'Razorpay payment was not completed. You can retry from My Trips.', 'warning');
+          goToCabStep(1);
+          switchTab('my-bookings');
+          window.showBookingInHistory(b);
+          return;
+        }
       }
 
-      // Requirement: after booking, land on the trip history with the new trip on
-      // top (signed-in customers), or the guest tracking panel (guests).
-      goToCabStep(1);
-      switchTab('my-bookings');
-      window.showBookingInHistory(b);
-      if (typeof window.refreshAppNotifications === 'function') window.refreshAppNotifications();
+      finalizeCabBookingUi(b, fromCityName, toCityName, customerName);
     } else {
       showToast(data.message || 'Booking validation error. Please verify input.', 'danger');
     }
@@ -2279,6 +2269,130 @@ function handleCityChange() {
   updateRouteRecapTexts();
   updateTotalCabFare();
 }
+
+function finalizeCabBookingUi(b, fromCityName, toCityName, customerName) {
+  const localBooking = {
+    id: b.booking_reference,
+    type: 'Outstation Cab',
+    route: `${fromCityName} → ${toCityName}`,
+    date: 'Scheduled',
+    operator: `${FLEET_TYPES[state.cab.selectedFleet]?.name || 'Executive SUV'} (Intercity Wheels)`,
+    berths: ['Private Car Rental'],
+    passengers: [customerName],
+    amount: Number(b.total_amount),
+    status: b.status || 'Requested',
+    otp: String(b.start_otp)
+  };
+
+  state.bookings.unshift(localBooking);
+  showToast(`🎉 Booking confirmed! Reference: ${b.booking_reference}`, 'success');
+
+  const badge = document.querySelector('.nav-tab-badge.badge-primary');
+  if (badge) {
+    badge.textContent = String(parseInt(badge.textContent || '0', 10) + 1);
+  }
+
+  goToCabStep(1);
+  switchTab('my-bookings');
+  window.showBookingInHistory(b);
+  if (typeof window.refreshAppNotifications === 'function') window.refreshAppNotifications();
+}
+
+function loadRazorpaySdk() {
+  if (typeof window.Razorpay !== 'undefined') return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[src*="checkout.razorpay.com/v1/checkout.js"]');
+    if (existing) {
+      existing.addEventListener('load', resolve);
+      existing.addEventListener('error', () => reject(new Error('Failed to load Razorpay Checkout SDK.')));
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Failed to load Razorpay Checkout SDK.'));
+    document.head.appendChild(script);
+  });
+}
+
+async function launchRazorpayCheckout(bookingReference, rzpConfig) {
+  await loadRazorpaySdk();
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+  return new Promise((resolve, reject) => {
+    const options = {
+      key: rzpConfig.key,
+      amount: rzpConfig.amount,
+      currency: rzpConfig.currency || 'INR',
+      name: rzpConfig.name || 'Intercity Wheels',
+      description: rzpConfig.description || `Booking ${bookingReference}`,
+      order_id: rzpConfig.order_id,
+      prefill: rzpConfig.prefill || {},
+      theme: { color: '#d49b4c' },
+      modal: {
+        ondismiss: () => reject(new Error('Payment popup closed before completion.')),
+      },
+      handler: async function (response) {
+        try {
+          const verifyRes = await fetch(`/api/bookings/${encodeURIComponent(bookingReference)}/razorpay/verify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-TOKEN': csrfToken,
+            },
+            body: JSON.stringify({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            }),
+          });
+          const verifyData = await verifyRes.json();
+          if (verifyRes.ok && verifyData.success) {
+            resolve(verifyData);
+          } else {
+            reject(new Error(verifyData.message || 'Razorpay signature verification failed.'));
+          }
+        } catch (err) {
+          reject(new Error('Network error while verifying Razorpay payment.'));
+        }
+      },
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.on('payment.failed', (resp) => {
+      reject(new Error(resp?.error?.description || 'Razorpay payment failed.'));
+    });
+    rzp.open();
+  });
+}
+
+window.retryRazorpayForBooking = async function (reference) {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  try {
+    const res = await fetch(`/api/bookings/${encodeURIComponent(reference)}/razorpay/order`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': csrfToken,
+      },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success || !data.razorpay) {
+      showToast(data.message || 'Could not start Razorpay checkout.', 'danger');
+      return;
+    }
+    const verified = await launchRazorpayCheckout(reference, data.razorpay);
+    if (verified && verified.booking) {
+      showToast(verified.message || 'Payment verified! Booking confirmed.', 'success');
+      window.showBookingInHistory(verified.booking);
+      if (typeof window.refreshAppNotifications === 'function') window.refreshAppNotifications();
+    }
+  } catch (err) {
+    showToast(err.message || 'Payment not completed.', 'warning');
+  }
+};
 
 function updateTotalCabFare() {
   const fleet = FLEET_TYPES[state.cab.selectedFleet] || FLEET_TYPES.suv;
@@ -3746,6 +3860,10 @@ function initAuth() {
     if (window.CURRENT_USER.role === 'admin') {
       document.body.classList.add('role-admin-mode', 'admin-active-view');
       switchTab('admin');
+      const secParam = new URLSearchParams(window.location.search).get('section');
+      if (secParam && typeof switchAdminSection === 'function') {
+        switchAdminSection(secParam);
+      }
     } else if (window.CURRENT_USER.role === 'driver') {
       switchTab('bidding');
     }
@@ -4961,6 +5079,10 @@ window.handleBookingFilterChange = function () {
   const emptyRow = document.getElementById('admin-bookings-empty-row');
   if (emptyRow) {
     emptyRow.style.display = visibleCount === 0 ? '' : 'none';
+  }
+
+  if (typeof window.renderAdminTablePagination === 'function') {
+    window.renderAdminTablePagination('admin-bookings', true);
   }
 };
 
@@ -8544,6 +8666,177 @@ window.saveAdminPolicyUrls = async function (e) {
   }
 };
 
+window.saveAdminLegalPages = async function (e) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const payload = {
+    privacy_policy_title: document.getElementById('setting-privacy-title')?.value.trim() || '',
+    privacy_policy_updated_at: document.getElementById('setting-privacy-updated')?.value.trim() || '',
+    privacy_policy_body: document.getElementById('setting-privacy-body')?.value.trim() || '',
+    terms_conditions_title: document.getElementById('setting-terms-title')?.value.trim() || '',
+    terms_conditions_updated_at: document.getElementById('setting-terms-updated')?.value.trim() || '',
+    terms_conditions_body: document.getElementById('setting-terms-body')?.value.trim() || '',
+    legal_contact_helpline: document.getElementById('setting-legal-helpline')?.value.trim() || '',
+    legal_contact_email: document.getElementById('setting-legal-email')?.value.trim() || '',
+  };
+
+  try {
+    const res = await fetch('/api/admin/settings/legal-pages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+      showToast(data.message || 'Privacy Policy & Terms content updated!', 'success');
+    } else {
+      showToast(data.message || 'Failed to save legal pages.', 'danger');
+    }
+  } catch (err) {
+    console.error('saveAdminLegalPages', err);
+    showToast('Network error while saving legal pages.', 'warning');
+  }
+};
+
+// ===== ADMIN DASHBOARD & TABLE PAGINATION =====
+(function () {
+  const ADMIN_TABLES_CONFIG = {
+    'dashboard-fleet': {
+      tbodyId: 'admin-dashboard-fleet-tbody',
+      barId: 'pag-bar-dashboard-fleet',
+      pageSize: 5,
+      sizes: [5, 10, 25],
+      page: 1,
+    },
+    'dashboard-bookings': {
+      tbodyId: 'admin-recent-bookings-tbody',
+      barId: 'pag-bar-dashboard-bookings',
+      pageSize: 5,
+      sizes: [5, 10, 25],
+      page: 1,
+    },
+    'admin-bookings': {
+      tbodyId: 'admin-bookings-table-tbody',
+      barId: 'pag-bar-admin-bookings',
+      pageSize: 10,
+      sizes: [10, 25, 50],
+      page: 1,
+    },
+  };
+
+  function getPaginatableRows(tbody) {
+    if (!tbody) return [];
+    return Array.from(tbody.querySelectorAll('tr')).filter(row => {
+      if (row.dataset.emptyRow === '1') return false;
+      if (row.id === 'admin-bookings-empty-row' || row.id === 'admin-bookings-no-results-row') return false;
+      if (row.style.display === 'none') return false;
+      return true;
+    });
+  }
+
+  function buildPageList(current, total) {
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    const pages = [1];
+    if (current > 3) pages.push('...');
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+    for (let p = start; p <= end; p++) pages.push(p);
+    if (current < total - 2) pages.push('...');
+    pages.push(total);
+    return pages;
+  }
+
+  window.renderAdminTablePagination = function (key, resetPage = false) {
+    const cfg = ADMIN_TABLES_CONFIG[key];
+    if (!cfg) return;
+
+    const tbody = document.getElementById(cfg.tbodyId);
+    const bar = document.getElementById(cfg.barId);
+    if (!tbody || !bar) return;
+
+    if (resetPage) cfg.page = 1;
+
+    // Clear previous pagination hiding before measuring active (filter-matching) rows
+    Array.from(tbody.querySelectorAll('tr')).forEach(r => r.classList.remove('admin-page-hidden'));
+
+    const rows = getPaginatableRows(tbody);
+    const total = rows.length;
+
+    if (total === 0) {
+      bar.style.display = 'none';
+      return;
+    }
+
+    bar.style.display = 'flex';
+    const totalPages = Math.max(1, Math.ceil(total / cfg.pageSize));
+    if (cfg.page > totalPages) cfg.page = totalPages;
+    if (cfg.page < 1) cfg.page = 1;
+
+    const startIdx = (cfg.page - 1) * cfg.pageSize;
+    const endIdx = Math.min(total, startIdx + cfg.pageSize);
+
+    rows.forEach((row, idx) => {
+      if (idx < startIdx || idx >= endIdx) {
+        row.classList.add('admin-page-hidden');
+      }
+    });
+
+    const pagesHtml = buildPageList(cfg.page, totalPages).map(item => {
+      if (item === '...') {
+        return '<span class="admin-pag-ellipsis">…</span>';
+      }
+      return `<button type="button" class="admin-pag-btn ${item === cfg.page ? 'active' : ''}" onclick="setAdminTablePage('${key}', ${item})">${item}</button>`;
+    }).join('');
+
+    const sizeOptions = cfg.sizes.map(sz =>
+      `<option value="${sz}" ${sz === cfg.pageSize ? 'selected' : ''}>${sz} / page</option>`
+    ).join('');
+
+    bar.innerHTML = `
+      <div class="admin-pag-left">
+        <span class="admin-pag-info">Showing ${startIdx + 1}–${endIdx} of ${total}</span>
+        <select class="admin-pag-size-select" aria-label="Rows per page" onchange="setAdminTablePageSize('${key}', this.value)">
+          ${sizeOptions}
+        </select>
+      </div>
+      <div class="admin-pag-controls">
+        <button type="button" class="admin-pag-btn" ${cfg.page <= 1 ? 'disabled' : ''} onclick="setAdminTablePage('${key}', ${cfg.page - 1})">Prev</button>
+        ${pagesHtml}
+        <button type="button" class="admin-pag-btn" ${cfg.page >= totalPages ? 'disabled' : ''} onclick="setAdminTablePage('${key}', ${cfg.page + 1})">Next</button>
+      </div>
+    `;
+  };
+
+  window.setAdminTablePage = function (key, page) {
+    const cfg = ADMIN_TABLES_CONFIG[key];
+    if (!cfg) return;
+    cfg.page = Number(page) || 1;
+    window.renderAdminTablePagination(key, false);
+  };
+
+  window.setAdminTablePageSize = function (key, size) {
+    const cfg = ADMIN_TABLES_CONFIG[key];
+    if (!cfg) return;
+    cfg.pageSize = Math.max(1, parseInt(size, 10) || cfg.sizes[0]);
+    cfg.page = 1;
+    window.renderAdminTablePagination(key, false);
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    Object.keys(ADMIN_TABLES_CONFIG).forEach(key => {
+      window.renderAdminTablePagination(key, true);
+    });
+  });
+})();
+
 window.toggleAdminSchedulesAndBerths = async function (enable) {
   const toggle = document.getElementById('setting-schedules-berths-toggle');
   const badge = document.getElementById('setting-schedules-berths-badge');
@@ -10108,6 +10401,15 @@ window.renderCheckoutPaymentOptionsFromSettings = function () {
   }
 };
 
+window.toggleRazorpayAdminBadge = function () {
+  const enabled = Boolean(document.getElementById('setting-razorpay-enabled')?.checked);
+  const badge = document.getElementById('setting-razorpay-status-badge');
+  if (badge) {
+    badge.textContent = enabled ? 'RAZORPAY ACTIVE' : 'MANUAL / ESCROW';
+    badge.className = `badge ${enabled ? 'badge-success' : 'badge-secondary'}`;
+  }
+};
+
 window.saveAdminPaymentOptions = async function (e) {
   if (e) e.preventDefault();
 
@@ -10117,6 +10419,11 @@ window.saveAdminPaymentOptions = async function (e) {
   const showUpi = Boolean(document.getElementById('setting-pay-show-upi')?.checked);
   const showCash = Boolean(document.getElementById('setting-pay-show-cash')?.checked);
   const defaultOpt = document.getElementById('setting-payment-default-option')?.value || 'full_online';
+  const rzpEnabled = Boolean(document.getElementById('setting-razorpay-enabled')?.checked);
+  const rzpMode = document.getElementById('setting-razorpay-mode')?.value || 'test';
+  const rzpKeyId = document.getElementById('setting-razorpay-key-id')?.value?.trim() || '';
+  const rzpKeySecret = document.getElementById('setting-razorpay-key-secret')?.value?.trim() || '';
+  const rzpDisplayName = document.getElementById('setting-razorpay-display-name')?.value?.trim() || 'Intercity Wheels';
 
   if (!showPart && !showFull && !showUpi && !showCash) {
     showToast('Enable at least one checkout payment option.', 'warning');
@@ -10143,6 +10450,11 @@ window.saveAdminPaymentOptions = async function (e) {
         payment_show_full_upi: showUpi,
         payment_show_cash: showCash,
         payment_default_option: defaultOpt,
+        payment_gateway: rzpEnabled ? 'razorpay' : 'manual',
+        razorpay_mode: rzpMode,
+        razorpay_key_id: rzpKeyId,
+        razorpay_key_secret: rzpKeySecret || undefined,
+        razorpay_display_name: rzpDisplayName,
       }),
     });
 
@@ -10153,6 +10465,14 @@ window.saveAdminPaymentOptions = async function (e) {
       if (selDefault && data.settings?.payment_default_option) {
         selDefault.value = data.settings.payment_default_option;
       }
+      const secretInput = document.getElementById('setting-razorpay-key-secret');
+      if (secretInput) secretInput.value = '';
+      const secretHint = document.getElementById('setting-razorpay-secret-hint');
+      if (secretHint && data.settings?.razorpay_secret_configured === '1') {
+        secretHint.textContent = '(Saved — leave blank to keep)';
+        secretHint.style.color = '#16a34a';
+      }
+      window.toggleRazorpayAdminBadge();
       window.renderCheckoutPaymentOptionsFromSettings();
       showToast(data.message || 'Checkout payment options updated!', 'success');
     } else {

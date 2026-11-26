@@ -98,7 +98,7 @@
     <header class="main-header">
         <div class="header-container">
             <!-- Brand Logo & Tagline -->
-            <a class="brand-link" onclick="switchTab('cabs')" style="cursor:pointer;">
+            <a href="{{ url('/') }}" class="brand-link" style="cursor:pointer; text-decoration:none;">
                 <img src="{{ asset('assets/logo.jpg') }}" alt="Intercity Wheels Logo" class="brand-logo-img">
                 <div class="brand-fallback-title">
                     <span class="brand-name">INTERCITY WHEELS</span>

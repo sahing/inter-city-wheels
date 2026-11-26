@@ -75,9 +75,60 @@ class PlatformPolicySettingsTest extends TestCase
     public function test_public_legal_routes_render_successfully(): void
     {
         $privRes = $this->get('/privacy-policy');
-        $privRes->assertStatus(200)->assertSee('IntercityWheels Privacy Policy');
+        $privRes->assertStatus(200)
+            ->assertSee('IntercityWheels Privacy Policy')
+            ->assertDontSee('Edit Content');
 
         $termsRes = $this->get('/terms-conditions');
         $termsRes->assertStatus(200)->assertSee('Terms of Service');
+
+        // Admin sees direct "Edit Content" shortcut on legal pages
+        $this->actingAs($this->admin)->get('/privacy-policy')
+            ->assertOk()
+            ->assertSee('Edit Content');
+    }
+
+    public function test_admin_can_edit_privacy_policy_and_terms_page_content(): void
+    {
+        $payload = [
+            'privacy_policy_title' => 'Updated Privacy Charter',
+            'privacy_policy_updated_at' => 'December 2026',
+            'privacy_policy_body' => "We respect rider privacy.\n\n1. GPS Usage\nGPS coordinates are used only during active trips.\n<script>alert('xss')</script>",
+            'terms_conditions_title' => 'Updated Rider Terms',
+            'terms_conditions_updated_at' => 'December 2026',
+            'terms_conditions_body' => 'All bookings are governed by updated terms.',
+            'legal_contact_helpline' => '1800-999-0000',
+            'legal_contact_email' => 'legal@intercitywheels.com',
+        ];
+
+        $this->actingAs($this->customer)
+            ->postJson('/api/admin/settings/legal-pages', $payload)
+            ->assertStatus(403);
+
+        $res = $this->actingAs($this->admin)
+            ->postJson('/api/admin/settings/legal-pages', $payload);
+
+        $res->assertOk()->assertJsonPath('success', true);
+
+        $privPage = $this->get('/privacy-policy');
+        $privPage->assertOk()
+            ->assertSee('Updated Privacy Charter')
+            ->assertSee('Last Updated: December 2026')
+            ->assertSee('We respect rider privacy.')
+            ->assertSee('GPS Usage')
+            ->assertSee('1800-999-0000')
+            ->assertSee('legal@intercitywheels.com')
+            ->assertDontSee("<script>alert('xss')</script>", false);
+
+        $this->get('/terms-conditions')
+            ->assertOk()
+            ->assertSee('Updated Rider Terms')
+            ->assertSee('All bookings are governed by updated terms.');
+
+        // Admin settings screen renders the editable form card
+        $this->actingAs($this->admin)->get('/')
+            ->assertOk()
+            ->assertSee('admin-legal-pages-card', false)
+            ->assertSee('Updated Privacy Charter');
     }
 }

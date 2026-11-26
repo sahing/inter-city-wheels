@@ -438,14 +438,22 @@ class BookingAdminController extends Controller
                     default => 'Online Escrow (Prepaid UPI / Card)',
                 },
                 'payment_mode' => $booking->payment_mode ?? 'full_online',
+                'payment_gateway' => $booking->payment_gateway ?? 'manual',
+                'payment_status' => $booking->payment_status ?? 'paid',
                 'advance_percentage' => $booking->advance_percentage ?? 100.0,
                 'advance_amount' => $booking->advance_amount ?? (float) $booking->total_amount,
                 'balance_amount' => $booking->balance_amount ?? 0.0,
-                'transaction_ref' => 'TXN-'.strtoupper(substr(md5($booking->booking_reference), 0, 10)),
-                'status' => match ($booking->payment_mode) {
-                    'part_pay' => 'PARTIAL ADVANCE ('.((float) $booking->advance_percentage).'%)',
-                    'cash' => 'PAY TO CHAUFFEUR',
-                    default => 'PAID IN FULL',
+                'transaction_ref' => $booking->razorpay_payment_id
+                    ?: ('TXN-'.strtoupper(substr(md5($booking->booking_reference), 0, 10))),
+                'status' => match ($booking->payment_status) {
+                    'pending' => 'PAYMENT PENDING',
+                    'partial_paid' => 'PARTIAL ADVANCE ('.((float) $booking->advance_percentage).'%)',
+                    'pay_on_pickup' => 'PAY TO CHAUFFEUR',
+                    default => match ($booking->payment_mode) {
+                        'part_pay' => 'PARTIAL ADVANCE ('.((float) $booking->advance_percentage).'%)',
+                        'cash' => 'PAY TO CHAUFFEUR',
+                        default => 'PAID IN FULL',
+                    },
                 },
                 'start_otp' => $booking->start_otp,
             ],

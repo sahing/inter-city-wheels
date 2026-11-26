@@ -7,6 +7,7 @@ use App\Models\PlatformSetting;
 use App\Models\RouteFare;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class PaymentOptionsSettingsTest extends TestCase
@@ -166,5 +167,139 @@ class PaymentOptionsSettingsTest extends TestCase
         $this->assertSame('full_upi', $upiRes->json('booking.payment_mode'));
         $this->assertEquals((float) $upiRes->json('booking.total_amount'), (float) $upiRes->json('booking.advance_amount'));
         $this->assertEquals(0.0, (float) $upiRes->json('booking.balance_amount'));
+    }
+
+    public function test_admin_can_enable_razorpay_without_exposing_secret_and_checkout_verifies_order(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $customer = User::factory()->create(['role' => 'customer', 'phone' => '9876543210']);
+        $otherUser = User::factory()->create(['role' => 'customer', 'phone' => '9111122222']);
+
+        // Cannot enable Razorpay without Key ID & Secret
+        $this->actingAs($admin)->postJson('/api/admin/settings/payment-options', [
+            'payment_advance_pct' => 25,
+            'payment_show_full_online' => true,
+            'payment_show_part_pay' => true,
+            'payment_show_full_upi' => true,
+            'payment_show_cash' => true,
+            'payment_gateway' => 'razorpay',
+        ])->assertStatus(422);
+
+        // Configure Razorpay Test credentials
+        $saveRes = $this->actingAs($admin)->postJson('/api/admin/settings/payment-options', [
+            'payment_advance_pct' => 25,
+            'payment_show_full_online' => true,
+            'payment_show_part_pay' => true,
+            'payment_show_full_upi' => true,
+            'payment_show_cash' => true,
+            'payment_default_option' => 'part_pay',
+            'payment_gateway' => 'razorpay',
+            'razorpay_mode' => 'test',
+            'razorpay_key_id' => 'rzp_test_ABC12345',
+            'razorpay_key_secret' => 'rzp_secret_topsecret_999',
+            'razorpay_display_name' => 'Intercity Wheels Demo',
+        ]);
+
+        $saveRes->assertOk()
+            ->assertJsonPath('settings.payment_gateway', 'razorpay')
+            ->assertJsonPath('settings.razorpay_mode', 'test')
+            ->assertJsonPath('settings.razorpay_key_id', 'rzp_test_ABC12345')
+            ->assertJsonPath('settings.razorpay_secret_configured', '1')
+            ->assertJsonMissing(['razorpay_key_secret' => 'rzp_secret_topsecret_999']);
+
+        // Secret never appears in public HTML payload
+        $html = $this->actingAs($customer)->get('/')->getContent();
+        $this->assertStringNotContainsString('rzp_secret_topsecret_999', $html);
+
+        // Subsequent save without secret preserves existing secret
+        $this->actingAs($admin)->postJson('/api/admin/settings/payment-options', [
+            'payment_advance_pct' => 30,
+            'payment_show_full_online' => true,
+            'payment_show_part_pay' => true,
+            'payment_show_full_upi' => true,
+            'payment_show_cash' => true,
+            'payment_gateway' => 'razorpay',
+            'razorpay_key_id' => 'rzp_test_ABC12345',
+        ])->assertOk()->assertJsonPath('settings.razorpay_secret_configured', '1');
+
+        Http::fake([
+            'https://api.razorpay.com/v1/orders' => Http::response([
+                'id' => 'order_RzpTest001',
+                'amount' => 127500,
+                'currency' => 'INR',
+            ], 200),
+        ]);
+
+        // Online part_pay booking initiates Razorpay order
+        $bookRes = $this->actingAs($customer)->postJson('/api/bookings', [
+            'service_type' => 'cab',
+            'trip_type' => 'oneway',
+            'from_city' => 'Kolkata',
+            'to_city' => 'Digha',
+            'pickup_location' => 'Salt Lake',
+            'drop_location' => 'New Digha',
+            'customer_name' => 'Rohan Das',
+            'customer_phone' => '9876543210',
+            'fleet_category' => 'suv',
+            'include_tolls' => true,
+            'payment_mode' => 'part_pay',
+        ]);
+
+        $bookRes->assertOk()
+            ->assertJsonPath('requires_razorpay', true)
+            ->assertJsonPath('razorpay.order_id', 'order_RzpTest001')
+            ->assertJsonPath('razorpay.key', 'rzp_test_ABC12345')
+            ->assertJsonPath('booking.payment_gateway', 'razorpay')
+            ->assertJsonPath('booking.payment_status', 'pending');
+
+        $ref = $bookRes->json('booking.booking_reference');
+        $expectedPaise = (int) round(((float) $bookRes->json('booking.advance_amount')) * 100);
+        $this->assertSame($expectedPaise, (int) $bookRes->json('razorpay.amount'));
+
+        // Another user cannot verify
+        $this->actingAs($otherUser)->postJson("/api/bookings/{$ref}/razorpay/verify", [
+            'razorpay_order_id' => 'order_RzpTest001',
+            'razorpay_payment_id' => 'pay_Test999',
+            'razorpay_signature' => 'bad',
+        ])->assertStatus(403);
+
+        // Invalid signature rejected
+        $this->actingAs($customer)->postJson("/api/bookings/{$ref}/razorpay/verify", [
+            'razorpay_order_id' => 'order_RzpTest001',
+            'razorpay_payment_id' => 'pay_Test999',
+            'razorpay_signature' => 'invalid_sig',
+        ])->assertStatus(422);
+
+        // Valid HMAC-SHA256 signature confirms booking & marks partial_paid
+        $validSig = hash_hmac('sha256', 'order_RzpTest001|pay_Test999', 'rzp_secret_topsecret_999');
+        $verifyRes = $this->actingAs($customer)->postJson("/api/bookings/{$ref}/razorpay/verify", [
+            'razorpay_order_id' => 'order_RzpTest001',
+            'razorpay_payment_id' => 'pay_Test999',
+            'razorpay_signature' => $validSig,
+        ]);
+
+        $verifyRes->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('booking.status', 'Confirmed')
+            ->assertJsonPath('booking.payment_status', 'partial_paid')
+            ->assertJsonPath('booking.razorpay_payment_id', 'pay_Test999');
+
+        // Cash booking skips Razorpay even when gateway is active
+        $cashRes = $this->actingAs($customer)->postJson('/api/bookings', [
+            'service_type' => 'cab',
+            'trip_type' => 'oneway',
+            'from_city' => 'Kolkata',
+            'to_city' => 'Digha',
+            'pickup_location' => 'Salt Lake',
+            'drop_location' => 'New Digha',
+            'customer_name' => 'Rohan Das',
+            'customer_phone' => '9876543210',
+            'fleet_category' => 'suv',
+            'payment_mode' => 'cash',
+        ]);
+
+        $cashRes->assertOk()
+            ->assertJsonPath('requires_razorpay', false)
+            ->assertJsonPath('booking.payment_status', 'pay_on_pickup');
     }
 }

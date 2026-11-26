@@ -225,6 +225,11 @@ class PlatformSettingAdminController extends Controller
             'payment_show_full_upi' => 'required|boolean',
             'payment_show_cash' => 'required|boolean',
             'payment_default_option' => 'nullable|string|in:full_online,part_pay,full_upi,cash',
+            'payment_gateway' => 'nullable|string|in:manual,razorpay',
+            'razorpay_mode' => 'nullable|string|in:test,live',
+            'razorpay_key_id' => 'nullable|string|max:120',
+            'razorpay_key_secret' => 'nullable|string|max:160',
+            'razorpay_display_name' => 'nullable|string|max:80',
         ]);
 
         $enabledMap = [
@@ -239,6 +244,20 @@ class PlatformSettingAdminController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Enable at least one checkout payment option.',
+            ], 422);
+        }
+
+        $gateway = $validated['payment_gateway'] ?? PlatformSetting::get('payment_gateway', 'manual') ?? 'manual';
+        $keyIdInput = $request->has('razorpay_key_id')
+            ? trim((string) ($validated['razorpay_key_id'] ?? ''))
+            : trim((string) (PlatformSetting::get('razorpay_key_id', '') ?? ''));
+        $newSecretInput = trim((string) ($validated['razorpay_key_secret'] ?? ''));
+        $existingSecret = trim((string) (PlatformSetting::get('razorpay_key_secret', '') ?? ''));
+
+        if ($gateway === 'razorpay' && ($keyIdInput === '' || ($newSecretInput === '' && $existingSecret === ''))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Enter both Razorpay Key ID and Key Secret before enabling Razorpay.',
             ], 422);
         }
 
@@ -258,10 +277,26 @@ class PlatformSettingAdminController extends Controller
         PlatformSetting::set('payment_show_full_upi', $enabledMap['full_upi'] ? '1' : '0');
         PlatformSetting::set('payment_show_cash', $enabledMap['cash'] ? '1' : '0');
         PlatformSetting::set('payment_default_option', $defaultOption);
+        PlatformSetting::set('payment_gateway', $gateway);
+
+        if ($request->has('razorpay_mode') && ! empty($validated['razorpay_mode'])) {
+            PlatformSetting::set('razorpay_mode', $validated['razorpay_mode']);
+        }
+        if ($request->has('razorpay_key_id')) {
+            PlatformSetting::set('razorpay_key_id', $keyIdInput);
+        }
+        if ($newSecretInput !== '') {
+            PlatformSetting::set('razorpay_key_secret', $newSecretInput);
+        }
+        if ($request->has('razorpay_display_name')) {
+            PlatformSetting::set('razorpay_display_name', trim((string) ($validated['razorpay_display_name'] ?? '')) ?: 'Intercity Wheels');
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Checkout payment options & advance percentage updated!',
+            'message' => $gateway === 'razorpay'
+                ? 'Checkout payment options & Razorpay gateway updated!'
+                : 'Checkout payment options & advance percentage updated!',
             'settings' => PlatformSetting::allAdminSettings(),
         ]);
     }
@@ -315,6 +350,43 @@ class PlatformSettingAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Invoice template settings saved successfully!',
+            'settings' => PlatformSetting::allAdminSettings(),
+        ]);
+    }
+
+    /**
+     * Persist editable Privacy Policy and Terms & Conditions page content.
+     */
+    public function updateLegalPages(Request $request)
+    {
+        if (! auth()->check() || auth()->user()->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Admin role required.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'privacy_policy_title' => 'required|string|max:160',
+            'privacy_policy_updated_at' => 'required|string|max:60',
+            'privacy_policy_body' => 'required|string|max:20000',
+            'terms_conditions_title' => 'required|string|max:160',
+            'terms_conditions_updated_at' => 'required|string|max:60',
+            'terms_conditions_body' => 'required|string|max:20000',
+            'legal_contact_helpline' => 'nullable|string|max:60',
+            'legal_contact_email' => 'nullable|email|max:120',
+        ]);
+
+        foreach (PlatformSetting::legalDefaults() as $key => $default) {
+            if (array_key_exists($key, $validated)) {
+                $val = $validated[$key];
+                PlatformSetting::set($key, $val === null ? '' : trim((string) $val));
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Privacy Policy & Terms & Conditions content updated!',
             'settings' => PlatformSetting::allAdminSettings(),
         ]);
     }

@@ -1319,6 +1319,12 @@
                                     @endif
                                 </span>
                                 <div class="trip-card-actions">
+                                    @if($cb->payment_status === 'pending' && $cb->payment_gateway === 'razorpay')
+                                    <button type="button" class="btn btn-xs btn-primary" onclick="retryRazorpayForBooking('{{ $cb->booking_reference }}')">
+                                        <span class="material-symbols-outlined" style="font-size:14px;">payments</span>
+                                        <span>Pay Now</span>
+                                    </button>
+                                    @endif
                                     <button type="button" class="btn btn-xs trip-btn-secondary" onclick="copyTripReference('{{ $cb->booking_reference }}')">
                                         <span class="material-symbols-outlined" style="font-size:14px;">content_copy</span>
                                         <span>Reference</span>
@@ -1928,13 +1934,13 @@
                 <aside class="admin-sidebar" id="admin-sidebar">
                     <!-- Brand Link / Logo -->
                     <div class="admin-sidebar-brand">
-                        <div class="admin-brand-content">
+                        <a href="{{ url('/') }}" class="admin-brand-content" style="text-decoration:none; color:inherit;">
                             <img src="{{ asset('assets/logo.jpg') }}" alt="Intercity Wheels Logo" class="admin-brand-img">
                             <div class="admin-brand-text">
                                 <span class="admin-brand-title">Intercity</span>
                                 <span class="admin-brand-sub">AdminLTE 3</span>
                             </div>
-                        </div>
+                        </a>
                         <button type="button" class="admin-sidebar-close-btn" onclick="toggleAdminSidebar(false)" aria-label="Close Sidebar">
                             <span class="material-symbols-outlined">close</span>
                         </button>
@@ -2228,8 +2234,8 @@
                                                     <th>Status</th>
                                                 </tr>
                                             </thead>
-                                            <tbody>
-                                                @foreach($drivers as $driver)
+                                            <tbody id="admin-dashboard-fleet-tbody">
+                                                @forelse($drivers as $driver)
                                                 <tr>
                                                     <td>
                                                         <div style="display:flex; align-items:center; gap:8px;">
@@ -2254,10 +2260,15 @@
                                                         <span class="admin-badge badge-success">Online</span>
                                                     </td>
                                                 </tr>
-                                                @endforeach
+                                                @empty
+                                                <tr data-empty-row="1">
+                                                    <td colspan="5" style="text-align:center; color:#94a3b8; padding:20px;">No active drivers online.</td>
+                                                </tr>
+                                                @endforelse
                                             </tbody>
                                         </table>
                                     </div>
+                                    <div class="admin-pagination-bar" id="pag-bar-dashboard-fleet"></div>
                                 </div>
 
                                 <!-- Recent Bookings Log -->
@@ -2303,7 +2314,7 @@
                                                     </td>
                                                 </tr>
                                                 @empty
-                                                <tr>
+                                                <tr data-empty-row="1">
                                                     <td colspan="5" style="text-align:center; color:#94a3b8; padding:20px;">
                                                         No bookings recorded yet. Create one in Cabs or Schedules!
                                                     </td>
@@ -2312,6 +2323,7 @@
                                             </tbody>
                                         </table>
                                     </div>
+                                    <div class="admin-pagination-bar" id="pag-bar-dashboard-bookings"></div>
                                 </div>
                             </div>
                         </div>
@@ -2576,6 +2588,7 @@
                                         </tbody>
                                     </table>
                                 </div>
+                                <div class="admin-pagination-bar" id="pag-bar-admin-bookings"></div>
                             </div>
                         </div>
 
@@ -3969,6 +3982,61 @@
                                         </label>
                                     </div>
 
+                                    <!-- Razorpay Payment Gateway Configuration -->
+                                    @php
+                                        $rzpGateway = $adminPaySettings['payment_gateway'] ?? 'manual';
+                                        $rzpMode = $adminPaySettings['razorpay_mode'] ?? 'test';
+                                        $rzpKeyId = $adminPaySettings['razorpay_key_id'] ?? '';
+                                        $rzpDisplayName = $adminPaySettings['razorpay_display_name'] ?? 'Intercity Wheels';
+                                        $rzpSecretSet = ($adminPaySettings['razorpay_secret_configured'] ?? '0') === '1';
+                                    @endphp
+                                    <div style="border-top:1px dashed #cbd5e1; padding-top:16px; margin-bottom:16px;" id="admin-razorpay-gateway-box">
+                                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+                                            <div>
+                                                <div style="font-size:13.5px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                                                    <span class="material-symbols-outlined" style="color:#0284c7; font-size:19px;">account_balance</span>
+                                                    <span>Online Payment Gateway (Razorpay)</span>
+                                                    <span id="setting-razorpay-status-badge" class="badge {{ $rzpGateway === 'razorpay' ? 'badge-success' : 'badge-secondary' }}" style="font-size:10.5px; padding:2px 8px;">
+                                                        {{ $rzpGateway === 'razorpay' ? 'RAZORPAY ACTIVE' : 'MANUAL / ESCROW' }}
+                                                    </span>
+                                                </div>
+                                                <div style="font-size:11.5px; color:#64748b; margin-top:2px;">Enable Razorpay Checkout for Part Pay, Full Pay Online, and Full UPI bookings.</div>
+                                            </div>
+
+                                            <label style="display:flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid #bae6fd; background:#f0f9ff; border-radius:8px; cursor:pointer; font-size:12.5px; font-weight:700; color:#0369a1;">
+                                                <input type="checkbox" id="setting-razorpay-enabled" {{ $rzpGateway === 'razorpay' ? 'checked' : '' }} onchange="toggleRazorpayAdminBadge()">
+                                                <span>Use Razorpay Gateway</span>
+                                            </label>
+                                        </div>
+
+                                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label class="form-label" for="setting-razorpay-mode">Gateway Mode</label>
+                                                <select id="setting-razorpay-mode" class="form-control">
+                                                    <option value="test" {{ $rzpMode === 'test' ? 'selected' : '' }}>Test / Sandbox (rzp_test_...)</option>
+                                                    <option value="live" {{ $rzpMode === 'live' ? 'selected' : '' }}>Live Production (rzp_live_...)</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label class="form-label" for="setting-razorpay-key-id">Razorpay Key ID</label>
+                                                <input type="text" id="setting-razorpay-key-id" class="form-control" value="{{ $rzpKeyId }}" placeholder="rzp_test_xxxxxxxxxxxx">
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label class="form-label" for="setting-razorpay-key-secret">
+                                                    <span>Razorpay Key Secret</span>
+                                                    <span id="setting-razorpay-secret-hint" style="font-size:10.5px; font-weight:600; color:{{ $rzpSecretSet ? '#16a34a' : '#64748b' }};">
+                                                        {{ $rzpSecretSet ? '(Saved — leave blank to keep)' : '(Required for Razorpay)' }}
+                                                    </span>
+                                                </label>
+                                                <input type="password" id="setting-razorpay-key-secret" class="form-control" value="" autocomplete="new-password" placeholder="{{ $rzpSecretSet ? '••••••••••••••••••••' : 'Enter Razorpay Key Secret' }}">
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label class="form-label" for="setting-razorpay-display-name">Checkout Business Name</label>
+                                                <input type="text" id="setting-razorpay-display-name" class="form-control" value="{{ $rzpDisplayName }}" placeholder="Intercity Wheels">
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div style="display:flex; justify-content:flex-end;">
                                         <button type="submit" id="save-payment-options-btn" class="btn btn-sm btn-primary">
                                             <span class="material-symbols-outlined" style="font-size:16px;">save</span>
@@ -4210,6 +4278,88 @@
                                         <button type="submit" class="btn btn-sm btn-primary">
                                             <span class="material-symbols-outlined" style="font-size:16px;">save</span>
                                             <span>Save Policy URLs</span>
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+
+                            <!-- Editable Privacy Policy & Terms & Conditions Page Content -->
+                            @php
+                                $legalCfg = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
+                            @endphp
+                            <div class="card" style="margin-top:20px;" id="admin-legal-pages-card">
+                                <div class="card-header" style="flex-wrap:wrap; gap:10px;">
+                                    <div>
+                                        <h3 class="card-title" style="display:flex; align-items:center; gap:8px;">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">edit_document</span>
+                                            <span>Editable Privacy Policy &amp; Terms Pages</span>
+                                        </h3>
+                                        <p class="card-subtitle">Customize the live content shown on <a href="{{ url('/privacy-policy') }}" target="_blank" style="color:#0284c7; text-decoration:underline;">/privacy-policy</a> and <a href="{{ url('/terms-conditions') }}" target="_blank" style="color:#0284c7; text-decoration:underline;">/terms-conditions</a></p>
+                                    </div>
+                                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                        <a href="{{ url('/privacy-policy') }}" target="_blank" class="btn btn-sm btn-outline">
+                                            <span class="material-symbols-outlined" style="font-size:15px;">open_in_new</span>
+                                            <span>View Privacy Policy</span>
+                                        </a>
+                                        <a href="{{ url('/terms-conditions') }}" target="_blank" class="btn btn-sm btn-outline">
+                                            <span class="material-symbols-outlined" style="font-size:15px;">open_in_new</span>
+                                            <span>View T&amp;Cs</span>
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <form id="admin-legal-pages-form" onsubmit="saveAdminLegalPages(event)" style="padding:16px 20px;">
+                                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:18px; margin-bottom:16px;">
+                                        <!-- Privacy Policy Editor -->
+                                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px;">
+                                            <div style="font-size:13px; font-weight:800; color:#0f172a; margin-bottom:10px;">Privacy Policy (/privacy-policy)</div>
+                                            <div class="form-group" style="margin-bottom:10px;">
+                                                <label class="form-label" for="setting-privacy-title">Page Heading</label>
+                                                <input type="text" id="setting-privacy-title" class="form-control" value="{{ $legalCfg['privacy_policy_title'] ?? 'IntercityWheels Privacy Policy' }}" required>
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:10px;">
+                                                <label class="form-label" for="setting-privacy-updated">Last Updated Label</label>
+                                                <input type="text" id="setting-privacy-updated" class="form-control" value="{{ $legalCfg['privacy_policy_updated_at'] ?? 'November 2026' }}" required>
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label class="form-label" for="setting-privacy-body">Privacy Policy Content (separate sections with a blank line)</label>
+                                                <textarea id="setting-privacy-body" class="form-control" rows="8" required>{{ $legalCfg['privacy_policy_body'] ?? '' }}</textarea>
+                                            </div>
+                                        </div>
+
+                                        <!-- Terms & Conditions Editor -->
+                                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px;">
+                                            <div style="font-size:13px; font-weight:800; color:#0f172a; margin-bottom:10px;">Terms &amp; Conditions (/terms-conditions)</div>
+                                            <div class="form-group" style="margin-bottom:10px;">
+                                                <label class="form-label" for="setting-terms-title">Page Heading</label>
+                                                <input type="text" id="setting-terms-title" class="form-control" value="{{ $legalCfg['terms_conditions_title'] ?? 'IntercityWheels Rider & Chauffeur Terms & Conditions' }}" required>
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:10px;">
+                                                <label class="form-label" for="setting-terms-updated">Last Updated Label</label>
+                                                <input type="text" id="setting-terms-updated" class="form-control" value="{{ $legalCfg['terms_conditions_updated_at'] ?? 'November 2026' }}" required>
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label class="form-label" for="setting-terms-body">Terms &amp; Conditions Content (separate sections with a blank line)</label>
+                                                <textarea id="setting-terms-body" class="form-control" rows="8" required>{{ $legalCfg['terms_conditions_body'] ?? '' }}</textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;">
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-legal-helpline">Legal Footer Helpline</label>
+                                            <input type="text" id="setting-legal-helpline" class="form-control" value="{{ $legalCfg['legal_contact_helpline'] ?? '700 3434 088' }}">
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-legal-email">Legal Contact Email</label>
+                                            <input type="email" id="setting-legal-email" class="form-control" value="{{ $legalCfg['legal_contact_email'] ?? 'support@intercitywheels.com' }}">
+                                        </div>
+                                    </div>
+
+                                    <div style="display:flex; justify-content:flex-end;">
+                                        <button type="submit" id="save-legal-pages-btn" class="btn btn-sm btn-primary">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">save</span>
+                                            <span>Save Legal Pages Content</span>
                                         </button>
                                     </div>
                                 </form>

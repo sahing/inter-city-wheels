@@ -222,4 +222,16 @@ class AdminBookingManagementTest extends TestCase
         $pageRes->assertStatus(200);
         $pageRes->assertSee('SEDAN');
     }
+
+    public function test_admin_dashboard_and_bookings_tables_render_pagination_bars(): void
+    {
+        $pageRes = $this->get('/');
+        $pageRes->assertStatus(200)
+            ->assertSee('id="admin-dashboard-fleet-tbody"', false)
+            ->assertSee('id="pag-bar-dashboard-fleet"', false)
+            ->assertSee('id="admin-recent-bookings-tbody"', false)
+            ->assertSee('id="pag-bar-dashboard-bookings"', false)
+            ->assertSee('id="admin-bookings-table-tbody"', false)
+            ->assertSee('id="pag-bar-admin-bookings"', false);
+    }
 }
