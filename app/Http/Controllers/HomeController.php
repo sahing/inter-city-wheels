@@ -90,6 +90,7 @@ class HomeController extends Controller
 
                 $driverTrips = Booking::with('driver')
                     ->where('assigned_driver_id', $driverProfile->id)
+                    ->whereNotIn('status', ['Requested', 'Bidding', 'Cancelled'])
                     ->latest()
                     ->get();
             }
@@ -97,7 +98,11 @@ class HomeController extends Controller
             $driverProfile = Driver::first();
             if ($driverProfile) {
                 $driverMyVehicles = DriverVehicle::where('driver_id', $driverProfile->id)->latest()->get();
-                $driverTrips = Booking::with('driver')->where('assigned_driver_id', $driverProfile->id)->latest()->get();
+                $driverTrips = Booking::with('driver')
+                    ->where('assigned_driver_id', $driverProfile->id)
+                    ->whereNotIn('status', ['Requested', 'Bidding', 'Cancelled'])
+                    ->latest()
+                    ->get();
             }
         }
 

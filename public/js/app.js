@@ -450,6 +450,11 @@ function switchTab(tabId) {
     }, 200);
   }
 
+  // Refresh live auctions whenever the driver switches to the bidding tab
+  if (tabId === 'bidding' && typeof renderBiddingList === 'function') {
+    renderBiddingList();
+  }
+
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 window.switchTab = switchTab;

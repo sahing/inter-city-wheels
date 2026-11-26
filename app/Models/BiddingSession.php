@@ -137,6 +137,7 @@ class BiddingSession extends Model
         $lowest = $this->currentLowestBid();
 
         return [
+            'id' => $this->id,
             'token' => $this->token,
             'booking_reference' => (string) $this->booking->booking_reference,
             'service_type' => (string) $this->booking->service_type,

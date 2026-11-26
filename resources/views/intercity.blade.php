@@ -1175,13 +1175,13 @@
                 <div>
                     <h3 style="font-family:var(--font-display); font-size:15.5px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
                         <span class="material-symbols-outlined" style="color:var(--primary); font-size:21px;">hail</span>
-                        <span>Available Outstation Trips</span>
+                        <span>Available Outstation Trips for Driver Bidding</span>
                     </h3>
                     <p style="font-size:11.5px; color:#64748b; margin:2px 0 0;">Review route, distance &amp; submit your bid.</p>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span class="admin-badge badge-success" style="font-size:11px;">🟢 Live</span>
-                    <button type="button" class="btn btn-sm btn-outline" onclick="renderBiddingList()" title="Refresh live auctions">
+                    <button type="button" class="btn btn-sm btn-outline" onclick="refreshDriverAuctions()" title="Refresh live auctions">
                         <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
                         <span>Refresh</span>
                     </button>
@@ -1266,15 +1266,28 @@
                                     </span>
                                 </div>
                                 <div style="font-size:15.5px; font-weight:800; color:#0f172a; margin-top:4px; line-height:1.25;">{{ $dt->route_summary }}</div>
+                                @if(in_array($dt->status, ['Driver Assigned', 'Confirmed', 'Started', 'Completed'], true))
                                 <div style="font-size:12px; color:#64748b; margin-top:3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                                     <strong style="color:#0f172a;">{{ $dt->customer_name }}</strong>
                                     <span>&bull;</span>
                                     <a href="tel:{{ $dt->customer_phone }}" style="color:#0284c7; text-decoration:none; font-weight:700;">📞 {{ $dt->customer_phone }}</a>
+                                    @if($dt->driver_payout_amount !== null)
+                                        <span>&bull;</span>
+                                        <span class="admin-badge badge-success" style="font-size:10px; padding:2px 6px;">Won via driver bidding</span>
+                                    @endif
                                 </div>
+                                @else
+                                <div style="font-size:11.5px; color:#64748b; margin-top:3px;">Customer name &amp; contact unlock only after you win the bid.</div>
+                                @endif
                             </div>
                             <div style="text-align:right; flex-shrink:0;">
-                                <div style="font-size:18px; font-weight:800; color:#16a34a; line-height:1.1;">₹{{ number_format($dt->total_amount) }}</div>
-                                <div style="font-size:10px; color:#64748b; margin-top:2px;">All-inclusive</div>
+                                @if($dt->driver_payout_amount !== null)
+                                    <div style="font-size:18px; font-weight:800; color:#16a34a; line-height:1.1;">₹{{ number_format((float) $dt->driver_payout_amount) }}</div>
+                                    <div style="font-size:10px; color:#64748b; margin-top:2px;">Your winning bid payout</div>
+                                @else
+                                    <div style="font-size:18px; font-weight:800; color:#16a34a; line-height:1.1;">₹{{ number_format($dt->total_amount) }}</div>
+                                    <div style="font-size:10px; color:#64748b; margin-top:2px;">All-inclusive</div>
+                                @endif
                             </div>
                         </div>
 
