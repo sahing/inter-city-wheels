@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 
     <!-- Custom Styles -->
-    <link rel="stylesheet" href="{{ asset('css/styles.css') }}?v={{ time() }}">
+    <link rel="stylesheet" href="{{ asset('css/styles.css') }}?v={{ @filemtime(public_path('css/styles.css')) ?: 1 }}">
 </head>
 @php
     $userRole = Auth::check() ? Auth::user()->role : null;
@@ -753,6 +753,6 @@
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <!-- Application Logic -->
-    <script src="{{ asset('js/app.js') }}?v={{ time() }}"></script>
+    <script src="{{ asset('js/app.js') }}?v={{ @filemtime(public_path('js/app.js')) ?: 1 }}"></script>
 </body>
 </html>
