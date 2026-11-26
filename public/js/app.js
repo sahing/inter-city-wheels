@@ -675,12 +675,13 @@ function getActiveLocations() {
 window.openCityPicker = function (inputId) {
   closeAllCityDropdowns();
   currentPickerInputId = inputId;
-  const input = document.getElementById(inputId);
-  const currentVal = input ? input.value : '';
-  renderCityPickerDropdown(inputId, currentVal);
+
+  // Show the full catalog when opening via focus/click/chevron instead of
+  // filtering down to the pre-filled city name (typing still filters live).
+  renderCityPickerDropdown(inputId, '');
 
   // Pre-fetch server suggestions for fast experience
-  fetchLocationsFromServer(inputId, currentVal);
+  fetchLocationsFromServer(inputId, '');
 };
 
 window.handleCityPickerInput = function (inputId, val) {
@@ -704,13 +705,64 @@ window.handleCityPickerInput = function (inputId, val) {
   }, 400);
 };
 
+window.DISCOVERED_CITY_CACHE = window.DISCOVERED_CITY_CACHE || [];
+const locationSearchCache = new Map();
+
+function rememberClientLocations(locations) {
+  if (!Array.isArray(locations)) return;
+  locations.forEach(item => {
+    if (!item || !item.name || item.needs_geocode) return;
+    const lat = Number(item.latitude);
+    const lng = Number(item.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const key = `${String(item.name).toLowerCase().trim()}|${String(item.state || '').toLowerCase().trim()}`;
+    const existingIdx = window.DISCOVERED_CITY_CACHE.findIndex(
+      c => `${String(c.name).toLowerCase().trim()}|${String(c.state || '').toLowerCase().trim()}` === key
+    );
+    const normalized = {
+      name: item.name,
+      state: item.state || '',
+      latitude: lat,
+      longitude: lng,
+      airport_code: item.airport_code || null,
+      is_registered: Boolean(item.is_registered),
+      badge: item.badge || (item.is_registered ? 'Registered Hub' : 'OpenStreetMap'),
+      type: item.type || 'geocoded',
+      cached: Boolean(item.cached),
+      beyond_region: Boolean(item.beyond_region),
+    };
+    if (existingIdx >= 0) {
+      window.DISCOVERED_CITY_CACHE[existingIdx] = normalized;
+    } else {
+      window.DISCOVERED_CITY_CACHE.push(normalized);
+    }
+  });
+}
+
 function fetchLocationsFromServer(inputId, val) {
   const clean = (val || '').split(',')[0].trim();
+  const cacheKey = clean.toLowerCase();
+
+  if (cacheKey.length >= 2 && locationSearchCache.has(cacheKey)) {
+    const cachedList = locationSearchCache.get(cacheKey);
+    if (currentPickerInputId === inputId) {
+      renderCityPickerDropdownItems(inputId, val, cachedList);
+    }
+    return;
+  }
+
   fetch(`/api/locations/search?q=${encodeURIComponent(clean)}`)
     .then(r => r.json())
     .then(data => {
-      if (data && data.success && Array.isArray(data.locations) && currentPickerInputId === inputId) {
-        renderCityPickerDropdownItems(inputId, val, data.locations);
+      if (data && data.success && Array.isArray(data.locations)) {
+        const hasActionableResult = data.locations.some(loc => !loc.needs_geocode);
+        if (cacheKey.length >= 2 && hasActionableResult) {
+          locationSearchCache.set(cacheKey, data.locations);
+        }
+        rememberClientLocations(data.locations);
+        if (currentPickerInputId === inputId) {
+          renderCityPickerDropdownItems(inputId, val, data.locations);
+        }
       }
     })
     .catch(err => {
@@ -732,10 +784,11 @@ function renderCityPickerDropdownItems(inputId, filterText = '', serverLocations
   if (serverLocations && Array.isArray(serverLocations) && serverLocations.length > 0) {
     list = serverLocations;
   } else {
-    const locs = getActiveLocations().sort((a, b) => a.name.localeCompare(b.name));
+    const activeLocs = getActiveLocations().sort((a, b) => a.name.localeCompare(b.name));
+    const combined = [...activeLocs, ...window.DISCOVERED_CITY_CACHE];
     list = cleanFilter
-      ? locs.filter(l => (l.name && l.name.toLowerCase().includes(cleanFilter)) || (l.state && l.state.toLowerCase().includes(cleanFilter)))
-      : locs;
+      ? combined.filter(l => (l.name && l.name.toLowerCase().includes(cleanFilter)) || (l.state && l.state.toLowerCase().includes(cleanFilter)))
+      : activeLocs;
   }
 
   // Deduplicate items by lowercase name
@@ -768,9 +821,11 @@ function renderCityPickerDropdownItems(inputId, filterText = '', serverLocations
 
   // Render locations list
   if (uniqueList.length > 0) {
+    const activeInputVal = (document.getElementById(inputId)?.value || '').split(',')[0].toLowerCase().trim();
     html += uniqueList.map(l => {
       const safeName = (l.name || '').replace(/'/g, "\\'");
       const safeState = (l.state || '').replace(/'/g, "\\'");
+      const isSelected = activeInputVal !== '' && (l.name || '').toLowerCase().trim() === activeInputVal;
       const numericLat = Number(l.latitude);
       const numericLng = Number(l.longitude);
       const hasCoords = l.latitude !== null && l.latitude !== undefined &&
@@ -795,8 +850,8 @@ function renderCityPickerDropdownItems(inputId, filterText = '', serverLocations
       const icon = l.airport_code ? 'flight' : (l.is_custom ? 'pin_drop' : 'location_city');
 
       return `
-        <div class="city-picker-item" ${hasCoords
-          ? `onmousedown="event.preventDefault(); selectCityFromPicker('${inputId}', '${safeName}', '${safeState}', ${numericLat}, ${numericLng})"`
+        <div class="city-picker-item${isSelected ? ' highlighted' : ''}" ${hasCoords
+          ? `onmousedown="event.preventDefault(); selectCityFromPicker('${inputId}', '${safeName}', '${safeState}', ${numericLat}, ${numericLng}, { fromPointer: true })"`
           : 'style="opacity:.55; cursor:not-allowed;" title="No coordinates for this place — type a nearby town or city"'}>
           <div class="city-picker-item-main">
             <span class="material-symbols-outlined" style="font-size:16px; color:${l.is_custom ? '#f59e0b' : '#64748b'};">${icon}</span>
@@ -823,9 +878,38 @@ function renderCityPickerDropdownItems(inputId, filterText = '', serverLocations
   dropdown.style.display = 'block';
 }
 
-window.selectCityFromPicker = function (inputId, cityName, stateName, lat, lng) {
+const NEXT_BOOKING_FIELD_MAP = {
+  'rental-from-city': 'rental-to-city',
+  'rental-to-city': 'rental-pickup-date',
+  'rental-rt-from': 'rental-rt-to',
+  'rental-rt-to': 'rental-rt-pickup-date',
+  'rental-local-city': 'rental-local-date',
+  'rental-airport-name': 'rental-airport-address',
+  'rental-airport-address': 'rental-airport-date',
+};
+
+let suppressCityDropdownCloseUntil = 0;
+
+window.advanceBookingFieldFocus = function (currentInputId) {
+  const nextId = NEXT_BOOKING_FIELD_MAP[currentInputId];
+  if (!nextId) return;
+
+  const nextEl = document.getElementById(nextId);
+  if (!nextEl || nextEl.offsetParent === null) return;
+
+  nextEl.focus({ preventScroll: true });
+  if (typeof nextEl.select === 'function' && nextEl.type === 'text') {
+    nextEl.select();
+  }
+};
+
+window.selectCityFromPicker = function (inputId, cityName, stateName, lat, lng, options = {}) {
   const input = document.getElementById(inputId);
   if (!input) return;
+
+  if (options && options.fromPointer) {
+    suppressCityDropdownCloseUntil = Date.now() + 350;
+  }
 
   const numericLat = Number(lat);
   const numericLng = Number(lng);
@@ -869,6 +953,12 @@ window.selectCityFromPicker = function (inputId, cityName, stateName, lat, lng) 
     syncRentalToCity(formatted);
   } else if (inputId === 'rental-rt-from' || inputId === 'rental-rt-to' || inputId === 'rental-local-city') {
     updateRentalRouteStats();
+  }
+
+  if (options.autoAdvance !== false && NEXT_BOOKING_FIELD_MAP[inputId]) {
+    requestAnimationFrame(() => {
+      window.advanceBookingFieldFocus(inputId);
+    });
   }
 };
 
@@ -983,6 +1073,9 @@ function applyDetectedLocation(inputId, loc, source) {
     updateRentalRouteStats();
     setGeoDetectionStatus(`${sourceLabel}: ${formatted}`);
     showToast(`Detected via ${sourceLabel}: ${formatted}`, 'success');
+    requestAnimationFrame(() => {
+      window.advanceBookingFieldFocus('rental-airport-address');
+    });
     return;
   }
 
@@ -1053,6 +1146,10 @@ window.detectInitialLocation = async function (inputId, mode = 'auto', event) {
 };
 
 document.addEventListener('click', function (e) {
+  if (Date.now() < suppressCityDropdownCloseUntil) {
+    suppressCityDropdownCloseUntil = 0;
+    return;
+  }
   if (!e.target.closest('.rental-input-wrap')) {
     closeAllCityDropdowns();
   }
@@ -1061,6 +1158,29 @@ document.addEventListener('click', function (e) {
 document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') {
     closeAllCityDropdowns();
+    return;
+  }
+  if (e.key === 'Enter' && e.target && e.target.id && NEXT_BOOKING_FIELD_MAP[e.target.id]) {
+    e.preventDefault();
+    const inputId = e.target.id;
+    const dropdown = document.getElementById(`dropdown-${inputId}`);
+    if (dropdown && dropdown.style.display === 'block' && !e.target.dataset.lat) {
+      const firstItem = dropdown.querySelector('.city-picker-item[onmousedown]');
+      if (firstItem) {
+        firstItem.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        return;
+      }
+    }
+    closeAllCityDropdowns();
+    window.advanceBookingFieldFocus(inputId);
+  }
+});
+
+document.addEventListener('change', function (e) {
+  if (e.target && e.target.id === 'rental-airport-name' && String(e.target.value || '').trim() !== '') {
+    requestAnimationFrame(() => {
+      window.advanceBookingFieldFocus('rental-airport-name');
+    });
   }
 });
 
@@ -6612,6 +6732,188 @@ window.deleteLocation = async function (id) {
   }
 };
 
+function escapeDiscoveredHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function updateDiscoveredPendingBadge(items) {
+  const pendingBadge = document.getElementById('admin-badge-discovered-pending');
+  if (!pendingBadge) return;
+  const count = Array.isArray(items)
+    ? items.filter(item => item.approval_status === 'pending').length
+    : document.querySelectorAll('#admin-discovered-cities-tbody .admin-badge[data-status="pending"]').length;
+  pendingBadge.textContent = count;
+  pendingBadge.style.display = count > 0 ? 'inline-block' : 'none';
+}
+
+function renderDiscoveredCitiesTable(items) {
+  const tbody = document.getElementById('admin-discovered-cities-tbody');
+  if (!tbody) return;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    tbody.innerHTML = '<tr id="admin-discovered-empty-row"><td colspan="6" style="text-align:center; padding:18px; color:#94a3b8;">No OpenStreetMap or out-of-region cities cached yet.</td></tr>';
+    updateDiscoveredPendingBadge([]);
+    return;
+  }
+
+  tbody.innerHTML = items.map(disc => {
+    const status = disc.approval_status || 'cached';
+    let badgeStyle = 'background:#e0f2fe; color:#0369a1;';
+    let statusLabel = disc.is_beyond_region ? 'Beyond Region · Cached' : 'OSM Cached';
+    if (status === 'pending') {
+      badgeStyle = 'background:#fef3c7; color:#b45309;';
+      statusLabel = 'Beyond Region · Pending Approval';
+    } else if (status === 'approved') {
+      badgeStyle = 'background:#dcfce7; color:#15803d;';
+      statusLabel = 'Approved · In City List';
+    } else if (status === 'dismissed') {
+      badgeStyle = 'background:#f1f5f9; color:#64748b;';
+      statusLabel = 'Dismissed';
+    }
+
+    const latStr = Number(disc.latitude || 0).toFixed(4);
+    const lngStr = Number(disc.longitude || 0).toFixed(4);
+    const hitsNum = Number(disc.hits || 0);
+    const refHtml = disc.last_booking_reference
+      ? `<span style="font-weight:600; color:#0f172a;">${escapeDiscoveredHtml(disc.last_booking_reference)}</span> · `
+      : '';
+    const subDisplay = disc.display_name && disc.display_name !== disc.name
+      ? `<div style="font-size:11px; color:#64748b; max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeDiscoveredHtml(disc.display_name)}">${escapeDiscoveredHtml(disc.display_name)}</div>`
+      : '';
+    const actionsHtml = status === 'approved'
+      ? '<span style="font-size:11.5px; color:#15803d; font-weight:600;">Added to City List</span>'
+      : `<div class="admin-action-btn-group" style="justify-content:flex-end; gap:6px;">
+          <button type="button" class="btn btn-sm btn-primary" onclick="approveDiscoveredLocation(${disc.id}, this)" title="Approve & add to active Service Locations">
+            <span class="material-symbols-outlined" style="font-size:15px;">add_location_alt</span>
+            <span>Approve &amp; Add</span>
+          </button>
+          ${status === 'pending'
+            ? `<button type="button" class="btn btn-sm btn-outline" onclick="dismissDiscoveredLocation(${disc.id}, this)" title="Dismiss out-of-region notification"><span>Dismiss</span></button>`
+            : ''}
+        </div>`;
+
+    return `
+      <tr id="admin-discovered-row-${disc.id}">
+        <td><strong>${escapeDiscoveredHtml(disc.name)}</strong>${subDisplay}</td>
+        <td>${escapeDiscoveredHtml(disc.state || '—')}</td>
+        <td style="font-family:monospace; font-size:11.5px; color:#475569;">${latStr}, ${lngStr}</td>
+        <td><span class="admin-badge" id="discovered-status-badge-${disc.id}" data-status="${escapeDiscoveredHtml(status)}" style="${badgeStyle}">${statusLabel}</span></td>
+        <td style="font-size:12px; color:#475569;">${refHtml}<span>${hitsNum} ${hitsNum === 1 ? 'hit' : 'hits'}</span></td>
+        <td style="text-align:right;">${actionsHtml}</td>
+      </tr>
+    `;
+  }).join('');
+
+  updateDiscoveredPendingBadge(items);
+}
+
+window.refreshDiscoveredLocations = async function () {
+  try {
+    const res = await fetch('/api/admin/discovered-locations', {
+      headers: { 'Accept': 'application/json' },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.success) {
+      renderDiscoveredCitiesTable(data.discovered_locations || []);
+    }
+  } catch (err) {
+    console.warn('Failed to refresh discovered cities:', err);
+  }
+};
+
+window.approveDiscoveredLocation = async function (id, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(`/api/admin/discovered-locations/${id}/approve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify({ is_active: true }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data?.message || 'Could not approve city.', 'danger');
+      if (btn) btn.disabled = false;
+      return;
+    }
+
+    showToast(data.message || 'City approved and added to active city list.', 'success');
+
+    const loc = data.location;
+    if (loc && !document.getElementById(`admin-loc-row-${loc.id}`)) {
+      const tbody = document.getElementById('admin-locations-tbody');
+      if (tbody) {
+        const emptyRow = tbody.querySelector('td[colspan="6"]')?.closest('tr');
+        if (emptyRow) emptyRow.remove();
+
+        const tr = document.createElement('tr');
+        tr.id = `admin-loc-row-${loc.id}`;
+        tr.dataset.search = `${loc.name} ${loc.state || ''} ${loc.airport_code || ''}`.toLowerCase();
+        tr.innerHTML = `
+          <td><strong>${escapeDiscoveredHtml(loc.name)}</strong></td>
+          <td>${escapeDiscoveredHtml(loc.state || 'India')}</td>
+          <td style="font-family:monospace; font-size:11.5px; color:#475569;">${loc.latitude}, ${loc.longitude}</td>
+          <td>${loc.airport_code ? `<span class="admin-badge badge-primary">${escapeDiscoveredHtml(loc.airport_code)}</span>` : `<span style="color:#94a3b8; font-size:11px;">Standard</span>`}</td>
+          <td><span class="admin-badge ${loc.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleLocationStatus(${loc.id})" id="loc-status-badge-${loc.id}" title="Click to toggle">${loc.is_active ? 'Active' : 'Inactive'}</span></td>
+          <td style="text-align:right;">
+            <div class="admin-action-btn-group" style="justify-content:flex-end;">
+              <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditLocationModal(${loc.id})" title="Edit Location"><span class="material-symbols-outlined">edit</span></button>
+              <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteLocation(${loc.id})" title="Delete Location"><span class="material-symbols-outlined">delete</span></button>
+            </div>
+          </td>
+        `;
+        tbody.prepend(tr);
+      }
+    }
+
+    const totalLocs = document.querySelectorAll('#admin-locations-tbody tr[id^="admin-loc-row-"]').length;
+    const locBadge = document.getElementById('admin-badge-locations-count');
+    if (locBadge) locBadge.textContent = totalLocs;
+
+    locationSearchCache.clear();
+    await window.syncAllLocationDropdowns();
+    await window.refreshDiscoveredLocations();
+  } catch (err) {
+    console.error('Approve discovered city error:', err);
+    showToast('Network error while approving city.', 'warning');
+    if (btn) btn.disabled = false;
+  }
+};
+
+window.dismissDiscoveredLocation = async function (id, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(`/api/admin/discovered-locations/${id}/dismiss`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data?.message || 'Could not dismiss city.', 'danger');
+      if (btn) btn.disabled = false;
+      return;
+    }
+    showToast(data.message || 'Out-of-region city alert dismissed.', 'info');
+    await window.refreshDiscoveredLocations();
+  } catch (err) {
+    console.error('Dismiss discovered city error:', err);
+    showToast('Network error while dismissing city.', 'warning');
+    if (btn) btn.disabled = false;
+  }
+};
+
 // ========================================================
 // 1B. OUTSTATION CAB ROUTES MANAGEMENT (Admin)
 // ========================================================
@@ -10655,7 +10957,7 @@ window.refreshAdminRouteFareDisplays = function () {
     }
 
     list.innerHTML = items.map(item => `
-      <div class="app-notif-item ${item.is_read ? '' : 'unread'}" data-notif-id="${escapeNotifHtml(item.id)}" data-tab="${escapeNotifHtml(item.meta?.tab || '')}" data-url="${escapeNotifHtml(item.action_url || '')}" onclick="handleNotificationClick(this)">
+      <div class="app-notif-item ${item.is_read ? '' : 'unread'}" data-notif-id="${escapeNotifHtml(item.id)}" data-tab="${escapeNotifHtml(item.meta?.tab || '')}" data-section="${escapeNotifHtml(item.meta?.section || '')}" data-url="${escapeNotifHtml(item.action_url || '')}" onclick="handleNotificationClick(this)">
         <div class="app-notif-icon">
           <span class="material-symbols-outlined">${categoryIcon(item.category)}</span>
         </div>
@@ -10716,6 +11018,7 @@ window.refreshAdminRouteFareDisplays = function () {
   window.handleNotificationClick = async function (el) {
     const id = el?.dataset?.notifId;
     const tab = el?.dataset?.tab;
+    const section = el?.dataset?.section;
     const url = el?.dataset?.url;
 
     if (id && el.classList.contains('unread')) {
@@ -10746,6 +11049,12 @@ window.refreshAdminRouteFareDisplays = function () {
 
     if (tab && typeof switchTab === 'function' && document.getElementById(`tab-${tab}`)) {
       switchTab(tab);
+      if (tab === 'admin' && section && typeof switchAdminSection === 'function') {
+        switchAdminSection(section);
+        if (section === 'locations' && typeof window.refreshDiscoveredLocations === 'function') {
+          window.refreshDiscoveredLocations();
+        }
+      }
     } else if (url && url.startsWith('http') && !url.includes('/#')) {
       window.location.href = url;
     }

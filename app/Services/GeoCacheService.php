@@ -159,7 +159,7 @@ class GeoCacheService
     /**
      * Persist a geocoded place before the caller uses it.
      *
-     * @param  array{lat: float, lng: float, name: string, state?: ?string, display_name?: ?string}  $place
+     * @param  array{lat: float, lng: float, name: string, state?: ?string, display_name?: ?string, is_beyond_region?: bool}  $place
      */
     public function rememberPlace(string $query, array $place): void
     {
@@ -170,6 +170,7 @@ class GeoCacheService
         }
 
         $ttlDays = (int) config('services.osm.place_ttl_days', 90);
+        $key = self::placeKey($query);
 
         $values = [
             'query' => mb_substr($query, 0, 255),
@@ -184,16 +185,217 @@ class GeoCacheService
             'expires_at' => $ttlDays > 0 ? now()->addDays($ttlDays) : null,
         ];
 
-        $key = self::placeKey($query);
+        if (array_key_exists('is_beyond_region', $place)) {
+            $values['is_beyond_region'] = (bool) $place['is_beyond_region'];
+        }
 
         try {
-            GeoPlaceCache::updateOrCreate(['query_key' => $key], $values);
+            $existing = GeoPlaceCache::query()->where('query_key', $key)->first();
+            if ($existing) {
+                // Keep pending/approved review status intact when refreshing cache metadata.
+                if (in_array($existing->approval_status, ['pending', 'approved'], true)) {
+                    unset($values['expires_at']);
+                }
+                $existing->update($values);
+            } else {
+                GeoPlaceCache::create(['query_key' => $key] + $values);
+            }
         } catch (\Throwable $e) {
             try {
                 GeoPlaceCache::query()->where('query_key', $key)->update($values);
             } catch (\Throwable $inner) {
                 $this->fail($inner);
             }
+        }
+    }
+
+    /**
+     * Search durable cached places by name, query, or state to avoid repeat Nominatim calls.
+     *
+     * @return array<int, array{lat: float, lng: float, name: string, state: ?string, display_name: ?string, is_beyond_region: bool, approval_status: string, cached: bool}>
+     */
+    public function searchPlaces(string $query, int $limit = 5, bool $countHits = false): array
+    {
+        $clean = trim(explode(',', $query)[0]);
+
+        if (! $this->enabled() || mb_strlen($clean) < 2) {
+            return [];
+        }
+
+        $lower = mb_strtolower($clean);
+        $limit = max(1, min(15, $limit));
+
+        try {
+            $rows = GeoPlaceCache::query()
+                ->where(function ($q) use ($lower) {
+                    $q->whereRaw('LOWER(name) LIKE ?', ["%{$lower}%"])
+                        ->orWhereRaw('LOWER(query) LIKE ?', ["%{$lower}%"]);
+                })
+                ->where(function ($q) {
+                    $q->whereNull('expires_at')
+                        ->orWhere('expires_at', '>', now());
+                })
+                ->orderByDesc('hits')
+                ->orderBy('name')
+                ->limit($limit * 2)
+                ->get();
+        } catch (\Throwable $e) {
+            $this->fail($e);
+
+            return [];
+        }
+
+        $seen = [];
+        $results = [];
+
+        foreach ($rows as $row) {
+            if (($row->approval_status ?? 'cached') === 'dismissed') {
+                continue;
+            }
+
+            $dedupeKey = mb_strtolower(trim((string) $row->name));
+            if (isset($seen[$dedupeKey])) {
+                continue;
+            }
+            $seen[$dedupeKey] = true;
+
+            if ($countHits) {
+                $this->countHit($row);
+            }
+
+            $results[] = [
+                'lat' => (float) $row->latitude,
+                'lng' => (float) $row->longitude,
+                'name' => (string) $row->name,
+                'state' => $row->state,
+                'display_name' => $row->display_name,
+                'is_beyond_region' => (bool) ($row->is_beyond_region ?? false),
+                'approval_status' => (string) ($row->approval_status ?? 'cached'),
+                'cached' => true,
+            ];
+
+            if (count($results) >= $limit) {
+                break;
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Find an exact cached city match by name or original query.
+     *
+     * @return array{lat: float, lng: float, name: string, state: ?string, display_name: ?string, cached: bool}|null
+     */
+    public function findByName(string $cityName): ?array
+    {
+        $clean = trim(explode(',', $cityName)[0]);
+
+        if (! $this->enabled() || $clean === '') {
+            return null;
+        }
+
+        $lower = mb_strtolower($clean);
+
+        try {
+            $row = GeoPlaceCache::query()
+                ->where(function ($q) use ($lower) {
+                    $q->whereRaw('LOWER(name) = ?', [$lower])
+                        ->orWhereRaw('LOWER(query) = ?', [$lower]);
+                })
+                ->where(function ($q) {
+                    $q->whereNull('expires_at')
+                        ->orWhere('expires_at', '>', now());
+                })
+                ->orderByDesc('hits')
+                ->first();
+        } catch (\Throwable $e) {
+            $this->fail($e);
+
+            return null;
+        }
+
+        if ($row === null || ($row->approval_status ?? 'cached') === 'dismissed') {
+            return null;
+        }
+
+        $this->countHit($row);
+
+        return [
+            'lat' => (float) $row->latitude,
+            'lng' => (float) $row->longitude,
+            'name' => (string) $row->name,
+            'state' => $row->state,
+            'display_name' => $row->display_name,
+            'cached' => true,
+        ];
+    }
+
+    /**
+     * Record an out-of-region city encountered during booking so an admin can review
+     * and approve it into the active ServiceLocation list later.
+     */
+    public function recordBeyondRegionCity(
+        string $cityName,
+        float $lat,
+        float $lng,
+        ?string $state = null,
+        ?string $displayName = null,
+        ?int $bookingId = null,
+        ?string $bookingRef = null,
+    ): ?GeoPlaceCache {
+        $clean = trim(explode(',', $cityName)[0]);
+
+        if (! $this->enabled() || $clean === '') {
+            return null;
+        }
+
+        $key = self::placeKey($clean);
+        $lower = mb_strtolower($clean);
+
+        try {
+            $row = GeoPlaceCache::query()
+                ->where('query_key', $key)
+                ->orWhereRaw('LOWER(name) = ?', [$lower])
+                ->first();
+
+            if ($row) {
+                $updates = [
+                    'is_beyond_region' => true,
+                    'last_booking_id' => $bookingId ?? $row->last_booking_id,
+                    'last_booking_reference' => $bookingRef ?? $row->last_booking_reference,
+                ];
+                if (! in_array($row->approval_status, ['approved'], true)) {
+                    $updates['approval_status'] = 'pending';
+                    $updates['expires_at'] = null;
+                }
+                if (! $row->state && $state) {
+                    $updates['state'] = self::trimmed($state);
+                }
+                $row->update($updates);
+
+                return $row->fresh();
+            }
+
+            return GeoPlaceCache::create([
+                'query_key' => $key,
+                'query' => mb_substr($clean, 0, 255),
+                'name' => mb_substr($clean, 0, 255),
+                'state' => self::trimmed($state) ?? 'Outside Regional Map',
+                'latitude' => round($lat, 7),
+                'longitude' => round($lng, 7),
+                'display_name' => $displayName ? mb_substr($displayName, 0, 512) : null,
+                'is_beyond_region' => true,
+                'approval_status' => 'pending',
+                'last_booking_id' => $bookingId,
+                'last_booking_reference' => $bookingRef,
+                'resolved_at' => now(),
+                'expires_at' => null,
+            ]);
+        } catch (\Throwable $e) {
+            $this->fail($e);
+
+            return null;
         }
     }
 

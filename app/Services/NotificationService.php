@@ -16,7 +16,7 @@ use Throwable;
 
 class NotificationService
 {
-    public function bookingCreated(Booking $booking, string $source = 'customer'): void
+    public function bookingCreated(Booking $booking, string $source = 'customer', array $beyondCities = []): void
     {
         $booking->loadMissing('customer', 'driver');
 
@@ -96,7 +96,12 @@ class NotificationService
         ];
         if ($isBeyondRegion) {
             $adminLines[] = 'Region Notice: Outside regional area — Ride NOT confirmed / availability unverified.';
+            if ($beyondCities !== []) {
+                $adminLines[] = 'Out-of-Region City Queue: '.implode(', ', $beyondCities).' (Pending Admin Approval to add to City List).';
+            }
         }
+
+        $beyondSummary = $beyondCities !== [] ? ' Out-of-region area(s) queued for city approval: '.implode(', ', $beyondCities).'.' : '';
 
         $adminNotification = new PlatformAlertNotification(
             event: 'booking.created',
@@ -104,7 +109,7 @@ class NotificationService
                 ? "Out-of-Region Request {$booking->booking_reference} ({$fare})"
                 : "New Booking {$booking->booking_reference} ({$fare})",
             message: $isBeyondRegion
-                ? "{$booking->customer_name} requested an out-of-region route ({$booking->route_summary}) via {$source}. Ride is unconfirmed."
+                ? "{$booking->customer_name} requested an out-of-region route ({$booking->route_summary}) via {$source}. Ride is unconfirmed.{$beyondSummary}"
                 : "{$booking->customer_name} booked {$booking->route_summary} via {$source}.",
             category: 'booking',
             meta: [
@@ -114,12 +119,14 @@ class NotificationService
                 'customer_phone' => $booking->customer_phone,
                 'status' => $booking->status,
                 'is_beyond_region' => $isBeyondRegion,
+                'beyond_region_cities' => $beyondCities,
                 'tab' => 'admin',
+                'section' => $isBeyondRegion ? 'locations' : 'bookings',
                 'ticket_url' => $ticketUrl,
             ],
             lines: $adminLines,
-            actionLabel: 'Open Admin Dispatch',
-            actionUrl: url('/#admin'),
+            actionLabel: $isBeyondRegion ? 'Review & Approve City' : 'Open Admin Dispatch',
+            actionUrl: $isBeyondRegion ? url('/?tab=admin&section=locations#admin-discovered-cities-card') : url('/#admin'),
             sendEmail: true,
         );
 

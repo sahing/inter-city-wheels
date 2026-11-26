@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\GeoPlaceCache;
 use App\Models\ServiceLocation;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class LocationAdminController extends Controller
 {
@@ -99,6 +101,109 @@ class LocationAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Location '{$name}' deleted successfully!",
+        ]);
+    }
+
+    /**
+     * List OpenStreetMap-discovered / out-of-region cached cities awaiting or reviewed by admin.
+     */
+    public function discovered()
+    {
+        $items = GeoPlaceCache::query()
+            ->orderByRaw("CASE approval_status WHEN 'pending' THEN 0 WHEN 'cached' THEN 1 WHEN 'approved' THEN 2 ELSE 3 END")
+            ->orderByDesc('is_beyond_region')
+            ->orderByDesc('hits')
+            ->orderByDesc('updated_at')
+            ->limit(100)
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'discovered_locations' => $items,
+        ]);
+    }
+
+    /**
+     * Approve a cached/out-of-region OpenStreetMap city and promote it into ServiceLocation.
+     */
+    public function approveDiscovered(Request $request, $id)
+    {
+        $discovered = GeoPlaceCache::findOrFail($id);
+
+        $validated = $request->validate([
+            'name' => 'nullable|string|max:80',
+            'state' => 'nullable|string|max:80',
+            'airport_code' => 'nullable|string|max:10',
+            'is_active' => 'nullable|boolean',
+        ]);
+
+        $cityName = trim((string) ($validated['name'] ?? $discovered->name));
+        $stateName = trim((string) ($validated['state'] ?? $discovered->state ?? 'India')) ?: 'India';
+        $isActive = $request->boolean('is_active', true);
+
+        $location = ServiceLocation::whereRaw('LOWER(name) = ?', [strtolower($cityName)])->first();
+
+        if ($location) {
+            $location->update([
+                'state' => $stateName,
+                'latitude' => (float) $discovered->latitude,
+                'longitude' => (float) $discovered->longitude,
+                'airport_code' => $validated['airport_code'] ?? $location->airport_code,
+                'is_active' => $isActive,
+            ]);
+        } else {
+            $location = ServiceLocation::create([
+                'name' => $cityName,
+                'state' => $stateName,
+                'latitude' => (float) $discovered->latitude,
+                'longitude' => (float) $discovered->longitude,
+                'airport_code' => $validated['airport_code'] ?? null,
+                'has_airport_service' => ! empty($validated['airport_code']),
+                'is_active' => $isActive,
+            ]);
+        }
+
+        $discovered->update([
+            'name' => $cityName,
+            'state' => $stateName,
+            'approval_status' => 'approved',
+            'service_location_id' => $location->id,
+            'approved_at' => now(),
+            'approved_by_user_id' => Auth::id(),
+            'expires_at' => null,
+        ]);
+
+        // Also mark any duplicate cached rows with the same name as approved
+        GeoPlaceCache::where('id', '!=', $discovered->id)
+            ->whereRaw('LOWER(name) = ?', [strtolower($cityName)])
+            ->update([
+                'approval_status' => 'approved',
+                'service_location_id' => $location->id,
+                'approved_at' => now(),
+                'approved_by_user_id' => Auth::id(),
+                'expires_at' => null,
+            ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "'{$location->name}' approved and added to the active city list!",
+            'location' => $location,
+            'discovered' => $discovered->fresh(),
+        ]);
+    }
+
+    /**
+     * Dismiss a discovered city from the pending approval queue.
+     */
+    public function dismissDiscovered($id)
+    {
+        $discovered = GeoPlaceCache::findOrFail($id);
+        $discovered->update(['approval_status' => 'dismissed']);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Discovered location '{$discovered->name}' dismissed.",
+            'discovered' => $discovered->fresh(),
         ]);
     }
 }

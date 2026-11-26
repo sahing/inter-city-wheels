@@ -4532,14 +4532,14 @@ tr.auction-bid-drawer-row td {
   position: relative;
   margin: 0 auto;
   box-sizing: border-box;
-  z-index: 10;
+  z-index: 40;
 }
 
 /* Booking Type Tabs at Top Center */
 .rental-tabs-wrapper {
   display: flex;
   justify-content: center;
-  margin-bottom: 22px;
+  margin-bottom: 14px;
 }
 
 .rental-type-tabs {
@@ -4589,6 +4589,9 @@ tr.auction-bid-drawer-row td {
   position: relative;
   display: flex;
   flex-direction: column;
+}
+.rental-field-box:focus-within {
+  z-index: 60;
 }
 
 .rental-field-label {
@@ -4726,9 +4729,10 @@ tr.auction-bid-drawer-row td {
   color: #0284c7;
 }
 .rental-geo-bar {
-  margin-top: 12px;
+  margin: 0 0 16px 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   flex-wrap: wrap;
   gap: 8px;
   font-size: 12px;
@@ -4813,13 +4817,14 @@ tr.auction-bid-drawer-row td {
   top: calc(100% + 4px);
   left: 0;
   right: 0;
+  min-width: min(280px, 85vw);
   max-height: 280px;
   overflow-y: auto;
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.22);
-  z-index: 1050;
+  z-index: 1200;
   padding: 6px 0;
 }
 .city-picker-dropdown::-webkit-scrollbar {
@@ -4833,6 +4838,7 @@ tr.auction-bid-drawer-row td {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 8px 12px;
   cursor: pointer;
   transition: background 0.15s;
@@ -4845,6 +4851,14 @@ tr.auction-bid-drawer-row td {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.city-picker-item-main > div {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

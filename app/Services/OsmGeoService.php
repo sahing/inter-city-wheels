@@ -54,17 +54,46 @@ class OsmGeoService
     /**
      * Search places by free text.
      *
+     * Checks the durable GeoPlaceCache first so previously discovered cities
+     * are served from the city list cache without repeating Nominatim API calls,
+     * and persists every fresh Nominatim result into GeoPlaceCache immediately.
+     *
      * @return array<int, array<string, mixed>>
      */
     public function search(string $query, int $limit = 5): array
     {
         $query = trim($query);
 
-        if (! $this->enabled() || mb_strlen($query) < 3) {
+        if (mb_strlen($query) < 3) {
             return [];
         }
 
         $limit = max(1, min(10, $limit));
+
+        // 1. Durable DB city cache (survives Cache::flush and worker restarts).
+        $stored = $this->geoCache->searchPlaces($query, $limit);
+        $lowerQuery = mb_strtolower(trim(explode(',', $query)[0]));
+        $hasDirectDbMatch = collect($stored)->contains(function (array $row) use ($lowerQuery): bool {
+            $nameLower = mb_strtolower(trim($row['name']));
+
+            return $nameLower === $lowerQuery || str_starts_with($nameLower, $lowerQuery);
+        });
+
+        if ($hasDirectDbMatch) {
+            return array_map(static fn (array $row): array => [
+                'name' => $row['name'],
+                'state' => $row['state'],
+                'display_name' => $row['display_name'],
+                'latitude' => (float) $row['lat'],
+                'longitude' => (float) $row['lng'],
+                'cached' => true,
+            ], $stored);
+        }
+
+        if (! $this->enabled()) {
+            return [];
+        }
+
         $cacheKey = self::CACHE_PREFIX.'search:'.md5(mb_strtolower($query).'|'.$limit.'|'.$this->countryCodes());
 
         try {
@@ -79,6 +108,21 @@ class OsmGeoService
         $fresh = $this->fetchSearch($query, $limit);
 
         if ($fresh !== []) {
+            foreach ($fresh as $place) {
+                $lat = (float) $place['latitude'];
+                $lng = (float) $place['longitude'];
+                $beyondRegion = ! RegionalLocationService::isWithinServiceRegion($lat, $lng, (string) $place['name']);
+
+                $this->geoCache->rememberPlace((string) $place['name'], [
+                    'lat' => $lat,
+                    'lng' => $lng,
+                    'name' => (string) $place['name'],
+                    'state' => $place['state'] ?? null,
+                    'display_name' => $place['display_name'] ?? null,
+                    'is_beyond_region' => $beyondRegion,
+                ]);
+            }
+
             try {
                 Cache::put($cacheKey, $fresh, $this->ttl('cache_ttl', 604800));
             } catch (\Throwable $e) {

@@ -287,13 +287,16 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::post('/admin/car-types/{id}/toggle', [CarTypeAdminController::class, 'toggleStatus'])->name('api.admin.carTypes.toggle');
     Route::delete('/admin/car-types/{id}', [CarTypeAdminController::class, 'destroy'])->name('api.admin.carTypes.destroy');
 
-    // Service Locations
+    // Service Locations & Discovered Out-of-Region City Approvals
     Route::get('/admin/locations', [LocationAdminController::class, 'index'])->name('api.admin.locations.index');
     Route::post('/admin/locations', [LocationAdminController::class, 'store'])->name('api.admin.locations.store');
     Route::get('/admin/locations/{id}', [LocationAdminController::class, 'show'])->name('api.admin.locations.show');
     Route::put('/admin/locations/{id}', [LocationAdminController::class, 'update'])->name('api.admin.locations.update');
     Route::post('/admin/locations/{id}/toggle', [LocationAdminController::class, 'toggleStatus'])->name('api.admin.locations.toggle');
     Route::delete('/admin/locations/{id}', [LocationAdminController::class, 'destroy'])->name('api.admin.locations.destroy');
+    Route::get('/admin/discovered-locations', [LocationAdminController::class, 'discovered'])->name('api.admin.discoveredLocations.index');
+    Route::post('/admin/discovered-locations/{id}/approve', [LocationAdminController::class, 'approveDiscovered'])->name('api.admin.discoveredLocations.approve');
+    Route::post('/admin/discovered-locations/{id}/dismiss', [LocationAdminController::class, 'dismissDiscovered'])->name('api.admin.discoveredLocations.dismiss');
 
     // Berth Routes
     Route::get('/admin/berth-routes', [BerthRouteAdminController::class, 'index'])->name('api.admin.berthRoutes.index');

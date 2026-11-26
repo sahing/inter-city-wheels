@@ -253,9 +253,30 @@ class RegionalLocationService
             }
         }
 
-        // 3. Fallback: If query entered by user has 2+ chars, always offer custom desired location in region
+        // 3. Durable GeoPlaceCache (previously discovered OpenStreetMap cities)
         if (strlen($cleanQ) >= 2) {
-            // Check if there is already an exact name match
+            $cachedPlaces = app(GeoCacheService::class)->searchPlaces($cleanQ, 5);
+            foreach ($cachedPlaces as $cp) {
+                $lookupKey = preg_replace('/[^a-z0-9]/', '', strtolower($cp['name']));
+                if (! isset($seenKeys[$lookupKey])) {
+                    $seenKeys[$lookupKey] = true;
+                    $results[] = [
+                        'name' => $cp['name'],
+                        'state' => $cp['state'] ?? 'India',
+                        'latitude' => (float) $cp['lat'],
+                        'longitude' => (float) $cp['lng'],
+                        'airport_code' => null,
+                        'is_registered' => false,
+                        'badge' => 'OpenStreetMap',
+                        'type' => 'geocoded',
+                        'cached' => true,
+                        'beyond_region' => (bool) ($cp['is_beyond_region'] ?? ! self::isWithinServiceRegion((float) $cp['lat'], (float) $cp['lng'], $cp['name'])),
+                        'display_name' => $cp['display_name'] ?? null,
+                    ];
+                }
+            }
+
+            // Check if there is already an exact/prefix match before calling live Nominatim
             $hasExact = false;
             foreach ($results as $r) {
                 if (strtolower($r['name']) === $lowerQ || str_starts_with(strtolower($r['name']), $lowerQ)) {
@@ -264,7 +285,7 @@ class RegionalLocationService
                 }
             }
 
-            // Also attempt fast Nominatim lookup if no registered or regional results found
+            // Also attempt fast Nominatim lookup if not yet in registered, regional, or city list cache
             if (! $hasExact && count($results) < 3) {
                 $geoResults = self::geocodeNominatim($cleanQ);
                 foreach ($geoResults as $geo) {
@@ -272,6 +293,9 @@ class RegionalLocationService
                     if (! isset($seenKeys[$lookupKey])) {
                         $seenKeys[$lookupKey] = true;
                         $results[] = $geo;
+                        if (strtolower($geo['name']) === $lowerQ || str_starts_with(strtolower($geo['name']), $lowerQ)) {
+                            $hasExact = true;
+                        }
                     }
                 }
             }
@@ -371,7 +395,23 @@ class RegionalLocationService
         }
 
         // 3. Known regional landmarks (keyword match only, otherwise null)
-        return self::guessRegionalCoordinates($clean);
+        $guessed = self::guessRegionalCoordinates($clean);
+        if ($guessed !== null) {
+            return $guessed;
+        }
+
+        // 4. Durable GeoPlaceCache (previously discovered OpenStreetMap cities)
+        $cached = app(GeoCacheService::class)->findByName($clean);
+        if ($cached !== null) {
+            return [
+                'name' => $cached['name'],
+                'state' => $cached['state'] ?? 'India',
+                'lat' => (float) $cached['lat'],
+                'lng' => (float) $cached['lng'],
+            ];
+        }
+
+        return null;
     }
 
     /**
@@ -421,15 +461,20 @@ class RegionalLocationService
         $items = [];
 
         foreach ($service->search($query, 3) as $place) {
+            $lat = (float) $place['latitude'];
+            $lng = (float) $place['longitude'];
+
             $items[] = [
                 'name' => $place['name'],
                 'state' => $place['state'] ?? 'India',
-                'latitude' => (float) $place['latitude'],
-                'longitude' => (float) $place['longitude'],
+                'latitude' => $lat,
+                'longitude' => $lng,
                 'airport_code' => null,
                 'is_registered' => false,
                 'badge' => 'OpenStreetMap',
                 'type' => 'geocoded',
+                'cached' => (bool) ($place['cached'] ?? false),
+                'beyond_region' => ! self::isWithinServiceRegion($lat, $lng, (string) $place['name']),
                 'display_name' => $place['display_name'] ?? null,
             ];
         }

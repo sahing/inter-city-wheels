@@ -8,6 +8,7 @@ use App\Models\Coupon;
 use App\Models\Driver;
 use App\Models\DriverVehicle;
 use App\Models\DynamicFormField;
+use App\Models\GeoPlaceCache;
 use App\Models\RouteFare;
 use App\Models\SeatLayout;
 use App\Models\ServiceLocation;
@@ -33,6 +34,17 @@ class HomeController extends Controller
 
         // Admin Datasets for Locations, Berth Routes, Berth Layouts & Vehicles
         $serviceLocations = ServiceLocation::orderBy('name')->get();
+        try {
+            $discoveredLocations = GeoPlaceCache::query()
+                ->orderByRaw("CASE approval_status WHEN 'pending' THEN 0 WHEN 'cached' THEN 1 WHEN 'approved' THEN 2 ELSE 3 END")
+                ->orderByDesc('is_beyond_region')
+                ->orderByDesc('hits')
+                ->orderByDesc('updated_at')
+                ->limit(100)
+                ->get();
+        } catch (\Throwable) {
+            $discoveredLocations = collect();
+        }
         $berthRoutes = BerthRoute::with('seatLayouts')->latest()->get();
         $allSeatLayouts = SeatLayout::orderBy('coach_code')->orderBy('deck')->orderBy('berth_number')->get();
         $driverVehicles = DriverVehicle::with('driver')->latest()->get();
@@ -131,6 +143,7 @@ class HomeController extends Controller
             'driverTrips',
             'allUsers',
             'serviceLocations',
+            'discoveredLocations',
             'berthRoutes',
             'allSeatLayouts',
             'driverVehicles',

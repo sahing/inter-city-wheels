@@ -72,6 +72,25 @@
                         </div>
                     </div>
 
+                    <!-- Quick Initial Pickup Detection (Placed above inputs so city dropdowns never cover or collide with it) -->
+                    <div class="rental-geo-bar" id="rental-geo-bar">
+                        <span class="rental-geo-label">
+                            <span class="material-symbols-outlined" style="font-size:15px; color:#20A9D2;">explore</span>
+                            <span>Detect initial pickup:</span>
+                        </span>
+                        <div class="rental-geo-actions">
+                            <button type="button" class="rental-geo-pill" id="btn-detect-pickup-gps" onclick="detectActiveBookingLocation('gps')">
+                                <span class="material-symbols-outlined" style="font-size:14px;">my_location</span>
+                                <span>Use GPS</span>
+                            </button>
+                            <button type="button" class="rental-geo-pill" id="btn-detect-pickup-network" onclick="detectActiveBookingLocation('network')">
+                                <span class="material-symbols-outlined" style="font-size:14px;">wifi</span>
+                                <span>Use Network</span>
+                            </button>
+                        </div>
+                        <span id="rental-geo-status" class="rental-geo-status" aria-live="polite"></span>
+                    </div>
+
                     <!-- Hidden legacy inputs for backward compatibility -->
                     <select id="cab-from-city" style="display:none;">
                         @foreach($serviceLocations as $loc)
@@ -356,25 +375,6 @@
                     <input type="hidden" id="cab-pickup-time" value="12:15">
                     <input type="hidden" id="cab-return-date" value="{{ date('Y-m-d', strtotime('+3 days')) }}">
                     <input type="hidden" id="cab-return-time" value="17:00">
-
-                    <!-- Quick Initial Pickup Detection (GPS & Network Options) -->
-                    <div class="rental-geo-bar" id="rental-geo-bar">
-                        <span class="rental-geo-label">
-                            <span class="material-symbols-outlined" style="font-size:15px; color:#20A9D2;">explore</span>
-                            <span>Detect initial pickup:</span>
-                        </span>
-                        <div class="rental-geo-actions">
-                            <button type="button" class="rental-geo-pill" id="btn-detect-pickup-gps" onclick="detectActiveBookingLocation('gps')">
-                                <span class="material-symbols-outlined" style="font-size:14px;">my_location</span>
-                                <span>Use GPS</span>
-                            </button>
-                            <button type="button" class="rental-geo-pill" id="btn-detect-pickup-network" onclick="detectActiveBookingLocation('network')">
-                                <span class="material-symbols-outlined" style="font-size:14px;">wifi</span>
-                                <span>Use Network</span>
-                            </button>
-                        </div>
-                        <span id="rental-geo-status" class="rental-geo-status" aria-live="polite"></span>
-                    </div>
 
                     <!-- Instant Highway Route Insight Strip (Required by Automated Tests) -->
                     <div class="cab-route-insight-strip" style="margin-top:14px; background:#0f172a; border-radius:8px; padding:10px 16px; color:#ffffff; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
@@ -2070,11 +2070,15 @@
                                     <span class="admin-nav-badge badge-primary" id="admin-badge-cab-routes-count">{{ count($allCabRoutes) }}</span>
                                 </a>
                             </li>
+                            @php
+                                $pendingDiscoveredCount = ($discoveredLocations ?? collect())->where('approval_status', 'pending')->count();
+                            @endphp
                             <li class="admin-nav-item">
                                 <a href="javascript:void(0)" class="admin-nav-link" data-section="locations" onclick="switchAdminSection('locations')">
                                     <span class="material-symbols-outlined admin-nav-icon">pin_drop</span>
                                     <span class="admin-nav-text">Service Locations & Hubs</span>
                                     <span class="admin-nav-badge badge-primary" id="admin-badge-locations-count">{{ count($serviceLocations) }}</span>
+                                    <span class="admin-nav-badge" id="admin-badge-discovered-pending" style="background:#f59e0b; color:#fff; margin-left:4px; {{ $pendingDiscoveredCount > 0 ? '' : 'display:none;' }}" title="Beyond-region cities pending approval">{{ $pendingDiscoveredCount }}</span>
                                 </a>
                             </li>
                             <li class="admin-nav-item">
@@ -4534,6 +4538,97 @@
                         <!-- 5. SERVICE LOCATIONS SETUP (Admin)                       -->
                         <!-- ======================================================== -->
                         <div class="admin-section" id="admin-sec-locations">
+                            <div class="card" id="admin-discovered-cities-card" style="margin-bottom:20px; border-left:4px solid #f59e0b;">
+                                <div class="card-header" style="flex-wrap:wrap; gap:12px;">
+                                    <div>
+                                        <h3 class="card-title">
+                                            <span class="material-symbols-outlined" style="color:#f59e0b; font-size:20px; vertical-align:middle;">travel_explore</span>
+                                            <span>Discovered & Beyond-Region Cities (OSM Cache)</span>
+                                        </h3>
+                                        <p class="card-subtitle">Cities looked up via OpenStreetMap are cached locally. Out-of-region booking destinations await admin review to join the active city list.</p>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline" onclick="refreshDiscoveredLocations()">
+                                        <span class="material-symbols-outlined" style="font-size:16px;">refresh</span>
+                                        <span>Refresh Queue</span>
+                                    </button>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="admin-table" id="admin-discovered-locations-table">
+                                        <thead>
+                                            <tr>
+                                                <th>City / Place</th>
+                                                <th>State</th>
+                                                <th>GPS Coordinates</th>
+                                                <th>Status</th>
+                                                <th>Booking / Hits</th>
+                                                <th style="text-align:right;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="admin-discovered-cities-tbody">
+                                            @forelse(($discoveredLocations ?? collect()) as $disc)
+                                            @php
+                                                $discStatus = $disc->approval_status ?? 'cached';
+                                                $discBadgeStyle = match ($discStatus) {
+                                                    'pending' => 'background:#fef3c7; color:#b45309;',
+                                                    'approved' => 'background:#dcfce7; color:#15803d;',
+                                                    'dismissed' => 'background:#f1f5f9; color:#64748b;',
+                                                    default => 'background:#e0f2fe; color:#0369a1;',
+                                                };
+                                                $discStatusLabel = match ($discStatus) {
+                                                    'pending' => 'Beyond Region · Pending Approval',
+                                                    'approved' => 'Approved · In City List',
+                                                    'dismissed' => 'Dismissed',
+                                                    default => ($disc->is_beyond_region ? 'Beyond Region · Cached' : 'OSM Cached'),
+                                                };
+                                            @endphp
+                                            <tr id="admin-discovered-row-{{ $disc->id }}">
+                                                <td>
+                                                    <strong>{{ $disc->name }}</strong>
+                                                    @if($disc->display_name && $disc->display_name !== $disc->name)
+                                                        <div style="font-size:11px; color:#64748b; max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{{ $disc->display_name }}">{{ $disc->display_name }}</div>
+                                                    @endif
+                                                </td>
+                                                <td>{{ $disc->state ?: '—' }}</td>
+                                                <td style="font-family:monospace; font-size:11.5px; color:#475569;">
+                                                    {{ number_format((float) $disc->latitude, 4) }}, {{ number_format((float) $disc->longitude, 4) }}
+                                                </td>
+                                                <td>
+                                                    <span class="admin-badge" id="discovered-status-badge-{{ $disc->id }}" style="{{ $discBadgeStyle }}">{{ $discStatusLabel }}</span>
+                                                </td>
+                                                <td style="font-size:12px; color:#475569;">
+                                                    @if($disc->last_booking_reference)
+                                                        <span style="font-weight:600; color:#0f172a;">{{ $disc->last_booking_reference }}</span> ·
+                                                    @endif
+                                                    <span>{{ (int) $disc->hits }} {{ (int) $disc->hits === 1 ? 'hit' : 'hits' }}</span>
+                                                </td>
+                                                <td style="text-align:right;">
+                                                    @if($discStatus === 'approved')
+                                                        <span style="font-size:11.5px; color:#15803d; font-weight:600;">Added to City List</span>
+                                                    @else
+                                                        <div class="admin-action-btn-group" style="justify-content:flex-end; gap:6px;">
+                                                            <button type="button" class="btn btn-sm btn-primary" onclick="approveDiscoveredLocation({{ $disc->id }}, this)" title="Approve & add to active Service Locations">
+                                                                <span class="material-symbols-outlined" style="font-size:15px;">add_location_alt</span>
+                                                                <span>Approve &amp; Add</span>
+                                                            </button>
+                                                            @if($discStatus === 'pending')
+                                                            <button type="button" class="btn btn-sm btn-outline" onclick="dismissDiscoveredLocation({{ $disc->id }}, this)" title="Dismiss out-of-region notification">
+                                                                <span>Dismiss</span>
+                                                            </button>
+                                                            @endif
+                                                        </div>
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                            @empty
+                                            <tr id="admin-discovered-empty-row">
+                                                <td colspan="6" style="text-align:center; padding:18px; color:#94a3b8;">No OpenStreetMap or out-of-region cities cached yet.</td>
+                                            </tr>
+                                            @endforelse
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
                             <div class="card" style="margin-bottom:20px;">
                                 <div class="card-header" style="flex-wrap:wrap; gap:12px;">
                                     <div>

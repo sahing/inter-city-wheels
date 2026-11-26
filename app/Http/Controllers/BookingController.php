@@ -11,6 +11,7 @@ use App\Services\BiddingService;
 use App\Services\BookingReferenceGenerator;
 use App\Services\BookingWorkflow;
 use App\Services\FareCalculatorService;
+use App\Services\GeoCacheService;
 use App\Services\NotificationService;
 use App\Services\RazorpayService;
 use Illuminate\Http\Request;
@@ -276,6 +277,48 @@ class BookingController extends Controller
             ] + $e->toArray(), 409);
         }
 
+        if ($isBeyondRegion) {
+            $geoCache = app(GeoCacheService::class);
+            $beyondCities = [];
+
+            $endpoints = [
+                [
+                    'in_region' => (bool) ($trip['from_in_region'] ?? true),
+                    'name' => trim(explode(',', (string) $validated['from_city'])[0]),
+                    'raw' => (string) $validated['from_city'],
+                    'lat' => $trip['from_lat'] ?? ($validated['from_lat'] ?? null),
+                    'lng' => $trip['from_lng'] ?? ($validated['from_lng'] ?? null),
+                ],
+                [
+                    'in_region' => (bool) ($trip['to_in_region'] ?? true),
+                    'name' => trim(explode(',', (string) $toCity)[0]),
+                    'raw' => (string) $toCity,
+                    'lat' => $trip['to_lat'] ?? ($validated['to_lat'] ?? null),
+                    'lng' => $trip['to_lng'] ?? ($validated['to_lng'] ?? null),
+                ],
+            ];
+
+            foreach ($endpoints as $ep) {
+                if ($ep['in_region'] || $ep['name'] === '' || $ep['lat'] === null || $ep['lng'] === null) {
+                    continue;
+                }
+                $statePart = str_contains($ep['raw'], ',')
+                    ? trim(explode(',', $ep['raw'], 2)[1])
+                    : null;
+
+                $geoCache->recordBeyondRegionCity(
+                    $ep['name'],
+                    (float) $ep['lat'],
+                    (float) $ep['lng'],
+                    $statePart ?: null,
+                    $ep['raw'],
+                    $booking->id,
+                    $booking->booking_reference
+                );
+                $beyondCities[] = $ep['name'];
+            }
+        }
+
         $razorpayOrder = null;
         if ($useRazorpay) {
             try {
@@ -295,7 +338,7 @@ class BookingController extends Controller
                 $this->bidding->openForNewBooking($booking);
             }
 
-            $this->notifications->bookingCreated($booking, 'customer');
+            $this->notifications->bookingCreated($booking, 'customer', $beyondCities ?? []);
         }
 
         return response()->json([
