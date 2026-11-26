@@ -193,4 +193,88 @@ class AdminRoutesAndPrivacyTest extends TestCase
         $pageRes->assertSee('+91 98300 99999');
         $pageRes->assertSee('12 Park Street, Flat 4B, Kolkata');
     }
+
+    public function test_admin_can_calculate_cab_route_distance_via_api_or_override_manually()
+    {
+        $admin = User::where('role', 'admin')->first() ?? User::factory()->create(['role' => 'admin']);
+        $customer = User::where('role', 'customer')->first() ?? User::factory()->create(['role' => 'customer']);
+
+        // 1. Admin modal includes both API calculation and manual entry controls
+        $page = $this->actingAs($admin)->get('/');
+        $page->assertStatus(200);
+        $page->assertSee('id="admin-cab-route-mode-api-btn"', false);
+        $page->assertSee('id="admin-cab-route-mode-manual-btn"', false);
+        $page->assertSee('Calculate via API', false);
+        $page->assertSee('Manual Entry', false);
+
+        // 2. Non-admin cannot call calculate-distance endpoint
+        $this->actingAs($customer)
+            ->postJson('/api/admin/cab-routes/calculate-distance', [
+                'from_city' => 'Kolkata',
+                'to_city' => 'Digha',
+            ])
+            ->assertStatus(403);
+
+        // 3. Admin API calculation returns fresh live metrics + coordinates even if route already exists
+        config([
+            'services.osm.enabled' => true,
+            'services.osm.throttle' => false,
+        ]);
+
+        \Illuminate\Support\Facades\Http::fake([
+            'router.project-osrm.org/*' => \Illuminate\Support\Facades\Http::response([
+                'code' => 'Ok',
+                'routes' => [
+                    ['distance' => 186400, 'duration' => 14400],
+                ],
+            ], 200),
+            'nominatim.openstreetmap.org/*' => \Illuminate\Support\Facades\Http::response([], 200),
+        ]);
+
+        $calcRes = $this->actingAs($admin)->postJson('/api/admin/cab-routes/calculate-distance', [
+            'from_city' => 'Kolkata',
+            'to_city' => 'Digha',
+        ]);
+        $calcRes->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'distance_km' => 186,
+                    'estimated_time' => '4h',
+                    'source' => 'location_dataset+osrm_route',
+                ],
+            ]);
+        $this->assertNotNull($calcRes->json('data.from_lat'));
+        $this->assertNotNull($calcRes->json('data.to_lat'));
+
+        // 4. Admin can still save a manual KM override alongside resolved coordinates
+        $storeRes = $this->actingAs($admin)->postJson('/api/admin/cab-routes', [
+            'from_city' => 'Kolkata',
+            'to_city' => 'Digha Custom Bypass',
+            'distance_km' => 195,
+            'estimated_time' => '4h 20m',
+            'base_toll' => 210,
+            'from_lat' => $calcRes->json('data.from_lat'),
+            'from_lng' => $calcRes->json('data.from_lng'),
+            'to_lat' => $calcRes->json('data.to_lat'),
+            'to_lng' => $calcRes->json('data.to_lng'),
+            'is_active' => true,
+        ]);
+        $storeRes->assertStatus(201)->assertJson(['success' => true]);
+        $this->assertDatabaseHas('route_fares', [
+            'from_city' => 'Kolkata',
+            'to_city' => 'Digha Custom Bypass',
+            'distance_km' => 195,
+            'estimated_time' => '4h 20m',
+        ]);
+
+        // 5. Unresolvable cities return 422 prompting manual entry
+        $this->actingAs($admin)
+            ->postJson('/api/admin/cab-routes/calculate-distance', [
+                'from_city' => 'ZzzUnknownOrigin999',
+                'to_city' => 'ZzzUnknownDest999',
+            ])
+            ->assertStatus(422)
+            ->assertJson(['success' => false]);
+    }
 }

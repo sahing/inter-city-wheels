@@ -4,11 +4,45 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\RouteFare;
+use App\Services\FareCalculatorService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class CabRouteAdminController extends Controller
 {
+    /**
+     * Calculate highway distance, travel time, and base toll between two cities using
+     * the live routing/location API pipeline so admin routes can be auto-filled or adjusted manually.
+     */
+    public function calculateDistance(Request $request, FareCalculatorService $fares)
+    {
+        $validated = $request->validate([
+            'from_city' => 'required|string|max:100',
+            'to_city' => 'required|string|max:100',
+            'from_lat' => 'nullable|numeric',
+            'from_lng' => 'nullable|numeric',
+            'to_lat' => 'nullable|numeric',
+            'to_lng' => 'nullable|numeric',
+        ]);
+
+        $metrics = $fares->resolveDistanceViaApi(
+            $validated,
+            $validated['from_city'],
+            $validated['to_city']
+        );
+
+        if ($metrics === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not resolve highway distance via API for these locations. Please enter KM manually.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $metrics,
+        ]);
+    }
     /**
      * List all outstation cab routes.
      */

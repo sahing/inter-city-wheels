@@ -6570,14 +6570,130 @@ window.deleteLocation = async function (id) {
 // ========================================================
 // 1B. OUTSTATION CAB ROUTES MANAGEMENT (Admin)
 // ========================================================
+window.setCabRouteCalcMode = function (mode, labelText) {
+  const modeInput = document.getElementById('admin-cab-route-calc-mode');
+  const statusEl = document.getElementById('admin-cab-route-calc-status');
+  const apiBtn = document.getElementById('admin-cab-route-mode-api-btn');
+  const manualBtn = document.getElementById('admin-cab-route-mode-manual-btn');
+
+  if (modeInput) modeInput.value = mode;
+  if (apiBtn && manualBtn) {
+    if (mode === 'api') {
+      apiBtn.classList.remove('btn-secondary');
+      apiBtn.classList.add('btn-primary');
+      manualBtn.classList.remove('btn-primary');
+      manualBtn.classList.add('btn-secondary');
+    } else {
+      manualBtn.classList.remove('btn-secondary');
+      manualBtn.classList.add('btn-primary');
+      apiBtn.classList.remove('btn-primary');
+      apiBtn.classList.add('btn-secondary');
+    }
+  }
+  if (statusEl) {
+    if (labelText) {
+      statusEl.textContent = labelText;
+    } else {
+      statusEl.textContent = mode === 'api' ? 'Mode: Calculated via API' : 'Mode: Manual Entry';
+    }
+    statusEl.style.color = mode === 'api' ? '#0f766e' : '#64748b';
+  }
+};
+
+window.onCabRouteEndpointInput = function () {
+  ['admin-cab-route-from-lat', 'admin-cab-route-from-lng', 'admin-cab-route-to-lat', 'admin-cab-route-to-lng'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+};
+
+window.onCabRouteManualMetricEdit = function () {
+  const modeInput = document.getElementById('admin-cab-route-calc-mode');
+  if (modeInput && modeInput.value === 'api') {
+    window.setCabRouteCalcMode('manual', 'Mode: Manual Override (Edited)');
+  }
+};
+
+window.calculateAdminCabRouteDistance = async function () {
+  const fromCity = document.getElementById('admin-cab-route-from')?.value.trim() || '';
+  const toCity = document.getElementById('admin-cab-route-to')?.value.trim() || '';
+  if (!fromCity || !toCity) {
+    showToast('Enter both From City and To City before calculating KM via API.', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('admin-cab-route-mode-api-btn');
+  const statusEl = document.getElementById('admin-cab-route-calc-status');
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">hourglass_top</span><span>Calculating...</span>';
+  }
+  if (statusEl) {
+    statusEl.textContent = 'Querying route API...';
+    statusEl.style.color = '#0284c7';
+  }
+
+  try {
+    const res = await fetch('/api/admin/cab-routes/calculate-distance', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify({
+        from_city: fromCity,
+        to_city: toCity,
+      }),
+    });
+    const payload = await res.json();
+    if (!res.ok || !payload.success || !payload.data) {
+      window.setCabRouteCalcMode('manual', 'API unavailable — Enter KM manually');
+      showToast(payload.message || 'Could not resolve distance via API. Enter KM manually.', 'warning');
+      return;
+    }
+
+    const d = payload.data;
+    document.getElementById('admin-cab-route-dist').value = d.distance_km;
+    document.getElementById('admin-cab-route-time').value = d.estimated_time;
+    document.getElementById('admin-cab-route-toll').value = Math.round(Number(d.base_toll || 0));
+
+    if (d.from_lat != null) document.getElementById('admin-cab-route-from-lat').value = d.from_lat;
+    if (d.from_lng != null) document.getElementById('admin-cab-route-from-lng').value = d.from_lng;
+    if (d.to_lat != null) document.getElementById('admin-cab-route-to-lat').value = d.to_lat;
+    if (d.to_lng != null) document.getElementById('admin-cab-route-to-lng').value = d.to_lng;
+
+    const sourceLabel = String(d.source || '').includes('osrm_route')
+      ? 'OSRM Road API'
+      : (String(d.source || '').includes('osm_geocode') ? 'OSM Geocode + Estimate' : 'Location Matrix API');
+    window.setCabRouteCalcMode('api', `Calculated via ${sourceLabel} (${d.distance_km} KM)`);
+    showToast(`Distance calculated via ${sourceLabel}: ${d.distance_km} KM (${d.estimated_time})`, 'success');
+  } catch (err) {
+    console.error('Calculate cab route distance error:', err);
+    window.setCabRouteCalcMode('manual', 'API error — Enter KM manually');
+    showToast('Failed to reach distance API. You can enter KM manually.', 'warning');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
+};
+
 window.openAddCabRouteModal = function () {
   document.getElementById('admin-cab-route-modal-title').textContent = 'Add Outstation Cab Route';
   document.getElementById('admin-cab-route-id').value = '';
   document.getElementById('admin-cab-route-from').value = '';
   document.getElementById('admin-cab-route-to').value = '';
+  ['admin-cab-route-from-lat', 'admin-cab-route-from-lng', 'admin-cab-route-to-lat', 'admin-cab-route-to-lng'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
   document.getElementById('admin-cab-route-dist').value = '';
   document.getElementById('admin-cab-route-time').value = '4h 30m';
   document.getElementById('admin-cab-route-toll').value = '0';
+  window.setCabRouteCalcMode('manual', 'Mode: Manual or Calculate via API');
   if (document.getElementById('admin-cab-route-schedule')) document.getElementById('admin-cab-route-schedule').value = '06:00 AM, 11:30 AM, 04:00 PM, 09:30 PM';
   if (document.getElementById('admin-cab-route-freq')) document.getElementById('admin-cab-route-freq').value = 'Daily Express';
   if (document.getElementById('admin-cab-route-hatchback-fare')) document.getElementById('admin-cab-route-hatchback-fare').value = '';
@@ -6608,9 +6724,14 @@ window.openEditCabRouteModal = async function (id) {
     document.getElementById('admin-cab-route-id').value = route.id;
     document.getElementById('admin-cab-route-from').value = route.from_city;
     document.getElementById('admin-cab-route-to').value = route.to_city;
+    if (document.getElementById('admin-cab-route-from-lat')) document.getElementById('admin-cab-route-from-lat').value = route.from_lat ?? '';
+    if (document.getElementById('admin-cab-route-from-lng')) document.getElementById('admin-cab-route-from-lng').value = route.from_lng ?? '';
+    if (document.getElementById('admin-cab-route-to-lat')) document.getElementById('admin-cab-route-to-lat').value = route.to_lat ?? '';
+    if (document.getElementById('admin-cab-route-to-lng')) document.getElementById('admin-cab-route-to-lng').value = route.to_lng ?? '';
     document.getElementById('admin-cab-route-dist').value = route.distance_km;
     document.getElementById('admin-cab-route-time').value = route.estimated_time;
     document.getElementById('admin-cab-route-toll').value = route.base_toll || 0;
+    window.setCabRouteCalcMode('manual', 'Mode: Saved / Manual (or Recalculate via API)');
     if (document.getElementById('admin-cab-route-schedule')) document.getElementById('admin-cab-route-schedule').value = route.departure_schedule || '';
     if (document.getElementById('admin-cab-route-freq')) document.getElementById('admin-cab-route-freq').value = route.schedule_frequency || 'Daily Express';
     if (document.getElementById('admin-cab-route-hatchback-fare')) document.getElementById('admin-cab-route-hatchback-fare').value = route.hatchback_fare || '';
@@ -6639,12 +6760,19 @@ window.saveCabRoute = async function (e) {
   const id = document.getElementById('admin-cab-route-id').value;
   const isEdit = Boolean(id);
 
+  const fromLatVal = document.getElementById('admin-cab-route-from-lat')?.value;
+  const fromLngVal = document.getElementById('admin-cab-route-from-lng')?.value;
+  const toLatVal = document.getElementById('admin-cab-route-to-lat')?.value;
+  const toLngVal = document.getElementById('admin-cab-route-to-lng')?.value;
+
   const payload = {
     from_city: document.getElementById('admin-cab-route-from').value.trim(),
     to_city: document.getElementById('admin-cab-route-to').value.trim(),
     distance_km: parseFloat(document.getElementById('admin-cab-route-dist').value),
     estimated_time: document.getElementById('admin-cab-route-time').value.trim(),
     base_toll: parseFloat(document.getElementById('admin-cab-route-toll').value) || 0,
+    ...(fromLatVal !== '' && fromLngVal !== '' ? { from_lat: parseFloat(fromLatVal), from_lng: parseFloat(fromLngVal) } : {}),
+    ...(toLatVal !== '' && toLngVal !== '' ? { to_lat: parseFloat(toLatVal), to_lng: parseFloat(toLngVal) } : {}),
     departure_schedule: document.getElementById('admin-cab-route-schedule')?.value.trim() || null,
     schedule_frequency: document.getElementById('admin-cab-route-freq')?.value || 'Daily Express',
     hatchback_fare: document.getElementById('admin-cab-route-hatchback-fare')?.value ? parseFloat(document.getElementById('admin-cab-route-hatchback-fare').value) : null,

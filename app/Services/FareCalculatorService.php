@@ -557,6 +557,31 @@ class FareCalculatorService
     }
 
     /**
+     * Resolve live driving distance, travel time, toll estimate, and endpoint coordinates via
+     * coordinates, the regional location dataset, and OSM/OSRM without reading stored RouteFare rows.
+     *
+     * @param  array<string, mixed>  $input
+     * @return array{
+     *   distance_km: int,
+     *   estimated_time: string,
+     *   base_toll: float,
+     *   source: string,
+     *   cached: bool,
+     *   from_lat: float,
+     *   from_lng: float,
+     *   to_lat: float,
+     *   to_lng: float
+     * }|null
+     */
+    public function resolveDistanceViaApi(array $input, string $from, string $to): ?array
+    {
+        $cleanFrom = trim(explode(',', $from)[0]);
+        $cleanTo = trim(explode(',', $to)[0]);
+
+        return $this->measureFromCoordinates($input, $cleanFrom, $cleanTo);
+    }
+
+    /**
      * Derive metrics from coordinates.
      *
      * Order of preference for each endpoint: caller-supplied coordinates, the
@@ -565,7 +590,17 @@ class FareCalculatorService
      * road estimate only when routing is unavailable.
      *
      * @param  array<string, mixed>  $input
-     * @return array{distance_km: int, estimated_time: string, base_toll: float, source: string}|null
+     * @return array{
+     *   distance_km: int,
+     *   estimated_time: string,
+     *   base_toll: float,
+     *   source: string,
+     *   cached: bool,
+     *   from_lat: float,
+     *   from_lng: float,
+     *   to_lat: float,
+     *   to_lng: float
+     * }|null
      */
     private function measureFromCoordinates(array $input, string $from, string $to): ?array
     {
@@ -595,6 +630,10 @@ class FareCalculatorService
                 'base_toll' => (float) round($driving['distance_km'] * 0.92),
                 'source' => $source.'+osrm_route',
                 'cached' => (bool) ($driving['cached'] ?? false),
+                'from_lat' => (float) $fromLat,
+                'from_lng' => (float) $fromLng,
+                'to_lat' => (float) $toLat,
+                'to_lng' => (float) $toLng,
             ];
         }
 
@@ -606,6 +645,10 @@ class FareCalculatorService
             'base_toll' => (float) $metrics['base_toll'],
             'source' => $source,
             'cached' => false,
+            'from_lat' => (float) $fromLat,
+            'from_lng' => (float) $fromLng,
+            'to_lat' => (float) $toLat,
+            'to_lng' => (float) $toLng,
         ];
     }
 

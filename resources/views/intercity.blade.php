@@ -1937,8 +1937,7 @@
                         <a href="{{ url('/') }}" class="admin-brand-content" style="text-decoration:none; color:inherit;">
                             <img src="{{ asset('assets/logo.jpg') }}" alt="Intercity Wheels Logo" class="admin-brand-img">
                             <div class="admin-brand-text">
-                                <span class="admin-brand-title">Intercity</span>
-                                <span class="admin-brand-sub">AdminLTE 3</span>
+                                <span class="admin-brand-title">Intercity</span>                                
                             </div>
                         </a>
                         <button type="button" class="admin-sidebar-close-btn" onclick="toggleAdminSidebar(false)" aria-label="Close Sidebar">
@@ -2119,7 +2118,7 @@
                     <div class="admin-sidebar-footer">
                         <div class="admin-footer-status">
                             <span class="status-pulse-dot"></span>
-                            <span>Laravel 12 (PHP)</span>
+                            <span>Developed by <a href="https://mabia.in">Mabia.in</a></span>
                         </div>
                         <button type="button" class="btn btn-sm btn-outline" style="padding:4px 8px; font-size:11px;" onclick="switchTab('cabs')" title="Exit Admin to Booking Portal">
                             <span class="material-symbols-outlined" style="font-size:14px;">logout</span>
@@ -6957,15 +6956,20 @@
         <div class="modal-body" style="padding:16px 20px;">
             <form id="admin-cab-route-form" onsubmit="saveCabRoute(event)">
                 <input type="hidden" id="admin-cab-route-id" value="">
+                <input type="hidden" id="admin-cab-route-from-lat" value="">
+                <input type="hidden" id="admin-cab-route-from-lng" value="">
+                <input type="hidden" id="admin-cab-route-to-lat" value="">
+                <input type="hidden" id="admin-cab-route-to-lng" value="">
+                <input type="hidden" id="admin-cab-route-calc-mode" value="manual">
 
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-from">From City (Origin) *</label>
-                        <input type="text" id="admin-cab-route-from" class="form-control" placeholder="e.g. Pune, Kolkata" required list="route-cities-list">
+                        <input type="text" id="admin-cab-route-from" class="form-control" placeholder="e.g. Pune, Kolkata" required list="route-cities-list" oninput="onCabRouteEndpointInput()">
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-to">To City (Destination) *</label>
-                        <input type="text" id="admin-cab-route-to" class="form-control" placeholder="e.g. Goa, Murshidabad" required list="route-cities-list">
+                        <input type="text" id="admin-cab-route-to" class="form-control" placeholder="e.g. Goa, Murshidabad" required list="route-cities-list" oninput="onCabRouteEndpointInput()">
                     </div>
                 </div>
 
@@ -6975,21 +6979,38 @@
                     @endforeach
                 </datalist>
 
+                <div style="background:#f8fafc; border:1px solid var(--outline); border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                            <span style="font-size:11.5px; font-weight:700; color:#334155;">KM Calculation:</span>
+                            <button type="button" id="admin-cab-route-mode-api-btn" class="btn btn-primary btn-sm" style="padding:4px 10px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;" onclick="calculateAdminCabRouteDistance()">
+                                <span class="material-symbols-outlined" style="font-size:14px;">route</span>
+                                <span>Calculate via API</span>
+                            </button>
+                            <button type="button" id="admin-cab-route-mode-manual-btn" class="btn btn-secondary btn-sm" style="padding:4px 10px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;" onclick="setCabRouteCalcMode('manual')">
+                                <span class="material-symbols-outlined" style="font-size:14px;">edit_road</span>
+                                <span>Manual Entry</span>
+                            </button>
+                        </div>
+                        <span id="admin-cab-route-calc-status" style="font-size:11px; color:#64748b; font-weight:600;">Mode: Manual Entry</span>
+                    </div>
+                </div>
+
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-dist">Highway Distance (KM) *</label>
-                        <input type="number" id="admin-cab-route-dist" class="form-control" placeholder="e.g. 450" min="1" required>
+                        <input type="number" id="admin-cab-route-dist" class="form-control" placeholder="e.g. 450" min="1" required oninput="onCabRouteManualMetricEdit()">
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-time">Est. Travel Time *</label>
-                        <input type="text" id="admin-cab-route-time" class="form-control" placeholder="e.g. 9h 15m, 4h 30m" required>
+                        <input type="text" id="admin-cab-route-time" class="form-control" placeholder="e.g. 9h 15m, 4h 30m" required oninput="onCabRouteManualMetricEdit()">
                     </div>
                 </div>
 
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-toll">Highway Base Toll (₹)</label>
-                        <input type="number" id="admin-cab-route-toll" class="form-control" placeholder="e.g. 480" min="0" value="0">
+                        <input type="number" id="admin-cab-route-toll" class="form-control" placeholder="e.g. 480" min="0" value="0" oninput="onCabRouteManualMetricEdit()">
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-roundtrip-discount">Roundtrip Discount %</label>
