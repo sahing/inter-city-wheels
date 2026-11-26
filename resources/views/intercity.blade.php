@@ -2398,6 +2398,7 @@
                                         </tbody>
                                     </table>
                                 </div>
+                                <div class="admin-pagination-bar" id="pag-bar-admin-biddings"></div>
                             </div>
 
                             <div class="card" style="padding:16px 18px;">
@@ -2742,6 +2743,7 @@
                                         </tbody>
                                     </table>
                                 </div>
+                                <div class="admin-pagination-bar" id="pag-bar-admin-users"></div>
                             </div>
                         </div>
 
@@ -3744,15 +3746,53 @@
                         </div>
 
                         <!-- 5. DRIVERS & FLEET MANAGEMENT -->
+                        @php
+                            $fleetDriversList = $allDrivers ?? $drivers ?? collect();
+                            $driverEmailsByLast10 = [];
+                            foreach (($allUsers ?? []) as $usr) {
+                                if ($usr->role === 'driver' && ! empty($usr->phone)) {
+                                    $dDigits = preg_replace('/[^0-9]/', '', (string) $usr->phone) ?? '';
+                                    $dKey = strlen($dDigits) >= 10 ? substr($dDigits, -10) : $dDigits;
+                                    if ($dKey !== '') {
+                                        $driverEmailsByLast10[$dKey] = (string) $usr->email;
+                                    }
+                                }
+                            }
+                        @endphp
                         <div class="admin-section" id="admin-sec-fleet">
                             <div class="card">
-                                <div class="card-header">
+                                <div class="card-header" style="flex-wrap:wrap; gap:12px;">
                                     <div>
                                         <h3 class="card-title">
                                             <span class="material-symbols-outlined" style="color:var(--primary); font-size:18px;">badge</span>
-                                            <span>Registered Fleet & Driver Verification Directory</span>
+                                            <span>Registered Fleet &amp; Driver Verification Directory</span>
                                         </h3>
-                                        <p class="card-subtitle">Chauffeurs verified with Police Clearances & Commercial Permits</p>
+                                        <p class="card-subtitle">Chauffeurs verified with Police Clearances &amp; Commercial Permits</p>
+                                    </div>
+                                    <span class="admin-count-pill" id="admin-fleet-filter-count">{{ count($fleetDriversList) }} Chauffeurs</span>
+                                </div>
+
+                                <!-- Search & Filter Toolbar -->
+                                <div class="admin-bookings-toolbar">
+                                    <div class="admin-search-box" style="flex:1; min-width:260px;">
+                                        <span class="material-symbols-outlined">search</span>
+                                        <input type="text" id="admin-fleet-search-input" placeholder="Search by driver name, phone number, email, or car number..." oninput="handleAdminFleetFilterChange()">
+                                    </div>
+                                    <div class="admin-toolbar-filters">
+                                        <div class="admin-filter-item">
+                                            <label for="admin-fleet-filter-category">Category:</label>
+                                            <select id="admin-fleet-filter-category" onchange="handleAdminFleetFilterChange()">
+                                                <option value="all">All Categories</option>
+                                                <option value="sedan">Sedan</option>
+                                                <option value="prime">Prime</option>
+                                                <option value="suv">SUV</option>
+                                                <option value="luxury">Luxury</option>
+                                                <option value="sleeper_van">Sleeper Van</option>
+                                            </select>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('admin-fleet-search-input').value=''; document.getElementById('admin-fleet-filter-category').value='all'; handleAdminFleetFilterChange();">
+                                            <span>Reset</span>
+                                        </button>
                                     </div>
                                 </div>
 
@@ -3761,28 +3801,47 @@
                                         <thead>
                                             <tr>
                                                 <th>Chauffeur</th>
-                                                <th>Vehicle Model & Plate</th>
+                                                <th>Vehicle Model &amp; Plate</th>
                                                 <th>Category</th>
-                                                <th>Rating & Trips</th>
+                                                <th>Rating &amp; Trips</th>
                                                 <th>Wallet Escrow</th>
                                                 <th>Compliance</th>
                                             </tr>
                                         </thead>
-                                        <tbody>
-                                            @foreach($drivers as $driver)
-                                            <tr>
+                                        <tbody id="admin-fleet-directory-tbody">
+                                            @forelse($fleetDriversList as $driver)
+                                            @php
+                                                $drvDigits = preg_replace('/[^0-9]/', '', (string) $driver->phone) ?? '';
+                                                $drvLast10 = strlen($drvDigits) >= 10 ? substr($drvDigits, -10) : $drvDigits;
+                                                $drvEmail = $driverEmailsByLast10[$drvLast10] ?? '';
+                                                $plateCompact = preg_replace('/\s+/', '', (string) $driver->vehicle_plate) ?? '';
+                                                $fleetSearchBlob = strtolower(trim(implode(' ', array_filter([
+                                                    $driver->name,
+                                                    $driver->phone,
+                                                    $drvDigits,
+                                                    $drvEmail,
+                                                    $driver->vehicle_model,
+                                                    $driver->vehicle_plate,
+                                                    $plateCompact,
+                                                    $driver->fleet_category,
+                                                ]))));
+                                            @endphp
+                                            <tr class="admin-fleet-row" data-search="{{ $fleetSearchBlob }}" data-category="{{ strtolower((string) $driver->fleet_category) }}">
                                                 <td>
                                                     <div style="display:flex; align-items:center; gap:10px;">
                                                         <span style="font-size:22px; width:32px; height:32px; border-radius:50%; overflow:hidden; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">@include('partials.avatar', ['avatar' => $driver->avatar ?? null, 'fallback' => '👨🏽‍✈️', 'alt' => $driver->name])</span>
                                                         <div>
                                                             <div style="font-weight:700; font-size:13px;">{{ $driver->name }}</div>
                                                             <div style="font-size:11px; color:#64748b;">{{ $driver->phone }}</div>
+                                                            @if($drvEmail !== '')
+                                                                <div style="font-size:11px; color:#0284c7;">{{ $drvEmail }}</div>
+                                                            @endif
                                                         </div>
                                                     </div>
                                                 </td>
                                                 <td>
                                                     <div style="font-weight:600; font-size:12.5px;">{{ $driver->vehicle_model }}</div>
-                                                    <div style="font-size:11px; font-family:monospace; color:#475569;">{{ $driver->vehicle_plate }}</div>
+                                                    <div style="font-size:11px; font-family:monospace; color:#0f172a; font-weight:700;">{{ $driver->vehicle_plate }}</div>
                                                 </td>
                                                 <td>
                                                     <span class="admin-badge badge-secondary">{{ strtoupper($driver->fleet_category) }}</span>
@@ -3798,10 +3857,18 @@
                                                     <span class="admin-badge badge-success">✓ Verified</span>
                                                 </td>
                                             </tr>
-                                            @endforeach
+                                            @empty
+                                            <tr data-empty-row="1">
+                                                <td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">No drivers registered yet.</td>
+                                            </tr>
+                                            @endforelse
+                                            <tr id="admin-fleet-empty-row" data-empty-row="1" style="display:none;">
+                                                <td colspan="6" style="text-align:center; padding:24px; color:#64748b;">No drivers match your search criteria.</td>
+                                            </tr>
                                         </tbody>
                                     </table>
                                 </div>
+                                <div class="admin-pagination-bar" id="pag-bar-admin-fleet"></div>
                             </div>
                         </div>
 
@@ -4456,6 +4523,7 @@
                                         </tbody>
                                     </table>
                                 </div>
+                                <div class="admin-pagination-bar" id="pag-bar-admin-locations"></div>
                             </div>
                         </div>
 
@@ -4573,6 +4641,7 @@
                                         </tbody>
                                     </table>
                                 </div>
+                                <div class="admin-pagination-bar" id="pag-bar-admin-cab-routes"></div>
                             </div>
                         </div>
 
@@ -4669,6 +4738,7 @@
                                         </tbody>
                                     </table>
                                 </div>
+                                <div class="admin-pagination-bar" id="pag-bar-admin-berth-routes"></div>
                             </div>
                         </div>
 
@@ -4776,6 +4846,7 @@
                                         </tbody>
                                     </table>
                                 </div>
+                                <div class="admin-pagination-bar" id="pag-bar-admin-berths"></div>
                             </div>
                         </div>
 
@@ -5004,6 +5075,7 @@
                                         </tbody>
                                     </table>
                                 </div>
+                                <div class="admin-pagination-bar" id="pag-bar-admin-vehicles"></div>
                             </div>
                         </div>
                     </div>

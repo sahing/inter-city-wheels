@@ -302,4 +302,16 @@ class AdminFleetAndBerthManagementTest extends TestCase
         $response->assertSee('id="admin-vehicle-modal"', false);
         $response->assertSee('id="driver-list-vehicle-modal"', false);
     }
+
+    public function test_admin_drivers_fleet_directory_renders_search_email_and_pagination(): void
+    {
+        $response = $this->actingAs($this->adminUser)->get('/');
+        $response->assertStatus(200)
+            ->assertSee('id="admin-fleet-search-input"', false)
+            ->assertSee('id="admin-fleet-filter-category"', false)
+            ->assertSee('id="admin-fleet-directory-tbody"', false)
+            ->assertSee('id="pag-bar-admin-fleet"', false)
+            ->assertSee($this->driverUser->email)
+            ->assertSee('handleAdminFleetFilterChange()', false);
+    }
 }

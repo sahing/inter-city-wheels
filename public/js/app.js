@@ -5971,6 +5971,46 @@ window.handleUserFilterChange = function () {
   if (emptyRow) {
     emptyRow.style.display = visibleCount === 0 ? '' : 'none';
   }
+
+  if (typeof window.renderAdminTablePagination === 'function') {
+    window.renderAdminTablePagination('admin-users', true);
+  }
+};
+
+window.handleAdminFleetFilterChange = function () {
+  const rawQuery = (document.getElementById('admin-fleet-search-input')?.value || '').toLowerCase().trim();
+  const compactQuery = rawQuery.replace(/\s+/g, '');
+  const catFilter = (document.getElementById('admin-fleet-filter-category')?.value || 'all').toLowerCase();
+
+  const rows = document.querySelectorAll('#admin-fleet-directory-tbody tr[data-search]');
+  let visibleCount = 0;
+
+  rows.forEach(row => {
+    const searchData = row.dataset.search || '';
+    const rowCat = (row.dataset.category || '').toLowerCase();
+
+    const matchQuery = !rawQuery
+      || searchData.includes(rawQuery)
+      || (compactQuery !== '' && searchData.includes(compactQuery));
+    const matchCat = (catFilter === 'all') || (rowCat === catFilter);
+
+    if (matchQuery && matchCat) {
+      row.style.display = '';
+      visibleCount += 1;
+    } else {
+      row.style.display = 'none';
+    }
+  });
+
+  const countEl = document.getElementById('admin-fleet-filter-count');
+  if (countEl) countEl.textContent = `${visibleCount} Chauffeurs`;
+
+  const emptyRow = document.getElementById('admin-fleet-empty-row');
+  if (emptyRow) emptyRow.style.display = visibleCount === 0 ? '' : 'none';
+
+  if (typeof window.renderAdminTablePagination === 'function') {
+    window.renderAdminTablePagination('admin-fleet', true);
+  }
 };
 
 // Reload all users via API
@@ -7187,6 +7227,10 @@ window.handleCabRouteSearch = function (q) {
     const countEl = document.getElementById(cfg.countId);
     if (countEl) countEl.textContent = `${visibleCount} Routes`;
   });
+
+  if (typeof window.renderAdminTablePagination === 'function') {
+    window.renderAdminTablePagination('admin-cab-routes', true);
+  }
 };
 
 window.handleCabRouteFilter = function () {
@@ -7977,6 +8021,10 @@ window.filterBerthsByCoach = function (coachCode) {
       r.style.display = 'none';
     }
   });
+
+  if (typeof window.renderAdminTablePagination === 'function') {
+    window.renderAdminTablePagination('admin-berths', true);
+  }
 };
 
 window.openAddBerthModal = function () {
@@ -8377,6 +8425,10 @@ window.filterAdminVehicles = function (status) {
       r.style.display = 'none';
     }
   });
+
+  if (typeof window.renderAdminTablePagination === 'function') {
+    window.renderAdminTablePagination('admin-vehicles', true);
+  }
 };
 
 window.reloadAdminVehicles = async function () {
@@ -8573,6 +8625,10 @@ window.handleLocationSearch = function (query) {
       row.style.display = 'none';
     }
   });
+
+  if (typeof window.renderAdminTablePagination === 'function') {
+    window.renderAdminTablePagination('admin-locations', true);
+  }
 };
 
 window.openTicketModal = async function (reference) {
@@ -8728,13 +8784,70 @@ window.saveAdminLegalPages = async function (e) {
       sizes: [10, 25, 50],
       page: 1,
     },
+    'admin-biddings': {
+      tbodyId: 'admin-biddings-tbody',
+      barId: 'pag-bar-admin-biddings',
+      pageSize: 10,
+      sizes: [10, 25, 50],
+      page: 1,
+    },
+    'admin-users': {
+      tbodyId: 'admin-users-table-tbody',
+      barId: 'pag-bar-admin-users',
+      pageSize: 10,
+      sizes: [10, 25, 50],
+      page: 1,
+    },
+    'admin-fleet': {
+      tbodyId: 'admin-fleet-directory-tbody',
+      barId: 'pag-bar-admin-fleet',
+      pageSize: 10,
+      sizes: [10, 25, 50],
+      page: 1,
+    },
+    'admin-locations': {
+      tbodyId: 'admin-locations-tbody',
+      barId: 'pag-bar-admin-locations',
+      pageSize: 10,
+      sizes: [10, 25, 50],
+      page: 1,
+    },
+    'admin-cab-routes': {
+      tbodyId: 'admin-cab-routes-tbody',
+      barId: 'pag-bar-admin-cab-routes',
+      pageSize: 10,
+      sizes: [10, 25, 50],
+      page: 1,
+    },
+    'admin-berth-routes': {
+      tbodyId: 'admin-berth-routes-tbody',
+      barId: 'pag-bar-admin-berth-routes',
+      pageSize: 10,
+      sizes: [10, 25, 50],
+      page: 1,
+    },
+    'admin-berths': {
+      tbodyId: 'admin-berths-tbody',
+      barId: 'pag-bar-admin-berths',
+      pageSize: 10,
+      sizes: [10, 25, 50],
+      page: 1,
+    },
+    'admin-vehicles': {
+      tbodyId: 'admin-vehicles-tbody',
+      barId: 'pag-bar-admin-vehicles',
+      pageSize: 10,
+      sizes: [10, 25, 50],
+      page: 1,
+    },
   };
 
   function getPaginatableRows(tbody) {
     if (!tbody) return [];
     return Array.from(tbody.querySelectorAll('tr')).filter(row => {
       if (row.dataset.emptyRow === '1') return false;
-      if (row.id === 'admin-bookings-empty-row' || row.id === 'admin-bookings-no-results-row') return false;
+      if (row.id === 'admin-bookings-empty-row' || row.id === 'admin-bookings-no-results-row' || row.id === 'admin-users-empty-row' || row.id === 'admin-fleet-empty-row') return false;
+      if (row.querySelector('td[colspan]') && tbody.querySelectorAll('tr').length === 1) return false;
       if (row.style.display === 'none') return false;
       return true;
     });
@@ -8830,11 +8943,17 @@ window.saveAdminLegalPages = async function (e) {
     window.renderAdminTablePagination(key, false);
   };
 
-  document.addEventListener('DOMContentLoaded', () => {
+  function initAllAdminPaginations() {
     Object.keys(ADMIN_TABLES_CONFIG).forEach(key => {
       window.renderAdminTablePagination(key, true);
     });
-  });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAllAdminPaginations);
+  } else {
+    initAllAdminPaginations();
+  }
 })();
 
 window.toggleAdminSchedulesAndBerths = async function (enable) {
@@ -9253,6 +9372,10 @@ window.renderAdminBiddings = async function () {
           </td>
         </tr>`;
     }).join('');
+
+    if (typeof window.renderAdminTablePagination === 'function') {
+      window.renderAdminTablePagination('admin-biddings', true);
+    }
   } catch (err) {
     console.error('renderAdminBiddings', err);
     tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:24px; color:#b91c1c;">Network error while loading auctions.</td></tr>';
