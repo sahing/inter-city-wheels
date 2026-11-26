@@ -49,6 +49,7 @@ class LocalPackageAdminController extends Controller
             'suv_fare' => 'required|numeric|min:0',
             'extra_km_rate' => 'nullable|numeric|min:0',
             'extra_hour_rate' => 'nullable|numeric|min:0',
+            'default_car_type' => 'nullable|string|max:60',
             'is_active' => 'nullable|boolean',
         ]);
 
@@ -62,6 +63,7 @@ class LocalPackageAdminController extends Controller
             'suv_fare' => (float) $validated['suv_fare'],
             'extra_km_rate' => (float) ($validated['extra_km_rate'] ?? 14.00),
             'extra_hour_rate' => (float) ($validated['extra_hour_rate'] ?? 150.00),
+            'default_car_type' => ! empty($validated['default_car_type']) ? strtolower(trim($validated['default_car_type'])) : null,
             'is_active' => $request->has('is_active') ? (bool) $request->is_active : true,
         ]);
 
@@ -102,6 +104,7 @@ class LocalPackageAdminController extends Controller
             'suv_fare' => 'sometimes|required|numeric|min:0',
             'extra_km_rate' => 'nullable|numeric|min:0',
             'extra_hour_rate' => 'nullable|numeric|min:0',
+            'default_car_type' => 'nullable|string|max:60',
             'is_active' => 'nullable|boolean',
         ]);
 
@@ -131,6 +134,11 @@ class LocalPackageAdminController extends Controller
         }
         if (isset($validated['extra_hour_rate'])) {
             $package->extra_hour_rate = (float) $validated['extra_hour_rate'];
+        }
+        if (array_key_exists('default_car_type', $validated)) {
+            $package->default_car_type = ! empty($validated['default_car_type'])
+                ? strtolower(trim((string) $validated['default_car_type']))
+                : null;
         }
         if ($request->has('is_active')) {
             $package->is_active = (bool) $request->is_active;

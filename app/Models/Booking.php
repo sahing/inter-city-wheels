@@ -11,6 +11,8 @@ class Booking extends Model
 
     protected $guarded = [];
 
+    protected $appends = ['cab_type'];
+
     protected $casts = [
         'passengers' => 'array',
         'selected_units' => 'array',
@@ -59,6 +61,36 @@ class Booking extends Model
     public function walletTransactions()
     {
         return $this->hasMany(WalletTransaction::class);
+    }
+
+    /**
+     * Normalized cab type (e.g. SEDAN, SUV, INNOVA) for cab bookings.
+     */
+    public function getCabTypeAttribute(): ?string
+    {
+        if ($this->service_type !== 'cab') {
+            return null;
+        }
+
+        $unit = is_array($this->selected_units) && isset($this->selected_units[0])
+            ? trim((string) $this->selected_units[0])
+            : '';
+
+        $driver = $this->relationLoaded('driver') ? $this->getRelation('driver') : null;
+
+        if ($unit !== '' && strcasecmp($unit, 'Admin Assigned') !== 0) {
+            if ($driver && $unit === $driver->vehicle_plate && ! empty($driver->fleet_category)) {
+                return strtoupper((string) $driver->fleet_category);
+            }
+
+            return strtoupper($unit);
+        }
+
+        if ($driver && ! empty($driver->fleet_category)) {
+            return strtoupper((string) $driver->fleet_category);
+        }
+
+        return null;
     }
 
     /**

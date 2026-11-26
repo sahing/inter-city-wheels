@@ -220,4 +220,51 @@ class AdminCarTypeAndRouteFareScheduleTest extends TestCase
         $bookingInnova = $responseInnova->json('booking');
         $this->assertEquals(3999.00, (float) $bookingInnova['total_amount']);
     }
+
+    public function test_custom_car_type_populates_cab_booking_and_manual_booking(): void
+    {
+        $admin = $this->getAdminUser();
+        $customer = $this->getCustomerUser();
+
+        $this->actingAs($admin)->postJson('/api/admin/car-types', [
+            'name' => 'Executive EV Sedan',
+            'category_key' => 'ev_executive',
+            'badge' => 'Zero Emission',
+            'models' => 'BYD Seal, Hyundai Ioniq 5',
+            'seats' => '4 Seats',
+            'luggage' => '3 Bags',
+            'rate_per_km' => 20.00,
+            'extra_km_rate' => 22.00,
+            'base_fare_min' => 1200.00,
+            'order_index' => 10,
+            'is_active' => true,
+        ])->assertStatus(201);
+
+        // Customer cab booking page gets INITIAL_CAR_TYPES and filter pill
+        $customerPage = $this->actingAs($customer)->get('/');
+        $customerPage->assertStatus(200);
+        $customerPage->assertSee('window.INITIAL_CAR_TYPES', false);
+        $customerPage->assertSee('ev_executive', false);
+        $customerPage->assertSee('Executive EV Sedan', false);
+
+        // Admin manual booking & edit booking dropdowns include the new car type
+        $adminPage = $this->actingAs($admin)->get('/');
+        $adminPage->assertStatus(200);
+        $adminPage->assertSee('<option value="ev_executive">Executive EV Sedan</option>', false);
+
+        // Customer booking with custom car type preserves cab_type instead of falling back to SUV
+        $bookingRes = $this->actingAs($customer)->postJson('/api/bookings', [
+            'service_type' => 'cab',
+            'trip_type' => 'oneway',
+            'from_city' => 'Mumbai',
+            'to_city' => 'Pune',
+            'pickup_location' => 'Dadar, Mumbai',
+            'drop_location' => 'Shivajinagar, Pune',
+            'customer_name' => 'EV Passenger',
+            'customer_phone' => '+91 98765 43210',
+            'fleet_category' => 'ev_executive',
+        ]);
+        $bookingRes->assertStatus(200);
+        $bookingRes->assertJsonPath('booking.cab_type', 'EV_EXECUTIVE');
+    }
 }

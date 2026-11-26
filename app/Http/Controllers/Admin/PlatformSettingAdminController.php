@@ -16,6 +16,10 @@ class PlatformSettingAdminController extends Controller
                 'privacy_policy_url' => PlatformSetting::get('privacy_policy_url', '/privacy-policy'),
                 'terms_conditions_url' => PlatformSetting::get('terms_conditions_url', '/terms-conditions'),
                 'enable_schedules_and_berths' => PlatformSetting::get('enable_schedules_and_berths', '0'),
+                'default_car_type_oneway' => PlatformSetting::get('default_car_type_oneway', ''),
+                'default_car_type_roundtrip' => PlatformSetting::get('default_car_type_roundtrip', ''),
+                'default_car_type_local' => PlatformSetting::get('default_car_type_local', ''),
+                'default_car_type_airport' => PlatformSetting::get('default_car_type_airport', ''),
             ],
         ]);
     }
@@ -50,6 +54,10 @@ class PlatformSettingAdminController extends Controller
                 'privacy_policy_url' => $validated['privacy_policy_url'],
                 'terms_conditions_url' => $validated['terms_conditions_url'],
                 'enable_schedules_and_berths' => PlatformSetting::get('enable_schedules_and_berths', '0'),
+                'default_car_type_oneway' => PlatformSetting::get('default_car_type_oneway', ''),
+                'default_car_type_roundtrip' => PlatformSetting::get('default_car_type_roundtrip', ''),
+                'default_car_type_local' => PlatformSetting::get('default_car_type_local', ''),
+                'default_car_type_airport' => PlatformSetting::get('default_car_type_airport', ''),
             ],
         ]);
     }
@@ -94,5 +102,40 @@ class PlatformSettingAdminController extends Controller
             'success' => false,
             'message' => 'Unknown feature specified.',
         ], 400);
+    }
+
+    public function updateBookingTypeCarTypes(Request $request)
+    {
+        if (! auth()->check() || auth()->user()->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Admin role required.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'oneway' => 'nullable|string|max:60',
+            'roundtrip' => 'nullable|string|max:60',
+            'local' => 'nullable|string|max:60',
+            'airport' => 'nullable|string|max:60',
+        ]);
+
+        foreach (['oneway', 'roundtrip', 'local', 'airport'] as $type) {
+            if ($request->has($type)) {
+                $val = strtolower(trim((string) ($validated[$type] ?? '')));
+                PlatformSetting::set("default_car_type_{$type}", $val);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Booking type car type preferences updated.',
+            'settings' => [
+                'default_car_type_oneway' => PlatformSetting::get('default_car_type_oneway', ''),
+                'default_car_type_roundtrip' => PlatformSetting::get('default_car_type_roundtrip', ''),
+                'default_car_type_local' => PlatformSetting::get('default_car_type_local', ''),
+                'default_car_type_airport' => PlatformSetting::get('default_car_type_airport', ''),
+            ],
+        ]);
     }
 }

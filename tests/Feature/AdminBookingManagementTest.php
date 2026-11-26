@@ -186,4 +186,40 @@ class AdminBookingManagementTest extends TestCase
             'booking',
         ]);
     }
+
+    public function test_admin_bookings_include_and_render_cab_type(): void
+    {
+        $createRes = $this->postJson('/api/admin/bookings', [
+            'service_type' => 'cab',
+            'cab_type' => 'innova',
+            'trip_type' => 'oneway',
+            'from_city' => 'Pune',
+            'to_city' => 'Goa',
+            'pickup_location' => 'Kothrud, Pune',
+            'drop_location' => 'Calangute, Goa',
+            'customer_name' => 'Cab Type Tester',
+            'customer_phone' => '+91 98220 12345',
+            'base_fare' => 7500,
+        ]);
+
+        $createRes->assertStatus(201);
+        $createRes->assertJsonPath('booking.cab_type', 'INNOVA');
+        $bookingId = $createRes->json('booking.id');
+
+        $listRes = $this->getJson('/api/admin/bookings');
+        $listRes->assertStatus(200);
+        $found = collect($listRes->json('bookings'))->firstWhere('id', $bookingId);
+        $this->assertNotNull($found);
+        $this->assertSame('INNOVA', $found['cab_type']);
+
+        $updateRes = $this->putJson("/api/admin/bookings/{$bookingId}", [
+            'cab_type' => 'sedan',
+        ]);
+        $updateRes->assertStatus(200);
+        $updateRes->assertJsonPath('booking.cab_type', 'SEDAN');
+
+        $pageRes = $this->get('/');
+        $pageRes->assertStatus(200);
+        $pageRes->assertSee('SEDAN');
+    }
 }

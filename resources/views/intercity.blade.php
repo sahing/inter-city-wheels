@@ -493,14 +493,18 @@
 
                 <!-- Filters & Sorting Toolbar -->
                 <div class="rental-filter-bar">
-                    <div class="rental-filter-pills">
-                        <button type="button" class="rental-filter-pill active" onclick="filterRentalCategory('all', this)">All Cabs</button>
-                        <button type="button" class="rental-filter-pill" onclick="filterRentalCategory('hatchback', this)">Hatchback</button>
-                        <button type="button" class="rental-filter-pill" onclick="filterRentalCategory('sedan', this)">Sedan</button>
-                        <button type="button" class="rental-filter-pill" onclick="filterRentalCategory('suv', this)">SUV</button>
-                        <button type="button" class="rental-filter-pill" onclick="filterRentalCategory('innova', this)">Innova Crysta</button>
-                        <button type="button" class="rental-filter-pill" onclick="filterRentalCategory('tempo', this)">Tempo Traveller</button>
-                        <button type="button" class="rental-filter-pill" onclick="filterRentalCategory('luxury', this)">Luxury</button>
+                    <div class="rental-filter-pills" id="rental-filter-pills">
+                        <button type="button" class="rental-filter-pill active" data-category="all" onclick="filterRentalCategory('all', this)">All Cabs</button>
+                        @forelse(($allCarTypes ?? collect())->where('is_active', true) as $ct)
+                            <button type="button" class="rental-filter-pill" data-category="{{ strtolower($ct->category_key) }}" onclick="filterRentalCategory('{{ strtolower($ct->category_key) }}', this)">{{ $ct->name }}</button>
+                        @empty
+                            <button type="button" class="rental-filter-pill" data-category="hatchback" onclick="filterRentalCategory('hatchback', this)">Hatchback</button>
+                            <button type="button" class="rental-filter-pill" data-category="sedan" onclick="filterRentalCategory('sedan', this)">Sedan</button>
+                            <button type="button" class="rental-filter-pill" data-category="suv" onclick="filterRentalCategory('suv', this)">SUV</button>
+                            <button type="button" class="rental-filter-pill" data-category="innova" onclick="filterRentalCategory('innova', this)">Innova Crysta</button>
+                            <button type="button" class="rental-filter-pill" data-category="tempo" onclick="filterRentalCategory('tempo', this)">Tempo Traveller</button>
+                            <button type="button" class="rental-filter-pill" data-category="luxury" onclick="filterRentalCategory('luxury', this)">Luxury</button>
+                        @endforelse
                     </div>
                     <div style="display:flex; align-items:center; gap:8px;">
                         <span style="font-size:12.5px; font-weight:600; color:#64748b;">Sort By:</span>
@@ -1982,6 +1986,16 @@
                                     </div>
                                 </div>
 
+                                <!-- Compact Booking Type Filter Pills -->
+                                <div class="admin-trip-type-filters" id="admin-booking-trip-type-filters" role="group" aria-label="Filter bookings by trip type">
+                                    <span class="admin-trip-type-label">Booking Type:</span>
+                                    <button type="button" class="admin-trip-type-btn active" data-trip-type="all" onclick="setBookingTripTypeFilter('all', this)">All</button>
+                                    <button type="button" class="admin-trip-type-btn" data-trip-type="oneway" onclick="setBookingTripTypeFilter('oneway', this)">One-Way</button>
+                                    <button type="button" class="admin-trip-type-btn" data-trip-type="roundtrip" onclick="setBookingTripTypeFilter('roundtrip', this)">Round-Trip</button>
+                                    <button type="button" class="admin-trip-type-btn" data-trip-type="local" onclick="setBookingTripTypeFilter('local', this)">Local</button>
+                                    <button type="button" class="admin-trip-type-btn" data-trip-type="airport" onclick="setBookingTripTypeFilter('airport', this)">Airport</button>
+                                </div>
+
                                 <div class="admin-table-responsive">
                                     <table class="admin-data-table admin-table-compact" id="admin-bookings-table">
                                         <thead>
@@ -1998,7 +2012,7 @@
                                         </thead>
                                         <tbody id="admin-bookings-table-tbody">
                                             @forelse($recentBookings as $b)
-                                            <tr id="booking-row-{{ $b->id }}" data-id="{{ $b->id }}" data-ref="{{ $b->booking_reference }}" data-status="{{ $b->status }}" data-service="{{ $b->service_type }}" data-search="{{ strtolower($b->booking_reference . ' ' . $b->customer_name . ' ' . $b->customer_phone . ' ' . $b->route_summary . ' ' . $b->pickup_location . ' ' . $b->drop_location) }}">
+                                            <tr id="booking-row-{{ $b->id }}" data-id="{{ $b->id }}" data-ref="{{ $b->booking_reference }}" data-status="{{ $b->status }}" data-service="{{ $b->service_type }}" data-trip-type="{{ strtolower($b->trip_type ?? 'oneway') }}" data-search="{{ strtolower($b->booking_reference . ' ' . $b->customer_name . ' ' . $b->customer_phone . ' ' . $b->route_summary . ' ' . $b->pickup_location . ' ' . $b->drop_location . ' ' . ($b->cab_type ?? '')) }}">
                                                 <td>
                                                     <a href="javascript:void(0)" onclick="openViewBookingModal({{ $b->id }})" class="booking-ref-link" title="Click to inspect booking">
                                                         {{ $b->booking_reference }}
@@ -2012,10 +2026,15 @@
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <div style="display:flex; align-items:center; gap:4px;">
+                                                    <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
                                                         <span class="admin-badge {{ $b->service_type === 'cab' ? 'badge-primary' : 'badge-gold' }}" style="font-size:9.5px; padding:1px 5px;">
                                                             {{ strtoupper($b->service_type) }}
                                                         </span>
+                                                        @if($b->service_type === 'cab' && $b->cab_type)
+                                                            <span class="admin-badge badge-secondary" style="font-size:9.5px; padding:1px 5px;" title="Cab Type">
+                                                                {{ $b->cab_type }}
+                                                            </span>
+                                                        @endif
                                                         <span class="cell-primary-text">{{ $b->route_summary }}</span>
                                                     </div>
                                                     <div class="cell-subtext truncate-subtext" title="{{ $b->pickup_location }} → {{ $b->drop_location }}">
@@ -2551,6 +2570,9 @@
                                                         <span style="font-size:11px; color:#16a34a; font-weight:600;">
                                                             {{ $cr->roundtrip_discount_pct > 0 ? $cr->roundtrip_discount_pct . '% Return Disc.' : '250 KM/Day Min' }}
                                                         </span>
+                                                        @if(!empty($cr->default_car_type))
+                                                            <div style="margin-top:3px;"><span class="admin-badge badge-secondary" style="font-size:9.5px; padding:1px 5px;" title="Specific Car Type">Car: {{ strtoupper($cr->default_car_type) }}</span></div>
+                                                        @endif
                                                     </td>
                                                     <td>
                                                         @if($cr->is_active)
@@ -2731,6 +2753,9 @@
                                                     </td>
                                                     <td>
                                                         <span style="font-size:11px; color:#64748b;">+₹{{ number_format($lp->extra_km_rate) }}/km &bull; +₹{{ number_format($lp->extra_hour_rate) }}/hr</span>
+                                                        @if(!empty($lp->default_car_type))
+                                                            <div style="margin-top:3px;"><span class="admin-badge badge-secondary" style="font-size:9.5px; padding:1px 5px;" title="Specific Car Type">Car: {{ strtoupper($lp->default_car_type) }}</span></div>
+                                                        @endif
                                                     </td>
                                                     <td>
                                                         @if($lp->is_active)
@@ -2821,6 +2846,9 @@
                                                         <span style="font-size:11.5px; color:#475569;">
                                                             Sedan: <strong>₹{{ number_format($ah->sedan_base_fare) }}</strong> &bull; SUV: <strong>₹{{ number_format($ah->suv_base_fare) }}</strong>
                                                         </span>
+                                                        @if(!empty($ah->default_car_type))
+                                                            <div style="margin-top:3px;"><span class="admin-badge badge-secondary" style="font-size:9.5px; padding:1px 5px;" title="Specific Car Type">Car: {{ strtoupper($ah->default_car_type) }}</span></div>
+                                                        @endif
                                                     </td>
                                                     <td>
                                                         @if($ah->is_active)
@@ -2866,6 +2894,15 @@
                                                 <div><strong>Bidding:</strong> Enabled (Driver Auction)</div>
                                                 <div><strong>Min Billing:</strong> Point-to-point route matrix distance</div>
                                             </div>
+                                            <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #e2e8f0;">
+                                                <label for="rule-car-type-oneway" style="display:block; font-size:10.5px; font-weight:700; color:#475569; margin-bottom:4px;">Specific Car Type (Optional)</label>
+                                                <select id="rule-car-type-oneway" class="form-control booking-type-car-select" style="font-size:11.5px; padding:4px 8px;" onchange="saveBookingTypeCarTypeRule('oneway', this.value)">
+                                                    <option value="">-- Any / All Car Types --</option>
+                                                    @foreach(($allCarTypes ?? collect())->where('is_active', true) as $ct)
+                                                        <option value="{{ strtolower($ct->category_key) }}" {{ ($platformSettings['default_car_type_oneway'] ?? '') === strtolower($ct->category_key) ? 'selected' : '' }}>{{ $ct->name }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
                                         </div>
 
                                         <!-- 2. ROUND TRIP -->
@@ -2882,6 +2919,15 @@
                                                 <div><strong>Min Guarantee:</strong> 250 KM / Calendar Day</div>
                                                 <div><strong>Night Halt Fee:</strong> ₹400 / night (11 PM - 6 AM)</div>
                                                 <div><strong>Return Date:</strong> Enforced post-pickup</div>
+                                            </div>
+                                            <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #e2e8f0;">
+                                                <label for="rule-car-type-roundtrip" style="display:block; font-size:10.5px; font-weight:700; color:#475569; margin-bottom:4px;">Specific Car Type (Optional)</label>
+                                                <select id="rule-car-type-roundtrip" class="form-control booking-type-car-select" style="font-size:11.5px; padding:4px 8px;" onchange="saveBookingTypeCarTypeRule('roundtrip', this.value)">
+                                                    <option value="">-- Any / All Car Types --</option>
+                                                    @foreach(($allCarTypes ?? collect())->where('is_active', true) as $ct)
+                                                        <option value="{{ strtolower($ct->category_key) }}" {{ ($platformSettings['default_car_type_roundtrip'] ?? '') === strtolower($ct->category_key) ? 'selected' : '' }}>{{ $ct->name }}</option>
+                                                    @endforeach
+                                                </select>
                                             </div>
                                         </div>
 
@@ -2900,6 +2946,15 @@
                                                 <div><strong>Extra KM Rate:</strong> ₹14.00 / km</div>
                                                 <div><strong>Extra Hour Rate:</strong> ₹150.00 / hour</div>
                                             </div>
+                                            <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #e2e8f0;">
+                                                <label for="rule-car-type-local" style="display:block; font-size:10.5px; font-weight:700; color:#475569; margin-bottom:4px;">Specific Car Type (Optional)</label>
+                                                <select id="rule-car-type-local" class="form-control booking-type-car-select" style="font-size:11.5px; padding:4px 8px;" onchange="saveBookingTypeCarTypeRule('local', this.value)">
+                                                    <option value="">-- Any / All Car Types --</option>
+                                                    @foreach(($allCarTypes ?? collect())->where('is_active', true) as $ct)
+                                                        <option value="{{ strtolower($ct->category_key) }}" {{ ($platformSettings['default_car_type_local'] ?? '') === strtolower($ct->category_key) ? 'selected' : '' }}>{{ $ct->name }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
                                         </div>
 
                                         <!-- 4. AIRPORT TRANSFERS -->
@@ -2916,6 +2971,15 @@
                                                 <div><strong>Modes:</strong> Pickup from Airport / Drop to Airport</div>
                                                 <div><strong>Terminal Surcharge:</strong> ₹250 flat (parking/entry)</div>
                                                 <div><strong>Flight Delay Buffer:</strong> 45 minutes free wait</div>
+                                            </div>
+                                            <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #e2e8f0;">
+                                                <label for="rule-car-type-airport" style="display:block; font-size:10.5px; font-weight:700; color:#475569; margin-bottom:4px;">Specific Car Type (Optional)</label>
+                                                <select id="rule-car-type-airport" class="form-control booking-type-car-select" style="font-size:11.5px; padding:4px 8px;" onchange="saveBookingTypeCarTypeRule('airport', this.value)">
+                                                    <option value="">-- Any / All Car Types --</option>
+                                                    @foreach(($allCarTypes ?? collect())->where('is_active', true) as $ct)
+                                                        <option value="{{ strtolower($ct->category_key) }}" {{ ($platformSettings['default_car_type_airport'] ?? '') === strtolower($ct->category_key) ? 'selected' : '' }}>{{ $ct->name }}</option>
+                                                    @endforeach
+                                                </select>
                                             </div>
                                         </div>
                                     </div>
@@ -4260,8 +4324,9 @@
                 <div>
                     <div style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700; letter-spacing:0.04em;">Route & Service</div>
                     <div id="view-booking-route" style="font-size:16px; font-weight:800; color:#0f172a; margin-top:2px;">Pune → Goa</div>
-                    <div style="display:flex; gap:6px; margin-top:4px;">
+                    <div style="display:flex; gap:6px; margin-top:4px; flex-wrap:wrap;">
                         <span class="admin-badge badge-gold" id="view-booking-service-badge">CAB</span>
+                        <span class="admin-badge badge-secondary" id="view-booking-cab-type" style="display:none;">SUV</span>
                         <span class="admin-badge badge-info" id="view-booking-trip-type">ONE-WAY</span>
                         <span class="admin-badge badge-success" id="view-booking-status-badge">CONFIRMED</span>
                     </div>
@@ -4403,12 +4468,29 @@
                 </div>
 
                 <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; margin:14px 0 8px;">Trip Route & Addresses</div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
                     <div class="form-group">
                         <label class="form-label" for="edit-service-type">Service Type</label>
                         <select id="edit-service-type" class="form-control">
                             <option value="cab">Outstation Cab</option>
                             <option value="bus">Volvo Sleeper Berth</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="edit-cab-type">Cab Type</label>
+                        <select id="edit-cab-type" class="form-control">
+                            <option value="">-- Auto / Unspecified --</option>
+                            @forelse(($allCarTypes ?? collect())->where('is_active', true) as $ct)
+                                <option value="{{ strtolower($ct->category_key) }}">{{ $ct->name }}</option>
+                            @empty
+                                <option value="hatchback">Hatchback</option>
+                                <option value="sedan">Sedan</option>
+                                <option value="prime">Prime Sedan</option>
+                                <option value="suv">SUV</option>
+                                <option value="innova">Innova Crysta</option>
+                                <option value="tempo">Tempo Traveller</option>
+                                <option value="luxury">Luxury</option>
+                            @endforelse
                         </select>
                     </div>
                     <div class="form-group">
@@ -4533,7 +4615,7 @@
                 </div>
 
                 <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; margin:14px 0 8px;">Route & Fleet Selection</div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
                     <div class="form-group">
                         <label class="form-label" for="add-service-type">Service Type</label>
                         <select id="add-service-type" class="form-control">
@@ -4542,10 +4624,28 @@
                         </select>
                     </div>
                     <div class="form-group">
+                        <label class="form-label" for="add-cab-type">Cab Type</label>
+                        <select id="add-cab-type" class="form-control">
+                            <option value="">-- Auto / Unspecified --</option>
+                            @forelse(($allCarTypes ?? collect())->where('is_active', true) as $ct)
+                                <option value="{{ strtolower($ct->category_key) }}">{{ $ct->name }}</option>
+                            @empty
+                                <option value="hatchback">Hatchback</option>
+                                <option value="sedan">Sedan</option>
+                                <option value="prime">Prime Sedan</option>
+                                <option value="suv">SUV</option>
+                                <option value="innova">Innova Crysta</option>
+                                <option value="tempo">Tempo Traveller</option>
+                                <option value="luxury">Luxury</option>
+                            @endforelse
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <label class="form-label" for="add-trip-type">Trip Direction</label>
-                        <select id="add-trip-type" class="form-control">
+                        <select id="add-trip-type" class="form-control" onchange="autoSuggestAddFares()">
                             <option value="oneway" selected>One-Way Outstation</option>
                             <option value="roundtrip">Round-Trip Outstation</option>
+                            <option value="local">Local Hourly Package</option>
                             <option value="airport">Airport Transfer</option>
                         </select>
                     </div>
@@ -5681,6 +5781,16 @@
                     </div>
                 </div>
 
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" for="admin-cab-route-default-car-type">Preferred / Specific Car Type (Optional)</label>
+                    <select id="admin-cab-route-default-car-type" class="form-control booking-type-car-select">
+                        <option value="">-- Any / All Car Types --</option>
+                        @foreach(($allCarTypes ?? collect())->where('is_active', true) as $ct)
+                            <option value="{{ strtolower($ct->category_key) }}">{{ $ct->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
                 <div style="display:flex; align-items:center; gap:6px; margin-bottom:14px;">
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;">
                         <input type="checkbox" id="admin-cab-route-active" checked>
@@ -5877,6 +5987,16 @@
                     </div>
                 </div>
 
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" for="admin-local-pkg-default-car-type">Preferred / Specific Car Type (Optional)</label>
+                    <select id="admin-local-pkg-default-car-type" class="form-control booking-type-car-select">
+                        <option value="">-- Any / All Car Types --</option>
+                        @foreach(($allCarTypes ?? collect())->where('is_active', true) as $ct)
+                            <option value="{{ strtolower($ct->category_key) }}">{{ $ct->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
                 <div style="display:flex; align-items:center; gap:6px; margin-bottom:14px;">
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px;">
                         <input type="checkbox" id="admin-local-pkg-active" checked>
@@ -5963,6 +6083,16 @@
                         <label class="form-label" for="admin-airport-suv">Base SUV Rate (₹)</label>
                         <input type="number" id="admin-airport-suv" class="form-control" placeholder="e.g. 1450" value="1450" min="0">
                     </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" for="admin-airport-default-car-type">Preferred / Specific Car Type (Optional)</label>
+                    <select id="admin-airport-default-car-type" class="form-control booking-type-car-select">
+                        <option value="">-- Any / All Car Types --</option>
+                        @foreach(($allCarTypes ?? collect())->where('is_active', true) as $ct)
+                            <option value="{{ strtolower($ct->category_key) }}">{{ $ct->name }}</option>
+                        @endforeach
+                    </select>
                 </div>
 
                 <div style="display:flex; align-items:center; gap:6px; margin-bottom:14px;">

@@ -441,7 +441,15 @@ class FareCalculatorService
     {
         $fleet = strtolower(trim($fleet));
 
-        return array_key_exists($fleet, self::DEFAULT_RATES) ? $fleet : 'suv';
+        if (array_key_exists($fleet, self::DEFAULT_RATES)) {
+            return $fleet;
+        }
+
+        if ($fleet !== '' && CarType::whereRaw('LOWER(category_key) = ?', [$fleet])->exists()) {
+            return $fleet;
+        }
+
+        return 'suv';
     }
 
     /**

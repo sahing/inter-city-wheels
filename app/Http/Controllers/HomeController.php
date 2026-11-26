@@ -42,6 +42,10 @@ class HomeController extends Controller
             'privacy_policy_url' => \App\Models\PlatformSetting::get('privacy_policy_url', '/privacy-policy'),
             'terms_conditions_url' => \App\Models\PlatformSetting::get('terms_conditions_url', '/terms-conditions'),
             'enable_schedules_and_berths' => \App\Models\PlatformSetting::get('enable_schedules_and_berths', '0'),
+            'default_car_type_oneway' => \App\Models\PlatformSetting::get('default_car_type_oneway', ''),
+            'default_car_type_roundtrip' => \App\Models\PlatformSetting::get('default_car_type_roundtrip', ''),
+            'default_car_type_local' => \App\Models\PlatformSetting::get('default_car_type_local', ''),
+            'default_car_type_airport' => \App\Models\PlatformSetting::get('default_car_type_airport', ''),
         ];
         $isSchedulesEnabled = $platformSettings['enable_schedules_and_berths'] === '1';
 

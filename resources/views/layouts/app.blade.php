@@ -696,17 +696,33 @@
         $jsCabRoutes = isset($allCabRoutes) 
             ? $allCabRoutes 
             : \App\Models\RouteFare::where('is_active', true)->get();
+        $jsCarTypes = isset($allCarTypes)
+            ? $allCarTypes
+            : \App\Models\CarType::orderBy('order_index')->get();
+        $jsLocalPackages = isset($localPackages)
+            ? $localPackages
+            : \App\Models\LocalPackage::orderBy('duration_hours')->get();
+        $jsAirportHubs = isset($airportHubs)
+            ? $airportHubs
+            : \App\Models\AirportHub::orderBy('city')->get();
         $alternateAuthConfig = app(\App\Services\AlternateAuthService::class)->getPublicConfig();
     @endphp
     <script>
         window.CURRENT_USER = {!! json_encode($jsUser) !!};
         window.INITIAL_SERVICE_LOCATIONS = {!! json_encode($jsLocations) !!};
         window.INITIAL_CAB_ROUTES = {!! json_encode($jsCabRoutes) !!};
+        window.INITIAL_CAR_TYPES = {!! json_encode($jsCarTypes) !!};
+        window.INITIAL_LOCAL_PACKAGES = {!! json_encode($jsLocalPackages) !!};
+        window.INITIAL_AIRPORT_HUBS = {!! json_encode($jsAirportHubs) !!};
         window.ALTERNATE_AUTH_CONFIG = {!! json_encode($alternateAuthConfig) !!};
         window.PLATFORM_SETTINGS = {!! json_encode($platformSettings ?? [
             'privacy_policy_url' => \App\Models\PlatformSetting::get('privacy_policy_url', '/privacy-policy'),
             'terms_conditions_url' => \App\Models\PlatformSetting::get('terms_conditions_url', '/terms-conditions'),
             'enable_schedules_and_berths' => \App\Models\PlatformSetting::get('enable_schedules_and_berths', '0'),
+            'default_car_type_oneway' => \App\Models\PlatformSetting::get('default_car_type_oneway', ''),
+            'default_car_type_roundtrip' => \App\Models\PlatformSetting::get('default_car_type_roundtrip', ''),
+            'default_car_type_local' => \App\Models\PlatformSetting::get('default_car_type_local', ''),
+            'default_car_type_airport' => \App\Models\PlatformSetting::get('default_car_type_airport', ''),
         ]) !!};
     </script>
 

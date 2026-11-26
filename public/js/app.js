@@ -231,8 +231,8 @@ const state = {
   ]
 };
 
-// Fleet specs & rates
-const FLEET_TYPES = {
+// Fleet specs & rates (seeded from defaults, hydrated from CarType DB records)
+const DEFAULT_FLEET_TYPES = {
   hatchback: {
     category: 'hatchback',
     name: 'Hatchback Economy',
@@ -311,6 +311,7 @@ const FLEET_TYPES = {
     image: 'https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&fit=crop&w=640&q=80'
   }
 };
+let FLEET_TYPES = { ...DEFAULT_FLEET_TYPES };
 
 let mapInstance = null;
 let mapRouteLine = null;
@@ -323,6 +324,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Seed locations from server-rendered window variable
   if (window.INITIAL_SERVICE_LOCATIONS && Array.isArray(window.INITIAL_SERVICE_LOCATIONS)) {
     window.syncAllLocationDropdowns(window.INITIAL_SERVICE_LOCATIONS);
+  }
+
+  // Seed car types from server-rendered window variable
+  if (window.INITIAL_CAR_TYPES && Array.isArray(window.INITIAL_CAR_TYPES)) {
+    window.syncAllCarTypes(window.INITIAL_CAR_TYPES);
   }
 
   // Merge server-side route fares into ROUTE_MATRIX
@@ -1052,6 +1058,109 @@ document.addEventListener('keydown', function (e) {
   }
 });
 
+// Sync Car Types across Cab Booking, Filter Pills, and Manual/Edit Booking Dropdowns
+window.syncAllCarTypes = async function (carTypesList) {
+  let carTypes = carTypesList;
+  if (carTypes && !Array.isArray(carTypes) && Array.isArray(carTypes.car_types)) {
+    carTypes = carTypes.car_types;
+  }
+  if (!carTypes) {
+    try {
+      const res = await fetch('/api/car-types');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.car_types)) {
+        carTypes = data.car_types;
+      }
+    } catch (e) {
+      return;
+    }
+  }
+  if (!Array.isArray(carTypes)) return;
+
+  const activeTypes = carTypes.filter(ct => ct.is_active !== false && ct.is_active !== 0 && ct.is_active !== '0');
+  if (activeTypes.length > 0) {
+    const nextFleets = {};
+    activeTypes.forEach(ct => {
+      const key = String(ct.category_key || '').toLowerCase().trim();
+      if (!key) return;
+      nextFleets[key] = {
+        category: key,
+        name: ct.name,
+        models: ct.models || '',
+        seats: String(ct.seats || '4 Seats'),
+        luggage: String(ct.luggage || '2 Bags'),
+        ratePerKm: Number(ct.rate_per_km) || 12,
+        badge: ct.badge || 'Popular',
+        extraKm: Number(ct.extra_km_rate || ct.rate_per_km) || 12,
+        image: ct.image_url || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80'
+      };
+    });
+    if (Object.keys(nextFleets).length > 0) {
+      FLEET_TYPES = nextFleets;
+      if (!FLEET_TYPES[state.cab.selectedFleet]) {
+        state.cab.selectedFleet = Object.keys(FLEET_TYPES)[0];
+      }
+    }
+  }
+
+  // Update Cab Booking filter pills
+  const pillsContainer = document.getElementById('rental-filter-pills');
+  if (pillsContainer) {
+    const activeCat = activeRentalFilter || 'all';
+    const pillsHtml = [
+      `<button type="button" class="rental-filter-pill ${activeCat === 'all' ? 'active' : ''}" data-category="all" onclick="filterRentalCategory('all', this)">All Cabs</button>`,
+      ...activeTypes.map(ct => {
+        const key = String(ct.category_key || '').toLowerCase().trim();
+        return `<button type="button" class="rental-filter-pill ${activeCat === key ? 'active' : ''}" data-category="${key}" onclick="filterRentalCategory('${key}', this)">${ct.name}</button>`;
+      })
+    ].join('');
+    pillsContainer.innerHTML = pillsHtml;
+  }
+
+  // Update Manual, Edit Booking, and Booking Type Car Type dropdowns
+  ['add-cab-type', 'edit-cab-type'].forEach(selectId => {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    const prevVal = select.value;
+    select.innerHTML = '<option value="">-- Auto / Unspecified --</option>' +
+      activeTypes.map(ct => {
+        const key = String(ct.category_key || '').toLowerCase().trim();
+        return `<option value="${key}">${ct.name}</option>`;
+      }).join('');
+    if (prevVal) {
+      if (![...select.options].some(o => o.value === prevVal)) {
+        const extraOpt = document.createElement('option');
+        extraOpt.value = prevVal;
+        extraOpt.textContent = prevVal.toUpperCase();
+        select.appendChild(extraOpt);
+      }
+      select.value = prevVal;
+    }
+  });
+
+  document.querySelectorAll('.booking-type-car-select').forEach(select => {
+    const prevVal = select.value;
+    select.innerHTML = '<option value="">-- Any / All Car Types --</option>' +
+      activeTypes.map(ct => {
+        const key = String(ct.category_key || '').toLowerCase().trim();
+        return `<option value="${key}">${ct.name}</option>`;
+      }).join('');
+    if (prevVal) {
+      if (![...select.options].some(o => o.value === prevVal)) {
+        const extraOpt = document.createElement('option');
+        extraOpt.value = prevVal;
+        extraOpt.textContent = prevVal.toUpperCase();
+        select.appendChild(extraOpt);
+      }
+      select.value = prevVal;
+    }
+  });
+
+  if (typeof renderRentalVehicles === 'function' && document.getElementById('rental-vehicles-grid')) {
+    renderRentalVehicles(activeRentalFilter, activeRentalSort);
+  }
+};
+
 // ========================================================
 // REAL-TIME LOCATION & ROUTE SYNCHRONIZATION
 // ========================================================
@@ -1438,6 +1547,69 @@ function serverFleetTotal(fleetKey) {
   return null;
 }
 
+// Resolve optional preferred/specific car type configured under a Route, Local Package, Airport Hub, or Booking Type rule
+function resolvePreferredCarTypeForBooking(overrides = {}) {
+  const tripType = (overrides.tripType || state.cab.tripType || 'oneway').toLowerCase();
+  let preferred = '';
+
+  if (tripType === 'oneway' || tripType === 'roundtrip') {
+    const fromVal = (overrides.fromCity ?? (tripType === 'roundtrip'
+      ? document.getElementById('rental-rt-from')?.value
+      : document.getElementById('rental-from-city')?.value) ?? '').split(',')[0].trim().toLowerCase();
+    const toVal = (overrides.toCity ?? (tripType === 'roundtrip'
+      ? document.getElementById('rental-rt-to')?.value
+      : document.getElementById('rental-to-city')?.value) ?? '').split(',')[0].trim().toLowerCase();
+
+    if (fromVal && toVal && Array.isArray(window.INITIAL_CAB_ROUTES)) {
+      const route = window.INITIAL_CAB_ROUTES.find(r =>
+        r && r.is_active !== false && r.is_active !== 0 &&
+        String(r.from_city || '').trim().toLowerCase() === fromVal &&
+        String(r.to_city || '').trim().toLowerCase() === toVal
+      );
+      if (route && route.default_car_type) {
+        preferred = String(route.default_car_type).trim().toLowerCase();
+      }
+    }
+  } else if (tripType === 'local') {
+    const pkgCode = (overrides.localPackage ?? document.getElementById('rental-local-package')?.value ?? '').trim();
+    if (pkgCode && Array.isArray(window.INITIAL_LOCAL_PACKAGES)) {
+      const pkg = window.INITIAL_LOCAL_PACKAGES.find(p =>
+        p && p.is_active !== false && p.is_active !== 0 &&
+        String(p.package_code || '').trim() === pkgCode
+      );
+      if (pkg && pkg.default_car_type) {
+        preferred = String(pkg.default_car_type).trim().toLowerCase();
+      }
+    }
+  } else if (tripType === 'airport') {
+    const airportText = (overrides.airportText ?? document.getElementById('rental-airport-name')?.value ?? '').trim().toLowerCase();
+    if (airportText && Array.isArray(window.INITIAL_AIRPORT_HUBS)) {
+      const hub = window.INITIAL_AIRPORT_HUBS.find(a => {
+        if (!a || a.is_active === false || a.is_active === 0) return false;
+        const code = String(a.iata_code || '').trim().toLowerCase();
+        const name = String(a.airport_name || '').trim().toLowerCase();
+        const city = String(a.city || '').trim().toLowerCase();
+        return (code && airportText.includes(code)) ||
+          (name && airportText.includes(name)) ||
+          (city && airportText.includes(city));
+      });
+      if (hub && hub.default_car_type) {
+        preferred = String(hub.default_car_type).trim().toLowerCase();
+      }
+    }
+  }
+
+  if (!preferred && window.PLATFORM_SETTINGS) {
+    const ruleVal = window.PLATFORM_SETTINGS[`default_car_type_${tripType}`];
+    if (ruleVal) preferred = String(ruleVal).trim().toLowerCase();
+  }
+
+  if (preferred && (overrides.allowUnknown || FLEET_TYPES[preferred])) {
+    return preferred;
+  }
+  return '';
+}
+
 // Explore Cabs Validation & Results Navigation
 window.exploreCabs = function () {
   const tripType = state.cab.tripType || 'oneway';
@@ -1475,6 +1647,18 @@ window.exploreCabs = function () {
       return;
     }
   }
+
+  // Apply optional specific Car Type configured for this booking type/route/package/hub
+  const preferredCarType = resolvePreferredCarTypeForBooking();
+  if (preferredCarType) {
+    state.cab.selectedFleet = preferredCarType;
+    activeRentalFilter = preferredCarType;
+  } else {
+    activeRentalFilter = 'all';
+  }
+  document.querySelectorAll('#rental-filter-pills .rental-filter-pill').forEach(p => {
+    p.classList.toggle('active', (p.dataset.category || '') === activeRentalFilter);
+  });
 
   // Update stats & render vehicles
   updateRentalRouteStats();
@@ -4364,10 +4548,23 @@ function numberToWordsINR(num) {
 }
 
 // Client-side search & status filtering for compact bookings table
+window.setBookingTripTypeFilter = function (tripType, btn) {
+  const container = document.getElementById('admin-booking-trip-type-filters');
+  if (container) {
+    container.querySelectorAll('.admin-trip-type-btn').forEach(b => b.classList.remove('active'));
+  }
+  if (btn) {
+    btn.classList.add('active');
+  }
+  handleBookingFilterChange();
+};
+
 window.handleBookingFilterChange = function () {
   const query = (document.getElementById('admin-booking-search-input')?.value || '').toLowerCase().trim();
   const statusFilter = document.getElementById('admin-booking-filter-status')?.value || 'all';
   const serviceFilter = document.getElementById('admin-booking-filter-service')?.value || 'all';
+  const activeTripBtn = document.querySelector('#admin-booking-trip-type-filters .admin-trip-type-btn.active');
+  const tripTypeFilter = (activeTripBtn?.dataset.tripType || 'all').toLowerCase();
 
   const rows = document.querySelectorAll('#admin-bookings-table-tbody tr[data-search]');
   let visibleCount = 0;
@@ -4376,12 +4573,14 @@ window.handleBookingFilterChange = function () {
     const searchData = row.dataset.search || '';
     const rowStatus = row.dataset.status || '';
     const rowService = row.dataset.service || '';
+    const rowTripType = (row.dataset.tripType || 'oneway').toLowerCase();
 
     const matchQuery = !query || searchData.includes(query);
     const matchStatus = (statusFilter === 'all') || (rowStatus.toLowerCase() === statusFilter.toLowerCase());
     const matchService = (serviceFilter === 'all') || (rowService.toLowerCase() === serviceFilter.toLowerCase());
+    const matchTripType = (tripTypeFilter === 'all') || (rowTripType === tripTypeFilter);
 
-    if (matchQuery && matchStatus && matchService) {
+    if (matchQuery && matchStatus && matchService && matchTripType) {
       row.style.display = '';
       visibleCount++;
     } else {
@@ -4399,6 +4598,23 @@ window.handleBookingFilterChange = function () {
     emptyRow.style.display = visibleCount === 0 ? '' : 'none';
   }
 };
+
+// Extract normalized cab type for a booking
+function getBookingCabType(b) {
+  if (!b || b.service_type !== 'cab') return '';
+  if (b.cab_type) return String(b.cab_type).toUpperCase();
+  const unit = Array.isArray(b.selected_units) && b.selected_units[0] ? String(b.selected_units[0]).trim() : '';
+  if (unit && unit.toLowerCase() !== 'admin assigned') {
+    if (b.driver && unit === b.driver.vehicle_plate && b.driver.fleet_category) {
+      return String(b.driver.fleet_category).toUpperCase();
+    }
+    return unit.toUpperCase();
+  }
+  if (b.driver && b.driver.fleet_category) {
+    return String(b.driver.fleet_category).toUpperCase();
+  }
+  return '';
+}
 
 // Reload / Fetch all bookings from backend API
 window.reloadAdminBookings = async function () {
@@ -4453,10 +4669,14 @@ function renderAdminBookingsTable(bookings) {
       </button>
     `;
 
-    const searchStr = `${b.booking_reference} ${b.customer_name} ${b.customer_phone} ${b.route_summary} ${b.pickup_location} ${b.drop_location}`.toLowerCase();
+    const cabType = getBookingCabType(b);
+    const cabTypeBadge = cabType
+      ? `<span class="admin-badge badge-secondary" style="font-size:9.5px; padding:1px 5px;" title="Cab Type">${cabType}</span>`
+      : '';
+    const searchStr = `${b.booking_reference} ${b.customer_name} ${b.customer_phone} ${b.route_summary} ${b.pickup_location} ${b.drop_location} ${cabType}`.toLowerCase();
 
     return `
-      <tr id="booking-row-${b.id}" data-id="${b.id}" data-ref="${b.booking_reference}" data-status="${b.status}" data-service="${b.service_type}" data-search="${searchStr}">
+      <tr id="booking-row-${b.id}" data-id="${b.id}" data-ref="${b.booking_reference}" data-status="${b.status}" data-service="${b.service_type}" data-trip-type="${(b.trip_type || 'oneway').toLowerCase()}" data-search="${searchStr}">
         <td>
           <a href="javascript:void(0)" onclick="openViewBookingModal(${b.id})" class="booking-ref-link" title="Click to inspect booking">
             ${b.booking_reference}
@@ -4470,10 +4690,11 @@ function renderAdminBookingsTable(bookings) {
           </div>
         </td>
         <td>
-          <div style="display:flex; align-items:center; gap:4px;">
+          <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
             <span class="admin-badge ${b.service_type === 'cab' ? 'badge-primary' : 'badge-gold'}" style="font-size:9.5px; padding:1px 5px;">
               ${(b.service_type || 'CAB').toUpperCase()}
             </span>
+            ${cabTypeBadge}
             <span class="cell-primary-text">${b.route_summary || ''}</span>
           </div>
           <div class="cell-subtext truncate-subtext" title="${b.pickup_location || ''} → ${b.drop_location || ''}">
@@ -4519,6 +4740,7 @@ function renderAdminBookingsTable(bookings) {
       </tr>
     `;
   }).join('');
+  handleBookingFilterChange();
 }
 
 // 1. ALLOT CHAUFFEUR MODAL
@@ -4533,7 +4755,8 @@ window.openAllotDriverModal = async function (bookingId) {
     document.getElementById('allot-info-ref').textContent = b.booking_reference;
     document.getElementById('allot-info-fare').textContent = `₹${Number(b.total_amount).toLocaleString('en-IN')}`;
     document.getElementById('allot-info-customer').textContent = `${b.customer_name} (${b.customer_phone})`;
-    document.getElementById('allot-info-route').textContent = `${(b.service_type || 'Cab').toUpperCase()} • ${b.route_summary || ''}`;
+    const cabType = getBookingCabType(b);
+    document.getElementById('allot-info-route').textContent = `${(b.service_type || 'Cab').toUpperCase()}${cabType ? ` (${cabType})` : ''} • ${b.route_summary || ''}`;
 
     const select = document.getElementById('allot-driver-select');
     if (select) {
@@ -4619,6 +4842,16 @@ window.openViewBookingModal = async function (bookingId) {
     document.getElementById('view-booking-ref-badge').textContent = b.booking_reference;
     document.getElementById('view-booking-route').textContent = b.route_summary || `${b.pickup_location} → ${b.drop_location}`;
     document.getElementById('view-booking-service-badge').textContent = (b.service_type || 'CAB').toUpperCase();
+    const cabType = getBookingCabType(b);
+    const cabTypeBadgeEl = document.getElementById('view-booking-cab-type');
+    if (cabTypeBadgeEl) {
+      if (cabType) {
+        cabTypeBadgeEl.textContent = cabType;
+        cabTypeBadgeEl.style.display = 'inline-block';
+      } else {
+        cabTypeBadgeEl.style.display = 'none';
+      }
+    }
     document.getElementById('view-booking-trip-type').textContent = (b.trip_type || 'ONE-WAY').toUpperCase();
     document.getElementById('view-booking-status-badge').textContent = (b.status || 'CONFIRMED').toUpperCase();
     document.getElementById('view-booking-otp').textContent = b.start_otp || '----';
@@ -4695,6 +4928,10 @@ window.openEditBookingModal = async function (bookingId) {
     document.getElementById('edit-customer-phone').value = b.customer_phone || '';
     document.getElementById('edit-customer-email').value = b.customer_email || '';
     document.getElementById('edit-service-type').value = b.service_type || 'cab';
+    const editCabTypeEl = document.getElementById('edit-cab-type');
+    if (editCabTypeEl) {
+      editCabTypeEl.value = getBookingCabType(b).toLowerCase();
+    }
     document.getElementById('edit-trip-type').value = b.trip_type || 'oneway';
     document.getElementById('edit-route-summary').value = b.route_summary || '';
     document.getElementById('edit-pickup-location').value = b.pickup_location || '';
@@ -4746,6 +4983,7 @@ window.submitEditBooking = async function (e) {
     customer_phone: document.getElementById('edit-customer-phone').value.trim(),
     customer_email: document.getElementById('edit-customer-email').value.trim() || null,
     service_type: document.getElementById('edit-service-type').value,
+    cab_type: document.getElementById('edit-cab-type')?.value || null,
     trip_type: document.getElementById('edit-trip-type').value,
     route_summary: document.getElementById('edit-route-summary').value.trim(),
     pickup_location: document.getElementById('edit-pickup-location').value.trim(),
@@ -4819,6 +5057,23 @@ window.autoSuggestAddFares = function () {
   const tollInput = document.getElementById('add-toll-fare');
   if (baseInput) baseInput.value = base;
   if (tollInput) tollInput.value = toll;
+
+  const cabTypeSelect = document.getElementById('add-cab-type');
+  if (cabTypeSelect) {
+    const tripType = document.getElementById('add-trip-type')?.value || 'oneway';
+    const preferred = resolvePreferredCarTypeForBooking({
+      tripType,
+      fromCity: from,
+      toCity: to,
+      allowUnknown: true
+    });
+    if (preferred && [...cabTypeSelect.options].some(o => o.value === preferred)) {
+      cabTypeSelect.value = preferred;
+    } else if (!preferred) {
+      cabTypeSelect.value = '';
+    }
+  }
+
   recalcAddTotalFare();
 };
 
@@ -4842,6 +5097,7 @@ window.submitAddBooking = async function (e) {
     customer_phone: document.getElementById('add-customer-phone').value.trim(),
     customer_email: document.getElementById('add-customer-email').value.trim() || null,
     service_type: document.getElementById('add-service-type').value,
+    cab_type: document.getElementById('add-cab-type')?.value || null,
     trip_type: document.getElementById('add-trip-type').value,
     from_city: document.getElementById('add-from-city').value,
     to_city: document.getElementById('add-to-city').value,
@@ -5668,6 +5924,7 @@ window.openAddCabRouteModal = function () {
   if (document.getElementById('admin-cab-route-tempo-fare')) document.getElementById('admin-cab-route-tempo-fare').value = '';
   if (document.getElementById('admin-cab-route-luxury-fare')) document.getElementById('admin-cab-route-luxury-fare').value = '';
   if (document.getElementById('admin-cab-route-roundtrip-discount')) document.getElementById('admin-cab-route-roundtrip-discount').value = '0';
+  if (document.getElementById('admin-cab-route-default-car-type')) document.getElementById('admin-cab-route-default-car-type').value = '';
   document.getElementById('admin-cab-route-active').checked = true;
 
   const delBtn = document.getElementById('admin-cab-route-delete-btn');
@@ -5700,6 +5957,7 @@ window.openEditCabRouteModal = async function (id) {
     if (document.getElementById('admin-cab-route-tempo-fare')) document.getElementById('admin-cab-route-tempo-fare').value = route.tempo_fare || '';
     if (document.getElementById('admin-cab-route-luxury-fare')) document.getElementById('admin-cab-route-luxury-fare').value = route.luxury_fare || '';
     if (document.getElementById('admin-cab-route-roundtrip-discount')) document.getElementById('admin-cab-route-roundtrip-discount').value = route.roundtrip_discount_pct || 0;
+    if (document.getElementById('admin-cab-route-default-car-type')) document.getElementById('admin-cab-route-default-car-type').value = (route.default_car_type || '').toLowerCase();
     document.getElementById('admin-cab-route-active').checked = Boolean(route.is_active);
 
     const delBtn = document.getElementById('admin-cab-route-delete-btn');
@@ -5733,6 +5991,7 @@ window.saveCabRoute = async function (e) {
     tempo_fare: document.getElementById('admin-cab-route-tempo-fare')?.value ? parseFloat(document.getElementById('admin-cab-route-tempo-fare').value) : null,
     luxury_fare: document.getElementById('admin-cab-route-luxury-fare')?.value ? parseFloat(document.getElementById('admin-cab-route-luxury-fare').value) : null,
     roundtrip_discount_pct: document.getElementById('admin-cab-route-roundtrip-discount')?.value ? parseFloat(document.getElementById('admin-cab-route-roundtrip-discount').value) : 0,
+    default_car_type: document.getElementById('admin-cab-route-default-car-type')?.value || null,
     is_active: document.getElementById('admin-cab-route-active').checked,
   };
 
@@ -5762,6 +6021,7 @@ window.saveCabRoute = async function (e) {
         const tempo = r.tempo_fare ? Number(r.tempo_fare) : Math.round(r.distance_km * 28.0 + (r.base_toll || 0));
         const luxury = r.luxury_fare ? Number(r.luxury_fare) : Math.round(r.distance_km * 32.0 + (r.base_toll || 0));
         const rtDisc = r.roundtrip_discount_pct > 0 ? `${r.roundtrip_discount_pct}% Return Disc.` : '250 KM/Day Min';
+        const routeCarBadge = r.default_car_type ? `<div style="margin-top:3px;"><span class="admin-badge badge-secondary" style="font-size:9.5px; padding:1px 5px;" title="Specific Car Type">Car: ${String(r.default_car_type).toUpperCase()}</span></div>` : '';
         const scheduleHtml = r.departure_schedule ? `<div style="font-size:11px; color:#0284c7; font-weight:600; margin-top:2px;">⏱️ ${r.departure_schedule} <span class="admin-badge badge-info" style="font-size:9px; padding:1px 5px;">${r.schedule_frequency || 'Daily Express'}</span></div>` : '<div style="font-size:11px; color:#64748b;">Daily Corridor &bull; On-Demand 24x7</div>';
         const fareScheduleHtml = `
             <div style="font-size:11px; line-height:1.4; color:#334155;">
@@ -5788,7 +6048,7 @@ window.saveCabRoute = async function (e) {
           row.cells[3].innerHTML = `<strong style="color:#0f172a;">₹${Number(r.base_toll || 0).toLocaleString('en-IN')}</strong>`;
           row.cells[4].innerHTML = fareScheduleHtml;
           if (isBt) {
-            row.cells[5].innerHTML = `<span style="font-size:11px; color:#16a34a; font-weight:600;">${rtDisc}</span>`;
+            row.cells[5].innerHTML = `<span style="font-size:11px; color:#16a34a; font-weight:600;">${rtDisc}</span>${routeCarBadge}`;
             row.cells[6].innerHTML = `<span class="admin-badge ${r.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleCabRouteStatus(${r.id})" id="bt-cab-route-status-badge-${r.id}" title="Click to toggle status">${r.is_active ? 'Active' : 'Inactive'}</span>`;
           } else {
             row.cells[5].innerHTML = `<span class="admin-badge ${r.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleCabRouteStatus(${r.id})" id="cab-route-status-badge-${r.id}" title="Click to toggle status">${r.is_active ? 'Active' : 'Inactive'}</span>`;
@@ -5823,7 +6083,7 @@ window.saveCabRoute = async function (e) {
               <td>
                 ${fareScheduleHtml}
               </td>
-              ${isBt ? `<td><span style="font-size:11px; color:#16a34a; font-weight:600;">${rtDisc}</span></td>` : ''}
+              ${isBt ? `<td><span style="font-size:11px; color:#16a34a; font-weight:600;">${rtDisc}</span>${routeCarBadge}</td>` : ''}
               <td>
                 <span class="admin-badge ${r.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleCabRouteStatus(${r.id})" id="${isBt ? 'bt-' : ''}cab-route-status-badge-${r.id}" title="Click to toggle status">${r.is_active ? 'Active' : 'Inactive'}</span>
               </td>
@@ -5861,8 +6121,13 @@ window.saveCabRoute = async function (e) {
         const topPill = document.getElementById('admin-bt-total-routes-pill');
         if (topPill) topPill.textContent = `${totalRoutes} Routes`;
 
-        // Update in-memory ROUTE_MATRIX for instant portal sync
+        // Update in-memory ROUTE_MATRIX and INITIAL_CAB_ROUTES for instant portal sync
         if (r && r.from_city && r.to_city) {
+          if (Array.isArray(window.INITIAL_CAB_ROUTES)) {
+            const idx = window.INITIAL_CAB_ROUTES.findIndex(item => item.id === r.id);
+            if (idx >= 0) window.INITIAL_CAB_ROUTES[idx] = r;
+            else window.INITIAL_CAB_ROUTES.unshift(r);
+          }
           const fKey = r.from_city.toLowerCase().trim();
           const tKey = r.to_city.toLowerCase().trim();
           ROUTE_MATRIX[`${fKey}-${tKey}`] = { dist: r.distance_km, time: r.estimated_time, toll: r.base_toll || 0 };
@@ -6062,6 +6327,7 @@ window.saveCarType = async function (e) {
         if (badge2) badge2.textContent = count;
         const badge3 = document.getElementById('admin-bt-total-cars-pill');
         if (badge3) badge3.textContent = `${count} Car Types`;
+        await window.syncAllCarTypes();
       }
     } else {
       showToast(data.message || 'Validation failed. Please verify car type inputs.', 'warning');
@@ -6097,6 +6363,7 @@ window.toggleCarTypeStatus = async function (id) {
       const r2 = document.getElementById(`admin-bt-car-type-row-${ct.id}`);
       [r1, r2].forEach(r => { if (r) r.dataset.status = ct.is_active ? 'active' : 'inactive'; });
       showToast(data.message, 'success');
+      await window.syncAllCarTypes();
     }
   } catch (err) {
     showToast('Failed to toggle car type status.', 'warning');
@@ -6123,6 +6390,7 @@ window.deleteCarType = async function (id) {
       if (badge1) badge1.textContent = `${count} Types`;
       const badge2 = document.getElementById('admin-tab-count-car-types');
       if (badge2) badge2.textContent = count;
+      await window.syncAllCarTypes();
     }
   } catch (err) {
     showToast('Failed to delete car type.', 'warning');
@@ -6288,6 +6556,7 @@ window.openAddLocalPackageModal = function () {
   document.getElementById('admin-local-pkg-suv').value = '3200';
   document.getElementById('admin-local-pkg-extra-km').value = '14';
   document.getElementById('admin-local-pkg-extra-hr').value = '150';
+  if (document.getElementById('admin-local-pkg-default-car-type')) document.getElementById('admin-local-pkg-default-car-type').value = '';
   document.getElementById('admin-local-pkg-active').checked = true;
 
   const delBtn = document.getElementById('admin-local-pkg-delete-btn');
@@ -6315,6 +6584,7 @@ window.openEditLocalPackageModal = async function (id) {
     document.getElementById('admin-local-pkg-suv').value = p.suv_fare;
     document.getElementById('admin-local-pkg-extra-km').value = p.extra_km_rate || 14;
     document.getElementById('admin-local-pkg-extra-hr').value = p.extra_hour_rate || 150;
+    if (document.getElementById('admin-local-pkg-default-car-type')) document.getElementById('admin-local-pkg-default-car-type').value = (p.default_car_type || '').toLowerCase();
     document.getElementById('admin-local-pkg-active').checked = Boolean(p.is_active);
 
     const delBtn = document.getElementById('admin-local-pkg-delete-btn');
@@ -6343,6 +6613,7 @@ window.saveLocalPackage = async function (e) {
     suv_fare: parseFloat(document.getElementById('admin-local-pkg-suv').value),
     extra_km_rate: parseFloat(document.getElementById('admin-local-pkg-extra-km').value) || 14,
     extra_hour_rate: parseFloat(document.getElementById('admin-local-pkg-extra-hr').value) || 150,
+    default_car_type: document.getElementById('admin-local-pkg-default-car-type')?.value || null,
     is_active: document.getElementById('admin-local-pkg-active').checked,
   };
 
@@ -6365,6 +6636,12 @@ window.saveLocalPackage = async function (e) {
       closeModal('admin-local-package-modal');
       const p = data.package;
       if (p) {
+        if (Array.isArray(window.INITIAL_LOCAL_PACKAGES)) {
+          const idx = window.INITIAL_LOCAL_PACKAGES.findIndex(item => item.id === p.id);
+          if (idx >= 0) window.INITIAL_LOCAL_PACKAGES[idx] = p;
+          else window.INITIAL_LOCAL_PACKAGES.push(p);
+        }
+        const pkgCarBadge = p.default_car_type ? `<div style="margin-top:3px;"><span class="admin-badge badge-secondary" style="font-size:9.5px; padding:1px 5px;" title="Specific Car Type">Car: ${String(p.default_car_type).toUpperCase()}</span></div>` : '';
         if (isEdit) {
           const row = document.getElementById(`admin-local-pkg-row-${p.id}`);
           if (row) {
@@ -6375,7 +6652,7 @@ window.saveLocalPackage = async function (e) {
             row.cells[2].innerHTML = `<span style="font-size:11.5px; font-weight:600; color:#334155;">⏱️ ${p.duration_hours} hrs &bull; 🛣️ ${p.included_km} km</span>`;
             row.cells[3].innerHTML = `<strong style="color:var(--primary); font-size:13px;">₹${Number(p.sedan_fare).toLocaleString('en-IN')}</strong>`;
             row.cells[4].innerHTML = `<strong style="color:var(--primary); font-size:13px;">₹${Number(p.suv_fare).toLocaleString('en-IN')}</strong>`;
-            row.cells[5].innerHTML = `<span style="font-size:11px; color:#64748b;">+₹${Number(p.extra_km_rate).toLocaleString('en-IN')}/km &bull; +₹${Number(p.extra_hour_rate).toLocaleString('en-IN')}/hr</span>`;
+            row.cells[5].innerHTML = `<span style="font-size:11px; color:#64748b;">+₹${Number(p.extra_km_rate).toLocaleString('en-IN')}/km &bull; +₹${Number(p.extra_hour_rate).toLocaleString('en-IN')}/hr</span>${pkgCarBadge}`;
             row.cells[6].innerHTML = `<span class="admin-badge ${p.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleLocalPackageStatus(${p.id})" id="local-pkg-status-badge-${p.id}" title="Click to toggle status">${p.is_active ? 'Active' : 'Inactive'}</span>`;
           }
         } else {
@@ -6403,7 +6680,7 @@ window.saveLocalPackage = async function (e) {
                   <strong style="color:var(--primary); font-size:13px;">₹${Number(p.suv_fare).toLocaleString('en-IN')}</strong>
                 </td>
                 <td>
-                  <span style="font-size:11px; color:#64748b;">+₹${Number(p.extra_km_rate).toLocaleString('en-IN')}/km &bull; +₹${Number(p.extra_hour_rate).toLocaleString('en-IN')}/hr</span>
+                  <span style="font-size:11px; color:#64748b;">+₹${Number(p.extra_km_rate).toLocaleString('en-IN')}/km &bull; +₹${Number(p.extra_hour_rate).toLocaleString('en-IN')}/hr</span>${pkgCarBadge}
                 </td>
                 <td>
                   <span class="admin-badge ${p.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleLocalPackageStatus(${p.id})" id="local-pkg-status-badge-${p.id}" title="Click to toggle status">${p.is_active ? 'Active' : 'Inactive'}</span>
@@ -6540,6 +6817,7 @@ window.openAddAirportHubModal = function () {
   document.getElementById('admin-airport-drop-surcharge').value = '150';
   document.getElementById('admin-airport-sedan').value = '950';
   document.getElementById('admin-airport-suv').value = '1450';
+  if (document.getElementById('admin-airport-default-car-type')) document.getElementById('admin-airport-default-car-type').value = '';
   document.getElementById('admin-airport-active').checked = true;
 
   const delBtn = document.getElementById('admin-airport-delete-btn');
@@ -6566,6 +6844,7 @@ window.openEditAirportHubModal = async function (id) {
     document.getElementById('admin-airport-drop-surcharge').value = a.drop_surcharge || 150;
     document.getElementById('admin-airport-sedan').value = a.sedan_base_fare || 950;
     document.getElementById('admin-airport-suv').value = a.suv_base_fare || 1450;
+    if (document.getElementById('admin-airport-default-car-type')) document.getElementById('admin-airport-default-car-type').value = (a.default_car_type || '').toLowerCase();
     document.getElementById('admin-airport-active').checked = Boolean(a.is_active);
 
     const delBtn = document.getElementById('admin-airport-delete-btn');
@@ -6593,6 +6872,7 @@ window.saveAirportHub = async function (e) {
     drop_surcharge: parseFloat(document.getElementById('admin-airport-drop-surcharge').value) || 150,
     sedan_base_fare: parseFloat(document.getElementById('admin-airport-sedan').value) || 950,
     suv_base_fare: parseFloat(document.getElementById('admin-airport-suv').value) || 1450,
+    default_car_type: document.getElementById('admin-airport-default-car-type')?.value || null,
     is_active: document.getElementById('admin-airport-active').checked,
   };
 
@@ -6615,6 +6895,12 @@ window.saveAirportHub = async function (e) {
       closeModal('admin-airport-hub-modal');
       const a = data.airport;
       if (a) {
+        if (Array.isArray(window.INITIAL_AIRPORT_HUBS)) {
+          const idx = window.INITIAL_AIRPORT_HUBS.findIndex(item => item.id === a.id);
+          if (idx >= 0) window.INITIAL_AIRPORT_HUBS[idx] = a;
+          else window.INITIAL_AIRPORT_HUBS.push(a);
+        }
+        const hubCarBadge = a.default_car_type ? `<div style="margin-top:3px;"><span class="admin-badge badge-secondary" style="font-size:9.5px; padding:1px 5px;" title="Specific Car Type">Car: ${String(a.default_car_type).toUpperCase()}</span></div>` : '';
         if (isEdit) {
           const row = document.getElementById(`admin-airport-row-${a.id}`);
           if (row) {
@@ -6630,7 +6916,7 @@ window.saveAirportHub = async function (e) {
             row.cells[1].innerHTML = `<div style="font-weight:600; color:#1e293b;">📍 ${a.city}</div><div style="font-size:11px; color:#64748b;">${a.terminals}</div>`;
             row.cells[2].innerHTML = `<strong style="color:#0f172a;">₹${Number(a.pickup_surcharge).toLocaleString('en-IN')}</strong><div style="font-size:10px; color:#64748b;">Parking + Entry</div>`;
             row.cells[3].innerHTML = `<strong style="color:#0f172a;">₹${Number(a.drop_surcharge).toLocaleString('en-IN')}</strong><div style="font-size:10px; color:#64748b;">Departure Toll</div>`;
-            row.cells[4].innerHTML = `<span style="font-size:11.5px; color:#475569;">Sedan: <strong>₹${Number(a.sedan_base_fare).toLocaleString('en-IN')}</strong> &bull; SUV: <strong>₹${Number(a.suv_base_fare).toLocaleString('en-IN')}</strong></span>`;
+            row.cells[4].innerHTML = `<span style="font-size:11.5px; color:#475569;">Sedan: <strong>₹${Number(a.sedan_base_fare).toLocaleString('en-IN')}</strong> &bull; SUV: <strong>₹${Number(a.suv_base_fare).toLocaleString('en-IN')}</strong></span>${hubCarBadge}`;
             row.cells[5].innerHTML = `<span class="admin-badge ${a.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleAirportHubStatus(${a.id})" id="airport-status-badge-${a.id}" title="Click to toggle status">${a.is_active ? 'Active' : 'Inactive'}</span>`;
           }
         } else {
@@ -6661,7 +6947,7 @@ window.saveAirportHub = async function (e) {
                   <div style="font-size:10px; color:#64748b;">Departure Toll</div>
                 </td>
                 <td>
-                  <span style="font-size:11.5px; color:#475569;">Sedan: <strong>₹${Number(a.sedan_base_fare).toLocaleString('en-IN')}</strong> &bull; SUV: <strong>₹${Number(a.suv_base_fare).toLocaleString('en-IN')}</strong></span>
+                  <span style="font-size:11.5px; color:#475569;">Sedan: <strong>₹${Number(a.sedan_base_fare).toLocaleString('en-IN')}</strong> &bull; SUV: <strong>₹${Number(a.suv_base_fare).toLocaleString('en-IN')}</strong></span>${hubCarBadge}
                 </td>
                 <td>
                   <span class="admin-badge ${a.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleAirportHubStatus(${a.id})" id="airport-status-badge-${a.id}" title="Click to toggle status">${a.is_active ? 'Active' : 'Inactive'}</span>
@@ -6720,6 +7006,29 @@ window.toggleAirportHubStatus = async function (id) {
     }
   } catch (err) {
     showToast('Failed to toggle airport status.', 'warning');
+  }
+};
+
+window.saveBookingTypeCarTypeRule = async function (tripType, carType) {
+  try {
+    const res = await fetch('/api/admin/settings/booking-type-car-types', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken()
+      },
+      body: JSON.stringify({ [tripType]: carType || '' })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+      showToast(data.message || 'Car type preference saved.', 'success');
+    } else {
+      showToast(data.message || 'Failed to save car type preference.', 'warning');
+    }
+  } catch (err) {
+    showToast('Network error while saving car type preference.', 'warning');
   }
 };
 

@@ -48,6 +48,7 @@ class AirportHubAdminController extends Controller
             'drop_surcharge' => 'nullable|numeric|min:0',
             'sedan_base_fare' => 'nullable|numeric|min:0',
             'suv_base_fare' => 'nullable|numeric|min:0',
+            'default_car_type' => 'nullable|string|max:60',
             'is_active' => 'nullable|boolean',
         ]);
 
@@ -60,6 +61,7 @@ class AirportHubAdminController extends Controller
             'drop_surcharge' => (float) ($validated['drop_surcharge'] ?? 150.00),
             'sedan_base_fare' => (float) ($validated['sedan_base_fare'] ?? 950.00),
             'suv_base_fare' => (float) ($validated['suv_base_fare'] ?? 1450.00),
+            'default_car_type' => ! empty($validated['default_car_type']) ? strtolower(trim($validated['default_car_type'])) : null,
             'is_active' => $request->has('is_active') ? (bool) $request->is_active : true,
         ]);
 
@@ -99,6 +101,7 @@ class AirportHubAdminController extends Controller
             'drop_surcharge' => 'nullable|numeric|min:0',
             'sedan_base_fare' => 'nullable|numeric|min:0',
             'suv_base_fare' => 'nullable|numeric|min:0',
+            'default_car_type' => 'nullable|string|max:60',
             'is_active' => 'nullable|boolean',
         ]);
 
@@ -125,6 +128,11 @@ class AirportHubAdminController extends Controller
         }
         if (isset($validated['suv_base_fare'])) {
             $airport->suv_base_fare = (float) $validated['suv_base_fare'];
+        }
+        if (array_key_exists('default_car_type', $validated)) {
+            $airport->default_car_type = ! empty($validated['default_car_type'])
+                ? strtolower(trim((string) $validated['default_car_type']))
+                : null;
         }
         if ($request->has('is_active')) {
             $airport->is_active = (bool) $request->is_active;

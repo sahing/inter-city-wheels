@@ -52,6 +52,7 @@ class BookingAdminController extends Controller
     {
         $validated = $request->validate([
             'service_type' => 'required|in:cab,bus',
+            'cab_type' => 'nullable|string|max:30',
             'trip_type' => 'required|string',
             'from_city' => 'required|string',
             'to_city' => 'required|string',
@@ -107,7 +108,11 @@ class BookingAdminController extends Controller
             'total_amount' => $totalAmount,
             'start_otp' => $otp,
             'assigned_driver_id' => $validated['assigned_driver_id'] ?? null,
-            'selected_units' => [$validated['service_type'] === 'cab' ? 'Admin Assigned' : 'Sleeper Seat'],
+            'selected_units' => [
+                $validated['service_type'] === 'cab'
+                    ? (! empty($validated['cab_type']) ? strtolower(trim($validated['cab_type'])) : 'Admin Assigned')
+                    : 'Sleeper Seat',
+            ],
         ];
 
         try {
@@ -160,6 +165,7 @@ class BookingAdminController extends Controller
             'drop_location' => 'sometimes|required|string',
             'route_summary' => 'sometimes|nullable|string',
             'service_type' => 'sometimes|required|in:cab,bus',
+            'cab_type' => 'sometimes|nullable|string|max:30',
             'trip_type' => 'sometimes|nullable|string',
             'departure_time' => 'nullable|string',
             'base_fare' => 'sometimes|numeric|min:0',
@@ -177,6 +183,14 @@ class BookingAdminController extends Controller
             $addonFare = (float) ($validated['addon_fare'] ?? $booking->addon_fare);
             $discountFare = (float) ($validated['discount_fare'] ?? $booking->discount_fare);
             $validated['total_amount'] = max(0, round($baseFare + $tollFare + $addonFare - $discountFare));
+        }
+
+        $cabType = $validated['cab_type'] ?? null;
+        unset($validated['cab_type']);
+
+        $effectiveServiceType = $validated['service_type'] ?? $booking->service_type;
+        if ($effectiveServiceType === 'cab' && ! empty($cabType)) {
+            $validated['selected_units'] = [strtolower(trim($cabType))];
         }
 
         if (! empty($validated['departure_time'])) {
@@ -345,6 +359,7 @@ class BookingAdminController extends Controller
                 'drop_location' => $booking->drop_location,
                 'trip_type' => strtoupper($booking->trip_type ?? 'One-Way'),
                 'service_type' => strtoupper($booking->service_type ?? 'Cab'),
+                'cab_type' => $booking->cab_type,
                 'route' => $booking->route_summary,
                 'travel_date' => $booking->departure_time ? $booking->departure_time->format('d M Y, h:i A') : 'Scheduled Departure',
             ],

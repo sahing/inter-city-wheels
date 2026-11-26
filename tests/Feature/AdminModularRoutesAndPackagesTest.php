@@ -192,4 +192,77 @@ class AdminModularRoutesAndPackagesTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonStructure(['airports']);
     }
+
+    public function test_optional_car_type_can_be_configured_under_each_booking_type_and_package(): void
+    {
+        $admin = $this->getAdminUser();
+
+        // 1. Outstation Route with optional default_car_type
+        $routeRes = $this->actingAs($admin)->postJson('/api/admin/cab-routes', [
+            'from_city' => 'Pune',
+            'to_city' => 'Nashik',
+            'distance_km' => 210,
+            'estimated_time' => '4h 30m',
+            'default_car_type' => 'innova',
+            'is_active' => true,
+        ]);
+        $routeRes->assertStatus(201)->assertJsonPath('route.default_car_type', 'innova');
+
+        // 2. Local Package with optional default_car_type
+        $pkgRes = $this->actingAs($admin)->postJson('/api/admin/local-packages', [
+            'package_code' => '4_40_spec',
+            'city' => 'Pune',
+            'name' => '4 Hours / 40 KM Special',
+            'duration_hours' => 4,
+            'included_km' => 40,
+            'sedan_fare' => 1200,
+            'suv_fare' => 1700,
+            'default_car_type' => 'sedan',
+            'is_active' => true,
+        ]);
+        $pkgRes->assertStatus(201)->assertJsonPath('package.default_car_type', 'sedan');
+
+        // 3. Airport Hub with optional default_car_type
+        $hubRes = $this->actingAs($admin)->postJson('/api/admin/airport-hubs', [
+            'airport_name' => 'Pune Lohegaon Airport',
+            'iata_code' => 'PNQ',
+            'city' => 'Pune',
+            'default_car_type' => 'suv',
+            'is_active' => true,
+        ]);
+        $hubRes->assertStatus(201)->assertJsonPath('airport.default_car_type', 'suv');
+
+        // 4. Fare Rules & Policy Matrix per-booking-type car type preferences
+        $ruleRes = $this->actingAs($admin)->postJson('/api/admin/settings/booking-type-car-types', [
+            'oneway' => 'sedan',
+            'roundtrip' => 'innova',
+            'local' => 'hatchback',
+            'airport' => 'suv',
+        ]);
+        $ruleRes->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('settings.default_car_type_oneway', 'sedan')
+            ->assertJsonPath('settings.default_car_type_roundtrip', 'innova')
+            ->assertJsonPath('settings.default_car_type_local', 'hatchback')
+            ->assertJsonPath('settings.default_car_type_airport', 'suv');
+
+        // 5. Clearing optional car type sets it back to null/empty
+        $clearRes = $this->actingAs($admin)->putJson('/api/admin/cab-routes/'.$routeRes->json('route.id'), [
+            'default_car_type' => '',
+        ]);
+        $clearRes->assertStatus(200)->assertJsonPath('route.default_car_type', null);
+
+        // 6. Admin view renders selectors and badges
+        $page = $this->actingAs($admin)->get('/');
+        $page->assertStatus(200);
+        $page->assertSee('id="admin-cab-route-default-car-type"', false);
+        $page->assertSee('id="admin-local-pkg-default-car-type"', false);
+        $page->assertSee('id="admin-airport-default-car-type"', false);
+        $page->assertSee('id="rule-car-type-oneway"', false);
+        $page->assertSee('id="rule-car-type-roundtrip"', false);
+        $page->assertSee('id="rule-car-type-local"', false);
+        $page->assertSee('id="rule-car-type-airport"', false);
+        $page->assertSee('window.INITIAL_LOCAL_PACKAGES', false);
+        $page->assertSee('window.INITIAL_AIRPORT_HUBS', false);
+    }
 }

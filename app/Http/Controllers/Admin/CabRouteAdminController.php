@@ -54,6 +54,7 @@ class CabRouteAdminController extends Controller
             'departure_schedule' => 'nullable|string|max:255',
             'schedule_frequency' => 'nullable|string|max:100',
             'roundtrip_discount_pct' => 'nullable|numeric|min:0|max:100',
+            'default_car_type' => 'nullable|string|max:60',
             'from_lat' => 'nullable|numeric',
             'from_lng' => 'nullable|numeric',
             'to_lat' => 'nullable|numeric',
@@ -81,6 +82,7 @@ class CabRouteAdminController extends Controller
             'departure_schedule' => ! empty($validated['departure_schedule']) ? trim($validated['departure_schedule']) : null,
             'schedule_frequency' => ! empty($validated['schedule_frequency']) ? trim($validated['schedule_frequency']) : 'Daily Express',
             'roundtrip_discount_pct' => (float) ($validated['roundtrip_discount_pct'] ?? 0),
+            'default_car_type' => ! empty($validated['default_car_type']) ? strtolower(trim($validated['default_car_type'])) : null,
             'is_active' => $request->has('is_active') ? (bool) $request->is_active : true,
         ]);
 
@@ -127,6 +129,7 @@ class CabRouteAdminController extends Controller
             'departure_schedule' => 'nullable|string|max:255',
             'schedule_frequency' => 'nullable|string|max:100',
             'roundtrip_discount_pct' => 'nullable|numeric|min:0|max:100',
+            'default_car_type' => 'nullable|string|max:60',
             'from_lat' => 'nullable|numeric',
             'from_lng' => 'nullable|numeric',
             'to_lat' => 'nullable|numeric',
@@ -142,6 +145,12 @@ class CabRouteAdminController extends Controller
             if (array_key_exists($fareKey, $validated) && $validated[$fareKey] === '') {
                 $validated[$fareKey] = null;
             }
+        }
+
+        if (array_key_exists('default_car_type', $validated)) {
+            $validated['default_car_type'] = ! empty($validated['default_car_type'])
+                ? strtolower(trim((string) $validated['default_car_type']))
+                : null;
         }
 
         $route->update($validated);
