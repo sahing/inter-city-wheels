@@ -5681,10 +5681,12 @@ window.completeDriverTrip = async function (bookingId) {
       if (data.booking && data.booking.total_amount) {
         const payout = Math.round(data.booking.total_amount * 0.9);
         const walletEl = document.getElementById('driver-header-wallet-bal');
-        if (walletEl) {
-          const curVal = parseInt(walletEl.textContent.replace(/[^0-9]/g, ''), 10) || 0;
-          walletEl.textContent = `₹${(curVal + payout).toLocaleString('en-IN')}`;
-        }
+        const walletPanelEl = document.getElementById('driver-wallet-bal-display');
+        const currentRaw = (walletEl || walletPanelEl)?.textContent || '0';
+        const curVal = parseInt(currentRaw.replace(/[^0-9]/g, ''), 10) || 0;
+        const nextFormatted = `₹${(curVal + payout).toLocaleString('en-IN')}`;
+        if (walletEl) walletEl.textContent = nextFormatted;
+        if (walletPanelEl) walletPanelEl.textContent = nextFormatted;
       }
     } else {
       showToast(data.message || 'Failed to complete trip.', 'warning');
@@ -5723,6 +5725,38 @@ window.requestDriverPayout = async function (balance) {
   } catch (err) {
     console.error('Payout request error:', err);
     showToast('Network error while requesting payout.', 'warning');
+  }
+};
+
+window.setDriverTripFilter = function (filterKey, btn) {
+  const key = filterKey || 'all';
+  document.querySelectorAll('#driver-trips-status-filters [data-trip-filter]').forEach(function (el) {
+    el.classList.toggle('active', el.dataset.tripFilter === key);
+  });
+
+  const rows = document.querySelectorAll('#driver-trips-table-body tr.driver-trip-row');
+  let visible = 0;
+  rows.forEach(function (row) {
+    const bucket = row.dataset.tripBucket || '';
+    const match = (key === 'all') || (bucket === key);
+    row.style.display = match ? '' : 'none';
+    if (match) visible += 1;
+  });
+
+  const emptyFilterRow = document.getElementById('driver-trips-filter-empty');
+  if (emptyFilterRow) {
+    emptyFilterRow.style.display = (rows.length > 0 && visible === 0) ? '' : 'none';
+  }
+};
+
+window.setDriverTripView = function (mode) {
+  const isCards = mode === 'cards';
+  document.querySelectorAll('#driver-trips-status-filters [data-trip-view]').forEach(function (el) {
+    el.classList.toggle('active', el.dataset.tripView === (isCards ? 'cards' : 'table'));
+  });
+  const wrap = document.getElementById('driver-trips-view-wrap');
+  if (wrap) {
+    wrap.classList.toggle('is-cards-mode', isCards);
   }
 };
 

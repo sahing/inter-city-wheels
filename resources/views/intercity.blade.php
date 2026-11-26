@@ -1309,106 +1309,156 @@
             <!-- Chauffeur Master Header & Navigation -->
             @include('partials.driver_header', ['activeDriverTab' => 'driver-trips'])
 
-            <div class="card driver-panel-card animate-load stagger-2" style="margin-bottom:20px;">
-                <div class="card-header" style="flex-wrap:wrap; gap:10px;">
+            @php
+                $assignedTripList = collect($driverTrips ?? []);
+                $pendingStartCount = $assignedTripList->whereIn('status', ['Driver Assigned', 'Confirmed'])->count();
+                $inProgressCount = $assignedTripList->where('status', 'Started')->count();
+                $completedTripCount = $assignedTripList->where('status', 'Completed')->count();
+            @endphp
+
+            <div class="driver-panel-card animate-load stagger-2">
+                <div class="driver-panel-card-header">
                     <div>
-                        <h2 class="card-title" style="display:flex; align-items:center; gap:8px;">
-                            <span class="material-symbols-outlined" style="color:#16a34a; font-size:22px;">local_taxi</span>
+                        <h2 class="driver-panel-card-title">
+                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:21px;">local_taxi</span>
                             <span>My Assigned Outstation Rides</span>
                         </h2>
-                        <p class="card-subtitle">Active dispatch queue: verify passenger ride start OTP, start trip & complete payouts</p>
+                        <p class="driver-panel-card-subtitle">Active dispatch queue: verify passenger ride start OTP, track active rides &amp; settle wallet payouts.</p>
                     </div>
                     <span class="admin-badge badge-success" style="font-size:11px;">
-                        {{ count($driverTrips ?? []) }} Active Rides
+                        {{ $assignedTripList->count() }} Active Rides
                     </span>
                 </div>
 
-                <div class="driver-trips-list" style="display:flex; flex-direction:column; gap:14px; padding:16px 0;">
-                    @forelse($driverTrips ?? [] as $dt)
-                    <div class="driver-trip-card" id="driver-trip-box-{{ $dt->id }}" style="border:1px solid #e2e8f0; border-radius:12px; padding:16px; background:#ffffff; box-shadow:0 2px 8px rgba(15,23,42,0.04);">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:10px; margin-bottom:12px;">
-                            <div style="min-width:0; flex:1;">
-                                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                                    <span style="font-family:monospace; font-weight:800; color:var(--primary); font-size:13px;">{{ $dt->booking_reference }}</span>
-                                    <span class="admin-badge @if($dt->status === 'Confirmed') badge-success @elseif($dt->status === 'Driver Assigned') badge-gold @elseif($dt->status === 'Started') badge-info @elseif($dt->status === 'Completed') badge-primary @else badge-secondary @endif" id="driver-trip-status-badge-{{ $dt->id }}">
-                                        {{ $dt->status }}
-                                    </span>
-                                </div>
-                                <div style="font-size:15.5px; font-weight:800; color:#0f172a; margin-top:4px; line-height:1.25;">{{ $dt->route_summary }}</div>
-                                @if(in_array($dt->status, ['Driver Assigned', 'Confirmed', 'Started', 'Completed'], true))
-                                <div style="font-size:12px; color:#64748b; margin-top:3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                                    <strong style="color:#0f172a;">{{ $dt->customer_name }}</strong>
-                                    <span>&bull;</span>
-                                    <a href="tel:{{ $dt->customer_phone }}" style="color:#0284c7; text-decoration:none; font-weight:700;">📞 {{ $dt->customer_phone }}</a>
-                                    @if($dt->driver_payout_amount !== null)
-                                        <span>&bull;</span>
-                                        <span class="admin-badge badge-success" style="font-size:10px; padding:2px 6px;">Won via driver bidding</span>
-                                    @endif
-                                </div>
-                                @else
-                                <div style="font-size:11.5px; color:#64748b; margin-top:3px;">Customer name &amp; contact unlock only after you win the bid.</div>
-                                @endif
-                            </div>
-                            <div style="text-align:right; flex-shrink:0;">
-                                @if($dt->driver_payout_amount !== null)
-                                    <div style="font-size:18px; font-weight:800; color:#16a34a; line-height:1.1;">₹{{ number_format((float) $dt->driver_payout_amount) }}</div>
-                                    <div style="font-size:10px; color:#64748b; margin-top:2px;">Your winning bid payout</div>
-                                @else
-                                    <div style="font-size:18px; font-weight:800; color:#16a34a; line-height:1.1;">₹{{ number_format($dt->total_amount) }}</div>
-                                    <div style="font-size:10px; color:#64748b; margin-top:2px;">All-inclusive</div>
-                                @endif
-                            </div>
-                        </div>
-
-                        <!-- OTP Start Verification & Primary Action -->
-                        <div id="driver-trip-actions-{{ $dt->id }}" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                            @if($dt->status === 'Driver Assigned' || $dt->status === 'Confirmed')
-                            <div class="driver-otp-row" style="display:flex; align-items:center; gap:8px; width:100%;">
-                                <label for="driver-otp-input-{{ $dt->id }}" style="font-size:11.5px; font-weight:700; color:#475569; white-space:nowrap;">Customer Ride OTP</label>
-                                <div class="driver-otp-controls" style="display:flex; align-items:center; gap:8px; flex:1;">
-                                    <input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" id="driver-otp-input-{{ $dt->id }}" placeholder="4-digit" maxlength="4" style="width:96px; padding:6px 8px; font-family:monospace; font-size:14px; font-weight:800; text-align:center; border:1px solid #cbd5e1; border-radius:6px; letter-spacing:2px;">
-                                    <button type="button" class="btn btn-sm btn-primary" onclick="verifyDriverStartOtp({{ $dt->id }})">
-                                        <span class="material-symbols-outlined" style="font-size:15px;">check_circle</span>
-                                        <span>Verify &amp; Start</span>
-                                    </button>
-                                </div>
-                            </div>
-                            @elseif($dt->status === 'Started')
-                            <div style="display:flex; align-items:center; gap:6px; color:#0284c7; font-size:12px; font-weight:700;">
-                                <span class="material-symbols-outlined" style="font-size:18px;">local_shipping</span>
-                                <span>Ride in progress. Drive safely.</span>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-accent" onclick="completeDriverTrip({{ $dt->id }})">
-                                <span class="material-symbols-outlined" style="font-size:15px;">flag</span>
-                                <span>Complete Trip &amp; Settle</span>
+                <div class="driver-panel-card-body">
+                    <div class="admin-trip-type-filters" id="driver-trips-status-filters" role="group" aria-label="Filter assigned rides by status" style="border:1px solid var(--outline); border-radius:10px; margin-bottom:14px; padding:8px 12px; justify-content:space-between;">
+                        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
+                            <span class="admin-trip-type-label">Status:</span>
+                            <button type="button" class="admin-trip-type-btn active" data-trip-filter="all" onclick="setDriverTripFilter('all', this)">
+                                All ({{ $assignedTripList->count() }})
                             </button>
-                            @else
-                            <div style="color:#16a34a; font-size:12px; font-weight:700; display:flex; align-items:center; gap:4px;">
-                                <span class="material-symbols-outlined" style="font-size:16px;">verified</span>
-                                <span>Trip completed &amp; payout credited.</span>
-                            </div>
-                            @endif
-                        </div>
-
-                        <!-- Secondary Details Screen Trigger -->
-                        <div style="display:flex; justify-content:flex-end; border-top:1px solid #f1f5f9; padding-top:10px; margin-top:10px;">
-                            <button type="button" class="btn btn-sm btn-outline driver-item-details-btn"
-                                onclick='openDriverTripDetails(@json($dt))'>
-                                <span class="material-symbols-outlined" style="font-size:14px;">visibility</span>
-                                <span>Trip Details</span>
+                            <button type="button" class="admin-trip-type-btn" data-trip-filter="assigned" onclick="setDriverTripFilter('assigned', this)">
+                                Pending Start ({{ $pendingStartCount }})
+                            </button>
+                            <button type="button" class="admin-trip-type-btn" data-trip-filter="started" onclick="setDriverTripFilter('started', this)">
+                                In Progress ({{ $inProgressCount }})
+                            </button>
+                            <button type="button" class="admin-trip-type-btn" data-trip-filter="completed" onclick="setDriverTripFilter('completed', this)">
+                                Completed ({{ $completedTripCount }})
                             </button>
                         </div>
+                        <div style="display:flex; align-items:center; gap:4px;">
+                            <button type="button" class="admin-trip-type-btn active" data-trip-view="table" onclick="setDriverTripView('table', this)" title="Compact Table View">Table</button>
+                            <button type="button" class="admin-trip-type-btn" data-trip-view="cards" onclick="setDriverTripView('cards', this)" title="Compact Card View">Cards</button>
+                        </div>
                     </div>
-                    @empty
-                    <div style="text-align:center; padding:40px 20px; color:#94a3b8; background:#f8fafc; border-radius:8px;">
-                        <span class="material-symbols-outlined" style="font-size:40px; color:#cbd5e1; display:block; margin-bottom:8px;">local_taxi</span>
-                        <div style="font-weight:700; font-size:14px; color:#475569;">No assigned rides in your queue currently</div>
-                        <p style="font-size:12px; margin:4px 0 14px;">Switch to the "Live Bids & Auctions" tab to bid on upcoming passenger outstation trips.</p>
-                        <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('bidding')">
-                            <span>Open Bidding Marketplace</span>
-                        </button>
-                    </div>
-                    @endforelse
+
+                    @if($assignedTripList->isEmpty())
+                        <div style="text-align:center; padding:32px 20px; color:var(--text-muted); background:var(--surface-base); border:1px solid var(--outline); border-radius:10px;">
+                            <span class="material-symbols-outlined" style="font-size:38px; color:#cbd5e1; display:block; margin-bottom:8px;">local_taxi</span>
+                            <div style="font-weight:700; font-size:14px; color:var(--text-main);">No assigned rides in your queue currently</div>
+                            <p style="font-size:12px; margin:4px 0 14px;">Switch to the &ldquo;Live Bids &amp; Auctions&rdquo; tab to bid on upcoming passenger outstation trips.</p>
+                            <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('bidding')">
+                                <span>Open Bidding Marketplace</span>
+                            </button>
+                        </div>
+                    @else
+                        <div class="auction-table-wrap driver-trips-view" id="driver-trips-view-wrap">
+                            <table class="admin-data-table admin-table-compact">
+                                <thead>
+                                    <tr>
+                                        <th>Booking</th>
+                                        <th>Route &amp; Passenger</th>
+                                        <th>Status</th>
+                                        <th>Payout</th>
+                                        <th>OTP / Dispatch Action</th>
+                                        <th style="text-align:right;">Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="driver-trips-table-body">
+                                    @foreach($assignedTripList as $dt)
+                                        @php
+                                            $tripBucket = $dt->status === 'Started'
+                                                ? 'started'
+                                                : ($dt->status === 'Completed' ? 'completed' : 'assigned');
+                                        @endphp
+                                        <tr class="driver-trip-row" id="driver-trip-box-{{ $dt->id }}" data-trip-bucket="{{ $tripBucket }}">
+                                            <td>
+                                                <span class="booking-ref-link">{{ $dt->booking_reference }}</span>
+                                                <div class="cell-subtext">{{ $dt->trip_date ? \Carbon\Carbon::parse($dt->trip_date)->format('d M') : 'Scheduled' }}{{ $dt->trip_time ? ' • '.$dt->trip_time : '' }}</div>
+                                            </td>
+                                            <td>
+                                                <div class="cell-primary-text">{{ $dt->route_summary }}</div>
+                                                @if(in_array($dt->status, ['Driver Assigned', 'Confirmed', 'Started', 'Completed'], true))
+                                                    <div class="cell-subtext">
+                                                        <strong style="color:var(--text-main);">{{ $dt->customer_name }}</strong>
+                                                        &bull;
+                                                        <a href="tel:{{ $dt->customer_phone }}" style="color:var(--info); text-decoration:none; font-weight:700;">{{ $dt->customer_phone }}</a>
+                                                        @if($dt->driver_payout_amount !== null)
+                                                            &bull;
+                                                            <span class="admin-badge badge-success" style="font-size:9.5px; padding:1px 6px;">Won via driver bidding</span>
+                                                        @endif
+                                                    </div>
+                                                @else
+                                                    <div class="cell-subtext">Customer name &amp; contact unlock only after you win the bid.</div>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                <span class="admin-badge @if($dt->status === 'Confirmed') badge-success @elseif($dt->status === 'Driver Assigned') badge-gold @elseif($dt->status === 'Started') badge-info @elseif($dt->status === 'Completed') badge-primary @else badge-secondary @endif" id="driver-trip-status-badge-{{ $dt->id }}">
+                                                    {{ $dt->status }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                @if($dt->driver_payout_amount !== null)
+                                                    <div class="cell-primary-text text-tabular" style="color:var(--success);">₹{{ number_format((float) $dt->driver_payout_amount) }}</div>
+                                                    <div class="cell-subtext">Your winning bid payout</div>
+                                                @else
+                                                    <div class="cell-primary-text text-tabular" style="color:var(--success);">₹{{ number_format($dt->total_amount) }}</div>
+                                                    <div class="cell-subtext">All-inclusive</div>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                <div id="driver-trip-actions-{{ $dt->id }}" style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
+                                                    @if($dt->status === 'Driver Assigned' || $dt->status === 'Confirmed')
+                                                        <div class="driver-otp-controls" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                                            <label for="driver-otp-input-{{ $dt->id }}" style="font-size:11px; font-weight:700; color:var(--text-muted); white-space:nowrap;">OTP</label>
+                                                            <input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" id="driver-otp-input-{{ $dt->id }}" placeholder="4-digit" maxlength="4" style="width:80px; padding:4px 6px; font-family:monospace; font-size:13px; font-weight:800; text-align:center; border:1px solid var(--outline); border-radius:6px; letter-spacing:2px;">
+                                                            <button type="button" class="btn btn-sm btn-primary" style="height:28px; padding:0 10px; font-size:11px;" onclick="verifyDriverStartOtp({{ $dt->id }})">
+                                                                <span class="material-symbols-outlined" style="font-size:14px;">check_circle</span>
+                                                                <span>Verify &amp; Start</span>
+                                                            </button>
+                                                        </div>
+                                                    @elseif($dt->status === 'Started')
+                                                        <button type="button" class="btn btn-sm btn-accent" style="height:28px; padding:0 10px; font-size:11px;" onclick="completeDriverTrip({{ $dt->id }})">
+                                                            <span class="material-symbols-outlined" style="font-size:14px;">flag</span>
+                                                            <span>Complete Trip &amp; Settle</span>
+                                                        </button>
+                                                    @else
+                                                        <span style="color:var(--success); font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;">
+                                                            <span class="material-symbols-outlined" style="font-size:15px;">verified</span>
+                                                            <span>Trip completed &amp; payout credited.</span>
+                                                        </span>
+                                                    @endif
+                                                </div>
+                                            </td>
+                                            <td style="text-align:right; white-space:nowrap;">
+                                                <button type="button" class="btn btn-sm btn-outline driver-item-details-btn" style="min-height:28px; padding:0 10px !important;" onclick='openDriverTripDetails(@json($dt))'>
+                                                    <span class="material-symbols-outlined" style="font-size:14px;">visibility</span>
+                                                    <span>Trip Details</span>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                    <tr id="driver-trips-filter-empty" style="display:none;">
+                                        <td colspan="6" style="text-align:center; padding:24px; color:var(--text-muted); font-size:12.5px;">
+                                            No rides match this status filter.
+                                            <button type="button" class="btn btn-sm btn-outline" style="margin-left:8px;" onclick="setDriverTripFilter('all')">Show All</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
                 </div>
             </div>
         </section>
@@ -1420,48 +1470,104 @@
             <!-- Chauffeur Master Header & Navigation -->
             @include('partials.driver_header', ['activeDriverTab' => 'driver-wallet'])
 
-            <div class="card driver-panel-card animate-load stagger-2" style="margin-bottom:20px;">
-                <div class="card-header">
+            <div class="driver-panel-card animate-load stagger-2">
+                <div class="driver-panel-card-header">
                     <div>
-                        <h2 class="card-title" style="display:flex; align-items:center; gap:8px;">
-                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px;">account_balance_wallet</span>
+                        <h2 class="driver-panel-card-title">
+                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:21px;">account_balance_wallet</span>
                             <span>Chauffeur Wallet & Instant Payouts</span>
                         </h2>
-                        <p class="card-subtitle">Real-time trip fare credits, toll reimbursements, and bank IMPS withdrawals</p>
+                        <p class="driver-panel-card-subtitle">Real-time trip fare credits, audit ledger &amp; 24/7 bank IMPS withdrawals.</p>
                     </div>
+                    <span class="admin-badge badge-success" style="font-size:11px;">IMPS Active</span>
                 </div>
 
-                <!-- Wallet KPI Grid -->
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px; padding:16px 0;">
-                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:16px;">
-                        <div style="font-size:11px; text-transform:uppercase; color:#166534; font-weight:700;">Available Balance</div>
-                        <div style="font-size:24px; font-weight:800; color:#15803d; margin-top:4px;" id="driver-wallet-bal-display">₹{{ number_format($driverProfile->wallet_balance ?? 14500) }}</div>
-                        <div style="font-size:11px; color:#166534; margin-top:2px;">Available for instant withdrawal</div>
-                    </div>
-                    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:16px;">
-                        <div style="font-size:11px; text-transform:uppercase; color:#1e40af; font-weight:700;">Total Trips Completed</div>
-                        <div style="font-size:24px; font-weight:800; color:#1d4ed8; margin-top:4px;">{{ $driverProfile->trips_count ?? 840 }} Trips</div>
-                        <div style="font-size:11px; color:#1e40af; margin-top:2px;">Outstation completed rides</div>
-                    </div>
-                    <div style="background:#fffbeb; border:1px solid #fef3c7; border-radius:8px; padding:16px;">
-                        <div style="font-size:11px; text-transform:uppercase; color:#92400e; font-weight:700;">Chauffeur Star Rating</div>
-                        <div style="font-size:24px; font-weight:800; color:#b45309; margin-top:4px;">★{{ $driverProfile->rating ?? '4.90' }}</div>
-                        <div style="font-size:11px; color:#92400e; margin-top:2px;">Top-rated partner badge</div>
-                    </div>
-                </div>
-
-                <!-- Instant Payout Action Box -->
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-                    <div>
-                        <div style="font-weight:700; font-size:13px; color:#0f172a;">Registered Bank Account for Payouts</div>
-                        <div style="font-size:12px; color:#64748b; margin-top:2px;">
-                            HDFC Bank &bull; A/C: ••••••••• 4912 &bull; IFSC: HDFC0001029 (Instant 24/7 IMPS Settlement)
+                <div class="driver-panel-card-body">
+                    <!-- Uniform Metric Cells matching Auction Grid -->
+                    <div class="auction-metrics-grid" style="margin-bottom:14px;">
+                        <div class="auction-metric-cell">
+                            <div class="auction-metric-label">Available Balance</div>
+                            <div class="auction-metric-value success" id="driver-wallet-bal-display">₹{{ number_format($driverProfile->wallet_balance ?? 14500) }}</div>
+                            <div class="cell-subtext">Available for instant withdrawal</div>
+                        </div>
+                        <div class="auction-metric-cell">
+                            <div class="auction-metric-label">Total Trips Completed</div>
+                            <div class="auction-metric-value">{{ $driverProfile->trips_count ?? 840 }} Trips</div>
+                            <div class="cell-subtext">Outstation completed rides</div>
+                        </div>
+                        <div class="auction-metric-cell">
+                            <div class="auction-metric-label">Chauffeur Star Rating</div>
+                            <div class="auction-metric-value gold">★{{ $driverProfile->rating ?? '4.90' }}</div>
+                            <div class="cell-subtext">Top-rated partner badge</div>
                         </div>
                     </div>
-                    <button type="button" class="btn btn-sm btn-primary" onclick="requestDriverPayout({{ $driverProfile->wallet_balance ?? 14500 }})">
-                        <span class="material-symbols-outlined" style="font-size:15px;">payments</span>
-                        <span>Instant Bank Transfer</span>
-                    </button>
+
+                    <!-- Instant Payout Action Strip -->
+                    <div class="driver-compact-item-card" style="margin-bottom:16px; flex-wrap:wrap;">
+                        <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px; flex-shrink:0;">account_balance</span>
+                            <div>
+                                <div style="font-weight:700; font-size:13px; color:var(--text-main);">Registered Bank Account for Payouts</div>
+                                <div class="cell-subtext">HDFC Bank &bull; A/C: &bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull; 4912 &bull; IFSC: HDFC0001029 (Instant 24/7 IMPS Settlement)</div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="requestDriverPayout({{ $driverProfile->wallet_balance ?? 14500 }})">
+                            <span class="material-symbols-outlined" style="font-size:15px;">payments</span>
+                            <span>Instant Bank Transfer</span>
+                        </button>
+                    </div>
+
+                    <!-- Recent Wallet Ledger Table -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="font-family:var(--font-display); font-weight:800; font-size:13.5px; color:var(--text-main);">Recent Wallet Ledger</span>
+                        <span class="cell-subtext">{{ count($driverWalletTransactions ?? []) }} latest entries</span>
+                    </div>
+                    <div class="auction-table-wrap">
+                        <table class="admin-data-table admin-table-compact">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Reference &amp; Reason</th>
+                                    <th>Type</th>
+                                    <th style="text-align:right;">Amount</th>
+                                    <th style="text-align:right;">Balance After</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse($driverWalletTransactions ?? [] as $wt)
+                                    <tr>
+                                        <td>
+                                            <div class="cell-primary-text">{{ $wt->created_at ? $wt->created_at->format('d M Y') : '—' }}</div>
+                                            <div class="cell-subtext">{{ $wt->created_at ? $wt->created_at->format('H:i') : '' }}</div>
+                                        </td>
+                                        <td>
+                                            <div class="cell-primary-text">{{ ucwords(str_replace('_', ' ', $wt->reason ?? 'transaction')) }}</div>
+                                            <div class="cell-subtext">{{ $wt->booking ? $wt->booking->booking_reference : ($wt->note ?? 'Wallet settlement') }}</div>
+                                        </td>
+                                        <td>
+                                            <span class="admin-badge {{ $wt->type === 'credit' ? 'badge-success' : 'badge-warning' }}" style="font-size:10px;">
+                                                {{ strtoupper($wt->type) }}
+                                            </span>
+                                        </td>
+                                        <td style="text-align:right;" class="text-tabular">
+                                            <strong style="color:{{ $wt->type === 'credit' ? 'var(--success)' : 'var(--danger)' }};">
+                                                {{ $wt->type === 'credit' ? '+' : '-' }}₹{{ number_format((float) $wt->amount) }}
+                                            </strong>
+                                        </td>
+                                        <td style="text-align:right;" class="text-tabular">
+                                            <span class="cell-primary-text">₹{{ number_format((float) $wt->balance_after) }}</span>
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="5" style="text-align:center; padding:22px; color:var(--text-muted); font-size:12px;">
+                                            Completed trip payouts and bank withdrawals will appear here.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </section>
@@ -1475,14 +1581,14 @@
 
             <div style="display:grid; grid-template-columns: 1fr 1.6fr; gap:18px; margin-bottom:20px;" class="driver-profile-grid">
                 <!-- Chauffeur Identity & Details Card -->
-                <div class="card driver-panel-card animate-load stagger-2">
-                    <div class="card-header" style="padding-bottom:12px; margin-bottom:14px; border-bottom:1px solid #e2e8f0;">
+                <div class="driver-panel-card animate-load stagger-2">
+                    <div class="driver-panel-card-header">
                         <div>
-                            <h3 class="card-title" style="font-size:15px; display:flex; align-items:center; gap:8px;">
+                            <h3 class="driver-panel-card-title">
                                 <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">account_circle</span>
                                 <span>Chauffeur Identity & Profile</span>
                             </h3>
-                            <p class="card-subtitle">Official details shared with passengers upon booking confirmation</p>
+                            <p class="driver-panel-card-subtitle">Official details shared with passengers upon confirmation</p>
                         </div>
                         <button type="button" class="btn btn-sm btn-outline-gold" onclick="openDriverEditProfileModal()">
                             <span class="material-symbols-outlined" style="font-size:14px;">edit</span>
@@ -1490,50 +1596,54 @@
                         </button>
                     </div>
 
-                    <div style="display:flex; flex-direction:column; align-items:center; text-align:center; padding:12px 0 18px; border-bottom:1px solid #f1f5f9;">
-                        <div class="driver-avatar-display" style="font-size:46px; width:72px; height:72px; border-radius:50%; background:linear-gradient(135deg, rgba(212,155,76,0.2) 0%, rgba(212,155,76,0.05) 100%); border:2px solid var(--primary); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; box-shadow:0 4px 12px rgba(212,155,76,0.2); cursor:pointer;" onclick="openDriverEditProfileModal()" title="Click to Change Avatar">
-                            @include('partials.avatar', ['avatar' => $driverProfile->avatar ?? null, 'fallback' => '👨🏽‍✈️', 'alt' => $driverProfile->name ?? 'Driver'])
+                    <div class="driver-panel-card-body">
+                        <div style="display:flex; align-items:center; gap:14px; padding-bottom:14px; margin-bottom:14px; border-bottom:1px solid var(--outline-light);">
+                            <div class="driver-avatar-display" style="font-size:36px; width:60px; height:60px; border-radius:50%; background:linear-gradient(135deg, rgba(212,155,76,0.2) 0%, rgba(212,155,76,0.05) 100%); border:2px solid var(--primary); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; cursor:pointer;" onclick="openDriverEditProfileModal()" title="Click to Change Avatar">
+                                @include('partials.avatar', ['avatar' => $driverProfile->avatar ?? null, 'fallback' => '👨🏽‍✈️', 'alt' => $driverProfile->name ?? 'Driver'])
+                            </div>
+                            <div style="min-width:0;">
+                                <h4 class="driver-name-display" style="font-size:16px; font-weight:800; color:var(--text-main); margin:0 0 4px;">
+                                    {{ $driverProfile->name ?? 'Ramesh Patil' }}
+                                </h4>
+                                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:5px;">
+                                    <span class="admin-badge badge-success" style="font-size:10px;">VERIFIED PARTNER</span>
+                                    <span class="admin-badge badge-primary" style="font-size:10px;">EXP: 7+ YRS</span>
+                                </div>
+                                <div style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:4px;">
+                                    <span class="material-symbols-outlined" style="font-size:15px; color:#94a3b8;">call</span>
+                                    <span class="driver-phone-display" style="font-weight:600; color:var(--text-main);">{{ $driverProfile->phone ?? '+91 98765 43210' }}</span>
+                                </div>
+                            </div>
                         </div>
-                        <h4 class="driver-name-display" style="font-size:17px; font-weight:800; color:#0f172a; margin:10px 0 2px;">
-                            {{ $driverProfile->name ?? 'Ramesh Patil' }}
-                        </h4>
-                        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
-                            <span class="admin-badge badge-success" style="font-size:10px;">VERIFIED PARTNER</span>
-                            <span class="admin-badge badge-primary" style="font-size:10px;">EXP: 7+ YRS</span>
-                        </div>
-                        <div style="font-size:12px; color:#64748b; display:flex; align-items:center; gap:4px;">
-                            <span class="material-symbols-outlined" style="font-size:15px; color:#94a3b8;">call</span>
-                            <span class="driver-phone-display" style="font-weight:600; color:#0f172a;">{{ $driverProfile->phone ?? '+91 98765 43210' }}</span>
-                        </div>
-                    </div>
 
-                    <div style="display:flex; flex-direction:column; gap:10px; padding-top:14px; font-size:12.5px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px dashed #f1f5f9;">
-                            <span style="color:#64748b;">Primary Vehicle</span>
-                            <span style="font-weight:700; color:#0f172a;" class="driver-vehicle-display">{{ $driverProfile->vehicle_model ?? 'Toyota Innova Crysta' }}</span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px dashed #f1f5f9;">
-                            <span style="color:#64748b;">Registration Plate</span>
-                            <span style="font-family:monospace; font-weight:800; color:var(--primary); background:#fdf8f0; padding:2px 6px; border-radius:4px; border:1px solid rgba(212,155,76,0.3);" class="driver-plate-display">{{ $driverProfile->vehicle_plate ?? 'MH 12 QX 4920' }}</span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px dashed #f1f5f9;">
-                            <span style="color:#64748b;">Fleet Category</span>
-                            <span style="font-weight:700; color:#0f172a; text-transform:uppercase;" class="driver-category-display">{{ $driverProfile->fleet_category ?? 'SUV' }}</span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px dashed #f1f5f9;">
-                            <span style="color:#64748b;">Operating Hub / City</span>
-                            <span style="font-weight:700; color:#0f172a;" class="driver-city-display">{{ $driverProfile->city ?? 'Pune & Mumbai Hub' }}</span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px dashed #f1f5f9;">
-                            <span style="color:#64748b;">Rating & Trips</span>
-                            <span style="font-weight:700; color:#f59e0b;">★{{ $driverProfile->rating ?? '4.90' }} <span style="color:#64748b; font-weight:normal;">({{ $driverProfile->trips_count ?? 840 }} Trips)</span></span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0;">
-                            <span style="color:#64748b;">Duty Status</span>
-                            <button type="button" class="driver-duty-toggle-pill {{ ($driverProfile->is_online ?? true) ? 'online' : 'offline' }} driver-duty-pill-toggle" onclick="toggleDriverDutyStatus()" style="cursor:pointer; border:none;">
-                                <span class="status-indicator-dot {{ ($driverProfile->is_online ?? true) ? 'bg-success' : 'bg-secondary' }} driver-duty-dot"></span>
-                                <span class="driver-duty-text">{{ ($driverProfile->is_online ?? true) ? 'Duty Online' : 'Off Duty' }}</span>
-                            </button>
+                        <div class="driver-details-grid">
+                            <div class="driver-details-row">
+                                <span class="driver-details-label">Primary Vehicle</span>
+                                <span class="driver-details-value driver-vehicle-display">{{ $driverProfile->vehicle_model ?? 'Toyota Innova Crysta' }}</span>
+                            </div>
+                            <div class="driver-details-row">
+                                <span class="driver-details-label">Registration Plate</span>
+                                <span class="driver-details-value driver-plate-display" style="font-family:monospace; color:var(--gold-dark);">{{ $driverProfile->vehicle_plate ?? 'MH 12 QX 4920' }}</span>
+                            </div>
+                            <div class="driver-details-row">
+                                <span class="driver-details-label">Fleet Category</span>
+                                <span class="driver-details-value driver-category-display" style="text-transform:uppercase;">{{ $driverProfile->fleet_category ?? 'SUV' }}</span>
+                            </div>
+                            <div class="driver-details-row">
+                                <span class="driver-details-label">Operating Hub / City</span>
+                                <span class="driver-details-value driver-city-display">{{ $driverProfile->city ?? 'Pune & Mumbai Hub' }}</span>
+                            </div>
+                            <div class="driver-details-row">
+                                <span class="driver-details-label">Rating &amp; Trips</span>
+                                <span class="driver-details-value" style="color:var(--gold-dark);">★{{ $driverProfile->rating ?? '4.90' }} <span style="color:var(--text-muted); font-weight:500;">({{ $driverProfile->trips_count ?? 840 }} Trips)</span></span>
+                            </div>
+                            <div class="driver-details-row" style="align-items:center;">
+                                <span class="driver-details-label">Duty Status</span>
+                                <button type="button" class="driver-duty-toggle-pill {{ ($driverProfile->is_online ?? true) ? 'online' : 'offline' }} driver-duty-pill-toggle" onclick="toggleDriverDutyStatus()" style="cursor:pointer; border:none;">
+                                    <span class="status-indicator-dot {{ ($driverProfile->is_online ?? true) ? 'bg-success' : 'bg-secondary' }} driver-duty-dot"></span>
+                                    <span class="driver-duty-text">{{ ($driverProfile->is_online ?? true) ? 'Duty Online' : 'Off Duty' }}</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1541,14 +1651,14 @@
                 <!-- Right Column: Registered Fleet & Vehicle Management -->
                 <div style="display:flex; flex-direction:column; gap:16px;">
                     <!-- Registered Vehicles Card -->
-                    <div class="card driver-panel-card animate-load stagger-3">
-                        <div class="card-header" style="flex-wrap:wrap; gap:8px;">
+                    <div class="driver-panel-card animate-load stagger-3" style="margin-bottom:0;">
+                        <div class="driver-panel-card-header">
                             <div>
-                                <h3 class="card-title" style="font-size:15px; display:flex; align-items:center; gap:8px;">
+                                <h3 class="driver-panel-card-title">
                                     <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">garage</span>
-                                    <span>Registered Fleet & Vehicles</span>
+                                    <span>Registered Fleet &amp; Vehicles</span>
                                 </h3>
-                                <p class="card-subtitle">Manage approved cabs and list additional vehicles for verification</p>
+                                <p class="driver-panel-card-subtitle">Manage approved cabs and submit additional vehicles for verification</p>
                             </div>
                             <button type="button" class="btn btn-sm btn-primary" onclick="openDriverListVehicleModal()">
                                 <span class="material-symbols-outlined" style="font-size:14px;">add</span>
@@ -1556,53 +1666,63 @@
                             </button>
                         </div>
 
-                        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:10px;" id="driver-profile-vehicles-grid">
-                            @forelse($driverMyVehicles as $v)
-                                <div class="driver-compact-item-card">
-                                    <div style="min-width:0; flex:1;">
-                                        <div style="font-weight:700; font-size:13px; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ $v->vehicle_model }}</div>
-                                        <div style="font-size:11.5px; color:#64748b; margin-top:2px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                                            <span style="font-family:monospace; font-weight:700; color:#8c5d1e;">{{ $v->vehicle_plate }}</span>
-                                            @if($v->status === 'Approved')
-                                                <span class="admin-badge badge-success" style="font-size:10px; padding:2px 7px;">Approved</span>
-                                            @elseif($v->status === 'Pending')
-                                                <span class="admin-badge badge-warning" style="font-size:10px; padding:2px 7px;">Pending</span>
-                                            @else
-                                                <span class="admin-badge badge-danger" style="font-size:10px; padding:2px 7px;">Rejected</span>
-                                            @endif
+                        <div class="driver-panel-card-body">
+                            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:10px;" id="driver-profile-vehicles-grid">
+                                @forelse($driverMyVehicles as $v)
+                                    <div class="driver-compact-item-card">
+                                        <div style="min-width:0; flex:1;">
+                                            <div style="font-weight:700; font-size:13px; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ $v->vehicle_model }}</div>
+                                            <div style="font-size:11.5px; color:var(--text-muted); margin-top:2px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                                <span style="font-family:monospace; font-weight:700; color:var(--gold-dark);">{{ $v->vehicle_plate }}</span>
+                                                @if($v->status === 'Approved')
+                                                    <span class="admin-badge badge-success" style="font-size:10px; padding:2px 7px;">Approved</span>
+                                                @elseif($v->status === 'Pending')
+                                                    <span class="admin-badge badge-warning" style="font-size:10px; padding:2px 7px;">Pending</span>
+                                                @else
+                                                    <span class="admin-badge badge-danger" style="font-size:10px; padding:2px 7px;">Rejected</span>
+                                                @endif
+                                            </div>
                                         </div>
+                                        <button type="button" class="btn btn-sm btn-outline driver-item-details-btn"
+                                            onclick='openDriverVehicleDetails(@json($v))'>
+                                            <span>Details</span>
+                                        </button>
                                     </div>
-                                    <button type="button" class="btn btn-sm btn-outline driver-item-details-btn"
-                                        onclick='openDriverVehicleDetails(@json($v))'>
-                                        <span>Details</span>
-                                    </button>
-                                </div>
-                            @empty
-                                <div style="grid-column:1 / -1; text-align:center; padding:24px 16px; color:#94a3b8; font-size:12.5px;">
-                                    No cars listed yet. Click <strong>"Add New Vehicle"</strong> to register your first vehicle.
-                                </div>
-                            @endforelse
+                                @empty
+                                    <div style="grid-column:1 / -1; text-align:center; padding:24px 16px; color:var(--text-muted); font-size:12.5px;">
+                                        No cars listed yet. Click <strong>&ldquo;Add New Vehicle&rdquo;</strong> to register your first vehicle.
+                                    </div>
+                                @endforelse
+                            </div>
                         </div>
                     </div>
 
                     <!-- Chauffeur Documents & Guidelines Card -->
-                    <div class="card driver-panel-card animate-load stagger-4">
-                        <h4 style="font-size:13.5px; font-weight:800; color:#0f172a; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
-                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:18px;">verified_user</span>
-                            <span>Chauffeur Standards & Compliance</span>
-                        </h4>
-                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:10px; font-size:12px;">
-                            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px;">
-                                <div style="font-weight:700; color:#0f172a;">Commercial Driving License</div>
-                                <div style="color:#16a34a; font-weight:600; margin-top:2px;">✓ Verified Active</div>
+                    <div class="driver-panel-card animate-load stagger-4" style="margin-bottom:0;">
+                        <div class="driver-panel-card-header">
+                            <div>
+                                <h4 class="driver-panel-card-title" style="font-size:14.5px;">
+                                    <span class="material-symbols-outlined" style="color:var(--primary); font-size:18px;">verified_user</span>
+                                    <span>Chauffeur Standards &amp; Compliance</span>
+                                </h4>
+                                <p class="driver-panel-card-subtitle">Active license, permit verification &amp; punctuality benchmarks</p>
                             </div>
-                            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px;">
-                                <div style="font-weight:700; color:#0f172a;">Commercial Vehicle Permit</div>
-                                <div style="color:#16a34a; font-weight:600; margin-top:2px;">✓ All India Tourist Permit</div>
-                            </div>
-                            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px;">
-                                <div style="font-weight:700; color:#0f172a;">Safety & Punctuality Score</div>
-                                <div style="color:var(--primary); font-weight:700; margin-top:2px;">★ 99.4% On-time Arrival</div>
+                            <span class="admin-badge badge-success" style="font-size:10.5px;">Compliant</span>
+                        </div>
+                        <div class="driver-panel-card-body">
+                            <div class="auction-metrics-grid">
+                                <div class="auction-metric-cell">
+                                    <div class="auction-metric-label">Commercial License</div>
+                                    <div class="auction-metric-value success" style="font-size:14px;">✓ Verified Active</div>
+                                </div>
+                                <div class="auction-metric-cell">
+                                    <div class="auction-metric-label">Vehicle Permit</div>
+                                    <div class="auction-metric-value success" style="font-size:14px;">✓ All India Tourist Permit</div>
+                                </div>
+                                <div class="auction-metric-cell">
+                                    <div class="auction-metric-label">Punctuality Score</div>
+                                    <div class="auction-metric-value gold" style="font-size:14px;">★ 99.4% On-time</div>
+                                </div>
                             </div>
                         </div>
                     </div>

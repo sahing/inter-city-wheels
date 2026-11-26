@@ -11,6 +11,7 @@ use App\Models\DynamicFormField;
 use App\Models\RouteFare;
 use App\Models\SeatLayout;
 use App\Models\ServiceLocation;
+use App\Models\WalletTransaction;
 use App\Models\WorkflowStage;
 
 class HomeController extends Controller
@@ -52,6 +53,7 @@ class HomeController extends Controller
         $driverProfile = null;
         $driverTrips = collect();
         $driverMyVehicles = collect();
+        $driverWalletTransactions = collect();
 
         if ($currentUser && $currentUser->role === 'customer') {
             $digits = preg_replace('/[^0-9]/', '', (string) $currentUser->phone) ?? '';
@@ -83,6 +85,11 @@ class HomeController extends Controller
 
             if ($driverProfile) {
                 $driverMyVehicles = DriverVehicle::where('driver_id', $driverProfile->id)->latest()->get();
+                $driverWalletTransactions = WalletTransaction::with('booking')
+                    ->where('driver_id', $driverProfile->id)
+                    ->latest('id')
+                    ->take(15)
+                    ->get();
 
                 $driverTrips = Booking::with('driver')
                     ->where('assigned_driver_id', $driverProfile->id)
@@ -94,6 +101,11 @@ class HomeController extends Controller
             $driverProfile = Driver::first();
             if ($driverProfile) {
                 $driverMyVehicles = DriverVehicle::where('driver_id', $driverProfile->id)->latest()->get();
+                $driverWalletTransactions = WalletTransaction::with('booking')
+                    ->where('driver_id', $driverProfile->id)
+                    ->latest('id')
+                    ->take(15)
+                    ->get();
                 $driverTrips = Booking::with('driver')
                     ->where('assigned_driver_id', $driverProfile->id)
                     ->whereNotIn('status', ['Requested', 'Bidding', 'Cancelled'])
@@ -123,6 +135,7 @@ class HomeController extends Controller
             'allSeatLayouts',
             'driverVehicles',
             'driverMyVehicles',
+            'driverWalletTransactions',
             'localPackages',
             'airportHubs',
             'allCarTypes',

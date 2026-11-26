@@ -4088,6 +4088,45 @@ tr.auction-bid-drawer-row td {
   padding: 10px 12px !important;
   border-bottom: 2px solid var(--outline) !important;
 }
+.driver-trips-view.is-cards-mode {
+  border: none;
+  background: transparent;
+  overflow: visible;
+}
+.driver-trips-view.is-cards-mode thead {
+  display: none;
+}
+.driver-trips-view.is-cards-mode tbody {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 12px;
+}
+.driver-trips-view.is-cards-mode tr.driver-trip-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--surface-card);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+}
+.driver-trips-view.is-cards-mode tr.driver-trip-row td {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 !important;
+  border: none !important;
+  text-align: left !important;
+  white-space: normal !important;
+}
+.driver-trips-view.is-cards-mode tr.driver-trip-row td:last-child {
+  border-top: 1px solid var(--outline-light) !important;
+  padding-top: 10px !important;
+  justify-content: space-between;
+}
 .auction-card-compact {
   padding: 12px 14px;
   gap: 8px;
