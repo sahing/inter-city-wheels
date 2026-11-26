@@ -108,7 +108,7 @@ class BiddingSession extends Model
     }
 
     /**
-     * The most the admin may pay a driver: the customer fare minus the fixed
+     * The most the admin may pay a driver: the customer fare minus the minimum
      * margin percentage.
      */
     public function maxDriverPrice(): float
@@ -117,6 +117,30 @@ class BiddingSession extends Model
         $feePct = min(90.0, max(0.0, (float) $this->admin_fee_pct));
 
         return floor($customerAmount * (1 - ($feePct / 100)));
+    }
+
+    /**
+     * Maximum service charge percentage configured by admin (defaults to 75%
+     * unless configured, and never below the session's minimum margin).
+     */
+    public function maxServiceChargePct(): float
+    {
+        $configured = PlatformSetting::get('bidding_max_service_charge_pct', '75');
+        $pct = is_numeric($configured) ? (float) $configured : 75.0;
+
+        return min(95.0, max((float) $this->admin_fee_pct, $pct));
+    }
+
+    /**
+     * The lowest bid a driver can quote (instant-win / maximum discount floor).
+     */
+    public function minDriverPrice(): float
+    {
+        $customerAmount = (float) $this->booking->total_amount;
+        $maxFeePct = $this->maxServiceChargePct();
+        $floor = floor($customerAmount * (1 - ($maxFeePct / 100)));
+
+        return max(self::MIN_BID_STEP, min((float) $this->start_amount, $floor));
     }
 
     public function adminProfitAt(float $driverPrice): float
@@ -149,6 +173,7 @@ class BiddingSession extends Model
             'departure_at' => $this->booking->departure_time?->toIso8601String(),
             'start_amount' => (float) $this->start_amount,
             'max_driver_price' => $this->maxDriverPrice(),
+            'min_driver_price' => $this->minDriverPrice(),
             'current_lowest' => $lowest === null ? null : (float) $lowest->bid_amount,
             'you_are_lowest' => $lowest !== null
                 && $viewerDriverId !== null

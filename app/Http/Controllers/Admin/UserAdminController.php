@@ -32,10 +32,7 @@ class UserAdminController extends Controller
         }
 
         $users = $query->get()->map(function ($u) {
-            $driver = null;
-            if ($u->role === 'driver') {
-                $driver = Driver::where('phone', $u->phone)->orWhere('name', 'like', '%'.explode(' ', $u->name)[0].'%')->first();
-            }
+            $driver = $u->role === 'driver' ? $u->driverProfile() : null;
             $tripsCount = 0;
             if ($u->role === 'customer') {
                 $tripsCount = Booking::where('customer_phone', $u->phone)->orWhere('customer_email', $u->email)->count();
@@ -49,7 +46,7 @@ class UserAdminController extends Controller
                 'email' => $u->email,
                 'role' => $u->role,
                 'phone' => $u->phone,
-                'avatar' => $u->avatar ?? ($u->role === 'admin' ? '🛡️' : ($u->role === 'driver' ? '👨🏽‍✈️' : '👤')),
+                'avatar' => $u->avatar ?? $this->defaultAvatarForRole($u->role),
                 'created_at' => $u->created_at ? $u->created_at->format('d M Y') : 'N/A',
                 'driver' => $driver ? [
                     'id' => $driver->id,
@@ -59,6 +56,7 @@ class UserAdminController extends Controller
                     'rating' => $driver->rating,
                     'wallet_balance' => $driver->wallet_balance,
                     'is_online' => $driver->is_online,
+                    'is_verified' => (bool) $driver->is_verified,
                 ] : null,
                 'trips_count' => $tripsCount,
             ];
@@ -86,11 +84,7 @@ class UserAdminController extends Controller
             'fleet_category' => 'nullable|string',
         ]);
 
-        $avatar = match ($validated['role']) {
-            'admin' => '🛡️',
-            'driver' => '👨🏽‍✈️',
-            default => '👤'
-        };
+        $avatar = $this->defaultAvatarForRole($validated['role']);
 
         $user = User::create([
             'name' => $validated['name'],
@@ -101,23 +95,10 @@ class UserAdminController extends Controller
             'password' => Hash::make($validated['password'] ?? 'password123'),
         ]);
 
-        // If registered as driver, create corresponding driver record if plate given
-        if ($validated['role'] === 'driver' && ! empty($validated['vehicle_plate'])) {
-            Driver::firstOrCreate(
-                ['vehicle_plate' => strtoupper(trim($validated['vehicle_plate']))],
-                [
-                    'name' => $validated['name'],
-                    'phone' => $validated['phone'],
-                    'avatar' => '👨🏽‍✈️',
-                    'vehicle_model' => $validated['vehicle_model'] ?? 'Maruti Suzuki Dzire',
-                    'fleet_category' => $validated['fleet_category'] ?? 'sedan',
-                    'rating' => 4.90,
-                    'trips_count' => 0,
-                    'wallet_balance' => 0,
-                    'is_verified' => true,
-                    'is_online' => true,
-                ]
-            );
+        // Every driver account needs a verified Driver profile so bidding and
+        // driver console actions work immediately.
+        if ($validated['role'] === 'driver') {
+            $this->ensureVerifiedDriverProfile($user, $validated);
         }
 
         return response()->json([
@@ -133,10 +114,7 @@ class UserAdminController extends Controller
     public function show($id)
     {
         $user = User::findOrFail($id);
-        $driver = null;
-        if ($user->role === 'driver') {
-            $driver = Driver::where('phone', $user->phone)->orWhere('name', 'like', '%'.explode(' ', $user->name)[0].'%')->first();
-        }
+        $driver = $user->role === 'driver' ? $user->driverProfile() : null;
 
         $bookings = Booking::where('customer_phone', $user->phone)
             ->orWhere('customer_email', $user->email)
@@ -167,18 +145,85 @@ class UserAdminController extends Controller
             'password' => 'nullable|string|min:6',
         ]);
 
+        if (
+            isset($validated['role'])
+            && (int) $user->id === (int) auth()->id()
+            && $validated['role'] !== 'admin'
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot remove admin permission from your own active administrator account.',
+            ], 422);
+        }
+
         if (! empty($validated['password'])) {
             $validated['password'] = Hash::make($validated['password']);
         } else {
             unset($validated['password']);
         }
 
+        if (isset($validated['role']) && $validated['role'] !== $user->role) {
+            if (! $user->avatar || in_array($user->avatar, ['👤', '👨🏽‍✈️', '🛡️'], true)) {
+                $validated['avatar'] = $this->defaultAvatarForRole($validated['role']);
+            }
+        }
+
         $user->update($validated);
+        $user->refresh();
+
+        $driver = $user->role === 'driver'
+            ? $this->ensureVerifiedDriverProfile($user)
+            : null;
 
         return response()->json([
             'success' => true,
             'message' => "User account {$user->name} updated successfully!",
             'user' => $user,
+            'driver' => $driver,
+        ]);
+    }
+
+    /**
+     * Grant or change a user's access level (customer, driver, or admin).
+     */
+    public function updateRole(Request $request, $id)
+    {
+        $user = User::findOrFail($id);
+
+        $validated = $request->validate([
+            'role' => 'required|in:customer,driver,admin',
+        ]);
+
+        if ((int) $user->id === (int) auth()->id() && $validated['role'] !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot remove admin permission from your own active administrator account.',
+            ], 422);
+        }
+
+        $updates = ['role' => $validated['role']];
+        if (! $user->avatar || in_array($user->avatar, ['👤', '👨🏽‍✈️', '🛡️'], true)) {
+            $updates['avatar'] = $this->defaultAvatarForRole($validated['role']);
+        }
+
+        $user->update($updates);
+        $user->refresh();
+
+        $driver = $user->role === 'driver'
+            ? $this->ensureVerifiedDriverProfile($user)
+            : null;
+
+        $roleLabel = match ($user->role) {
+            'admin' => 'Platform Admin',
+            'driver' => 'Driver Partner',
+            default => 'Customer',
+        };
+
+        return response()->json([
+            'success' => true,
+            'message' => "{$user->name} now has {$roleLabel} access.",
+            'user' => $user,
+            'driver' => $driver,
         ]);
     }
 
@@ -204,5 +249,83 @@ class UserAdminController extends Controller
             'success' => true,
             'message' => "User {$userName} has been removed.",
         ]);
+    }
+
+    private function defaultAvatarForRole(string $role): string
+    {
+        return match ($role) {
+            'admin' => '🛡️',
+            'driver' => '👨🏽‍✈️',
+            default => '👤',
+        };
+    }
+
+    /**
+     * Ensure a user granted driver-level permission has a verified Driver row
+     * linked by phone so bidding and driver console actions unlock immediately.
+     */
+    private function ensureVerifiedDriverProfile(User $user, array $input = []): Driver
+    {
+        $existing = $user->driverProfile();
+
+        if ($existing) {
+            $dirty = false;
+            if (! $existing->is_verified) {
+                $existing->is_verified = true;
+                $dirty = true;
+            }
+            if (! empty($input['vehicle_model'])) {
+                $existing->vehicle_model = trim((string) $input['vehicle_model']);
+                $dirty = true;
+            }
+            if (! empty($input['vehicle_plate'])) {
+                $existing->vehicle_plate = strtoupper(trim((string) $input['vehicle_plate']));
+                $dirty = true;
+            }
+            if (! empty($input['fleet_category'])) {
+                $existing->fleet_category = strtolower(trim((string) $input['fleet_category']));
+                $dirty = true;
+            }
+            if ($dirty) {
+                $existing->save();
+            }
+
+            return $existing;
+        }
+
+        $phone = trim((string) $user->phone);
+        if ($phone === '') {
+            $phone = '+91 90000 '.str_pad((string) $user->id, 5, '0', STR_PAD_LEFT);
+            $user->phone = $phone;
+            $user->save();
+        }
+
+        $requestedPlate = strtoupper(trim((string) ($input['vehicle_plate'] ?? '')));
+        $plate = $requestedPlate !== '' ? $requestedPlate : $this->uniquePlaceholderPlate();
+
+        return Driver::firstOrCreate(
+            ['phone' => $phone],
+            [
+                'name' => $user->name,
+                'avatar' => '👨🏽‍✈️',
+                'vehicle_model' => trim((string) ($input['vehicle_model'] ?? '')) ?: 'Maruti Suzuki Dzire',
+                'vehicle_plate' => $plate,
+                'fleet_category' => strtolower(trim((string) ($input['fleet_category'] ?? ''))) ?: 'sedan',
+                'rating' => 4.90,
+                'trips_count' => 0,
+                'wallet_balance' => 0,
+                'is_verified' => true,
+                'is_online' => true,
+            ]
+        );
+    }
+
+    private function uniquePlaceholderPlate(): string
+    {
+        do {
+            $plate = 'WB 02 '.random_int(10, 99).' '.random_int(1000, 9999);
+        } while (Driver::where('vehicle_plate', $plate)->exists());
+
+        return $plate;
     }
 }

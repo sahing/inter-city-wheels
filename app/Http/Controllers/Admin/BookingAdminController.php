@@ -6,6 +6,7 @@ use App\Exceptions\InvalidBookingTransition;
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use App\Models\Driver;
+use App\Services\BiddingService;
 use App\Services\BookingReferenceGenerator;
 use App\Services\BookingWorkflow;
 use Illuminate\Http\Request;
@@ -16,6 +17,7 @@ class BookingAdminController extends Controller
     public function __construct(
         private readonly BookingWorkflow $workflow,
         private readonly BookingReferenceGenerator $references,
+        private readonly BiddingService $bidding,
     ) {}
 
     /**
@@ -128,6 +130,8 @@ class BookingAdminController extends Controller
             ], 422);
         }
 
+        $this->bidding->openForNewBooking($booking);
+
         $booking->load('driver');
 
         return response()->json([
@@ -239,6 +243,10 @@ class BookingAdminController extends Controller
 
         $booking->load('driver');
 
+        if ($booking->assigned_driver_id !== null || $booking->status === BookingWorkflow::DRIVER_ASSIGNED) {
+            $this->bidding->syncWithDriverAllotment($booking, $booking->assigned_driver_id);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Booking updated successfully!',
@@ -293,6 +301,8 @@ class BookingAdminController extends Controller
                 'transition' => $e->toArray(),
             ], 422);
         }
+
+        $this->bidding->syncWithDriverAllotment($booking, $driverId);
 
         $booking->load('driver');
 

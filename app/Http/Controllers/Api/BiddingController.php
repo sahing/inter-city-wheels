@@ -6,6 +6,7 @@ use App\Exceptions\BiddingException;
 use App\Http\Controllers\Controller;
 use App\Models\BiddingSession;
 use App\Models\Driver;
+use App\Models\User;
 use App\Services\BiddingService;
 use Illuminate\Http\Request;
 
@@ -33,7 +34,7 @@ class BiddingController extends Controller
             ], 404);
         }
 
-        $driver = $request->user()?->driverProfile();
+        $driver = $this->resolveDriver($request->user());
 
         return response()->json([
             'success' => true,
@@ -50,6 +51,7 @@ class BiddingController extends Controller
     {
         $validated = $request->validate([
             'amount' => 'required|numeric|min:1|max:10000000',
+            'agreed_terms' => 'sometimes|accepted',
         ]);
 
         $session = $this->bidding->findByToken($token);
@@ -64,7 +66,7 @@ class BiddingController extends Controller
 
         $user = $request->user();
 
-        if (! $user || $user->role !== 'driver') {
+        if (! $user || (! $user->isDriver() && ! $user->isAdmin())) {
             return response()->json([
                 'success' => false,
                 'code' => 'driver_only',
@@ -72,7 +74,7 @@ class BiddingController extends Controller
             ], 403);
         }
 
-        $driver = $user->driverProfile();
+        $driver = $this->resolveDriver($user);
 
         if (! $driver) {
             return response()->json([
@@ -87,17 +89,22 @@ class BiddingController extends Controller
                 $session,
                 $driver,
                 (float) $validated['amount'],
-                $request->ip()
+                $request->ip(),
+                $user->isAdmin()
             );
         } catch (BiddingException $e) {
             return response()->json($e->toArray(), $e->status);
         }
 
         $session->refresh();
+        $instantWin = $session->status === BiddingSession::STATUS_AWARDED;
 
         return response()->json([
             'success' => true,
-            'message' => 'Bid placed. You are currently the lowest bidder.',
+            'instant_win' => $instantWin,
+            'message' => $instantWin
+                ? 'Maximum discount reached! You are the bid owner and this trip has been allotted to you.'
+                : 'Bid placed. You are currently the lowest bidder.',
             'bid' => [
                 'id' => $bid->id,
                 'amount' => (float) $bid->bid_amount,
@@ -116,7 +123,9 @@ class BiddingController extends Controller
      */
     public function activeAuctions(Request $request)
     {
-        $driver = $request->user()?->driverProfile();
+        $user = $request->user();
+        $isAdmin = (bool) $user?->isAdmin();
+        $driver = $this->resolveDriver($user);
 
         $sessions = BiddingSession::with('booking')
             ->where('status', BiddingSession::STATUS_OPEN)
@@ -139,11 +148,41 @@ class BiddingController extends Controller
             return $payload;
         })->values();
 
+        $recentAllotted = BiddingSession::with(['booking', 'winningBid'])
+            ->where('status', BiddingSession::STATUS_AWARDED)
+            ->orderByDesc('awarded_at')
+            ->orderByDesc('id')
+            ->limit(10)
+            ->get()
+            ->map(function (BiddingSession $session) use ($driver) {
+                $booking = $session->booking;
+                $allottedToYou = $driver !== null
+                    && $booking !== null
+                    && (int) $booking->assigned_driver_id === (int) $driver->id;
+
+                return [
+                    'id' => $session->id,
+                    'booking_reference' => (string) ($booking?->booking_reference ?? ''),
+                    'pickup_city' => $session->pickup_city,
+                    'drop_city' => $session->drop_city,
+                    'distance_km' => $session->distance_km,
+                    'departure_at' => $booking?->departure_time?->toIso8601String(),
+                    'status' => 'allotted',
+                    'allotted_at' => ($session->awarded_at ?? $session->updated_at)?->toIso8601String(),
+                    'allotted_to_you' => $allottedToYou,
+                    'winning_amount' => $allottedToYou && $booking?->driver_payout_amount !== null
+                        ? (float) $booking->driver_payout_amount
+                        : null,
+                ];
+            })->values();
+
         return response()->json([
             'success' => true,
             'count' => $auctions->count(),
-            'can_bid' => (bool) ($driver?->is_verified),
+            'can_bid' => $isAdmin ? ($driver !== null) : (bool) ($driver?->is_verified),
+            'is_admin' => $isAdmin,
             'auctions' => $auctions,
+            'recent_allotted' => $recentAllotted,
         ]);
     }
 
@@ -158,7 +197,7 @@ class BiddingController extends Controller
             return response()->json(['success' => false, 'message' => 'This bidding link is not valid.'], 404);
         }
 
-        $driver = $request->user()?->driverProfile();
+        $driver = $this->resolveDriver($request->user());
 
         if (! $driver) {
             return response()->json(['success' => false, 'message' => 'No driver profile is linked to this account.'], 403);
@@ -183,28 +222,44 @@ class BiddingController extends Controller
         ]);
     }
 
+    private function resolveDriver(?User $user): ?Driver
+    {
+        if (! $user) {
+            return null;
+        }
+
+        $driver = $user->driverProfile();
+
+        if (! $driver && $user->isAdmin()) {
+            return Driver::where('is_verified', true)->first() ?? Driver::first();
+        }
+
+        return $driver;
+    }
+
     /**
      * @return array<string, mixed>
      */
     private function viewerState(Request $request, BiddingSession $session, ?Driver $driver): array
     {
+        $user = $request->user();
+        $isAdmin = (bool) $user?->isAdmin();
         $winning = $session->winningBid()->first();
 
         return [
-            'authenticated' => $request->user() !== null,
-            'is_driver' => $request->user()?->role === 'driver',
+            'authenticated' => $user !== null,
+            'is_driver' => $user?->role === 'driver' || $isAdmin,
             'driver_profile' => $driver ? [
                 'id' => $driver->id,
                 'name' => $driver->name,
                 'vehicle_model' => $driver->vehicle_model,
                 'vehicle_plate' => $driver->vehicle_plate,
                 'rating' => (float) $driver->rating,
-                'is_verified' => (bool) $driver->is_verified,
+                'is_verified' => $isAdmin ? true : (bool) $driver->is_verified,
             ] : null,
             'can_bid' => $session->isOpen()
                 && $driver !== null
-                && $request->user()?->role === 'driver'
-                && $driver->is_verified,
+                && ($isAdmin || ($user?->role === 'driver' && $driver->is_verified)),
             'awarded_to_you' => $winning !== null
                 && $driver !== null
                 && (int) $winning->driver_id === (int) $driver->id,

@@ -81,15 +81,28 @@ class BiddingException extends RuntimeException
         return new self($reason, 403, 'driver_not_eligible');
     }
 
-    public static function bidTooHigh(?float $currentLowest, float $startAmount): self
+    public static function bidTooHigh(?float $currentLowest, float $startAmount, bool $allowEqualStart = false): self
     {
         $ceiling = $currentLowest ?? $startAmount;
+        $message = ($currentLowest === null && $allowEqualStart)
+            ? 'Your bid cannot exceed ₹'.number_format($ceiling, 0).'.'
+            : 'Your bid must be lower than ₹'.number_format($ceiling, 0).'.';
 
         return new self(
-            'Your bid must be lower than ₹'.number_format($ceiling, 0).'.',
+            $message,
             422,
             'bid_not_low_enough',
             ['current_lowest' => $currentLowest, 'start_amount' => $startAmount]
+        );
+    }
+
+    public static function bidTooLow(float $minDriverPrice): self
+    {
+        return new self(
+            'Your bid cannot be lower than ₹'.number_format($minDriverPrice, 0).' (maximum service discount reached).',
+            422,
+            'bid_below_minimum',
+            ['min_driver_price' => $minDriverPrice]
         );
     }
 

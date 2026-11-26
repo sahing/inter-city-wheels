@@ -155,6 +155,8 @@ class PlatformSettingAdminController extends Controller
             'waiting_charge_per_hour' => 'nullable|numeric|min:0',
             'free_cancellation_hours' => 'nullable|integer|min:0|max:168',
             'other_booking_conditions' => 'nullable|string|max:1000',
+            'bidding_min_service_charge_pct' => 'nullable|numeric|min:0|max:90',
+            'bidding_max_service_charge_pct' => 'nullable|numeric|min:0|max:95|gte:bidding_min_service_charge_pct',
         ]);
 
         $defaults = PlatformSetting::pricingDefaults();
@@ -165,9 +167,41 @@ class PlatformSettingAdminController extends Controller
             }
         }
 
+        if (array_key_exists('bidding_min_service_charge_pct', $validated) && $validated['bidding_min_service_charge_pct'] !== null) {
+            PlatformSetting::set('bidding_admin_fee_pct', (string) $validated['bidding_min_service_charge_pct']);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Night stay rate, hours, and booking conditions saved!',
+            'settings' => PlatformSetting::allAdminSettings(),
+        ]);
+    }
+
+    /**
+     * Persist min and max bidding service charge percentages.
+     */
+    public function updateBiddingSettings(Request $request)
+    {
+        if (! auth()->check() || auth()->user()->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Admin role required.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'bidding_min_service_charge_pct' => 'required|numeric|min:0|max:90',
+            'bidding_max_service_charge_pct' => 'required|numeric|min:0|max:95|gte:bidding_min_service_charge_pct',
+        ]);
+
+        PlatformSetting::set('bidding_min_service_charge_pct', (string) $validated['bidding_min_service_charge_pct']);
+        PlatformSetting::set('bidding_admin_fee_pct', (string) $validated['bidding_min_service_charge_pct']);
+        PlatformSetting::set('bidding_max_service_charge_pct', (string) $validated['bidding_max_service_charge_pct']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Bidding service charge limits updated.',
             'settings' => PlatformSetting::allAdminSettings(),
         ]);
     }

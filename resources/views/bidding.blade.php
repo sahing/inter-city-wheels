@@ -100,7 +100,7 @@
             $statusPill = [
                 'open' => ['pill-open', 'Bidding open'],
                 'closed' => ['pill-closed', 'Bidding closed'],
-                'awarded' => ['pill-won', 'Awarded'],
+                'awarded' => ['pill-won', 'Allotted'],
                 'cancelled' => ['pill-closed', 'Cancelled'],
             ][$payload['status']] ?? ['pill-closed', ucfirst($payload['status'])];
         @endphp
@@ -127,7 +127,7 @@
 
             <div class="bid-grid">
                 <div class="bid-cell">
-                    <div class="k">Start price</div>
+                    <div class="k">Max allowed bid</div>
                     <div class="v gold">₹{{ number_format($payload['start_amount'], 0) }}</div>
                 </div>
                 <div class="bid-cell">
@@ -142,13 +142,23 @@
                 </div>
             </div>
 
-            @if($payload['closes_at'])
-                <p class="bid-note">
+            @php
+                $bidMinFloor = $payload['min_driver_price'] ?? 1;
+                $bidMaxCeiling = $payload['current_lowest'] !== null
+                    ? max(1, (float) $payload['current_lowest'] - 1)
+                    : (float) $payload['start_amount'];
+            @endphp
+
+            <p class="bid-note">
+                @if($payload['closes_at'])
                     Bidding closes {{ \Illuminate\Support\Carbon::parse($payload['closes_at'])->format('d M Y, h:i A') }}.
-                    Every valid bid must be lower than
-                    <strong>₹{{ number_format($payload['current_lowest'] ?? $payload['start_amount'], 0) }}</strong>.
-                </p>
-            @endif
+                @else
+                    Open until a driver is allotted.
+                @endif
+                Bid between <strong>₹{{ number_format($bidMinFloor, 0) }}</strong> and
+                <strong>₹{{ number_format($bidMaxCeiling, 0) }}</strong>.
+                Quoting the floor <strong>₹{{ number_format($bidMinFloor, 0) }}</strong> immediately wins and allots this trip to you.
+            </p>
 
             @if($payload['you_are_lowest'] && $payload['is_open'])
                 <p class="bid-note" style="color:#86efac;">You currently hold the lowest bid for this trip.</p>
@@ -221,10 +231,17 @@
                         </div>
 
                         <label class="bid-label" for="bid-amount">
-                            Your price (must be below ₹{{ number_format($payload['current_lowest'] ?? $payload['start_amount'], 0) }})
+                            Your price (₹{{ number_format($bidMinFloor, 0) }} – ₹{{ number_format($bidMaxCeiling, 0) }})
                         </label>
-                        <input class="bid-input" type="number" id="bid-amount" inputmode="numeric" min="1" step="1"
-                               placeholder="e.g. {{ (int) max(1, floor(($payload['current_lowest'] ?? $payload['start_amount']) - 100)) }}">
+                        <input class="bid-input" type="number" id="bid-amount" inputmode="numeric"
+                               min="{{ (int) $bidMinFloor }}" max="{{ (int) $bidMaxCeiling }}" step="1"
+                               placeholder="e.g. {{ (int) max($bidMinFloor, floor(($payload['current_lowest'] ?? $payload['start_amount']) - 100)) }}">
+                        <label style="display:flex; align-items:flex-start; gap:8px; margin-top:12px; font-size:12.5px; color:var(--bid-muted); cursor:pointer; line-height:1.5;">
+                            <input type="checkbox" id="bid-agree-terms" style="margin-top:3px; width:16px; height:16px; accent-color:var(--bid-gold);">
+                            <span>
+                                I agree to the <a href="{{ \App\Models\PlatformSetting::get('terms_conditions_url', '/terms-conditions') }}" target="_blank" rel="noopener" style="color:var(--bid-gold-soft); text-decoration:underline;">Terms &amp; Conditions</a>, cancellation rules, and commit to complete this trip at my quoted price if allotted.
+                            </span>
+                        </label>
                         <button type="button" class="bid-btn" id="bid-submit" style="margin-top:14px;">Submit bid</button>
                         <div class="bid-msg" id="bid-msg" role="status" aria-live="polite"></div>
                         <p class="bid-note">
@@ -268,6 +285,7 @@
     const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const submit = document.getElementById('bid-submit');
     const amountInput = document.getElementById('bid-amount');
+    const agreeTerms = document.getElementById('bid-agree-terms');
     const msg = document.getElementById('bid-msg');
 
     function show(text, ok) {
@@ -283,6 +301,12 @@
             return;
         }
 
+        if (agreeTerms && !agreeTerms.checked) {
+            show('Please agree to the Terms & Conditions before placing your bid.', false);
+            agreeTerms.focus();
+            return;
+        }
+
         submit.disabled = true;
         submit.textContent = 'Submitting…';
 
@@ -295,7 +319,7 @@
                     'X-CSRF-TOKEN': csrf,
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: JSON.stringify({ amount: amount })
+                body: JSON.stringify({ amount: amount, agreed_terms: true })
             });
 
             const data = await res.json().catch(() => ({}));

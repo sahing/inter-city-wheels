@@ -2678,9 +2678,9 @@ function auctionDateTime(iso) {
 }
 
 function auctionTimeLeft(iso) {
-  if (!iso) return 'no deadline';
+  if (!iso) return 'open until driver allotted';
   const ms = new Date(iso).getTime() - Date.now();
-  if (isNaN(ms)) return 'no deadline';
+  if (isNaN(ms)) return 'open until driver allotted';
   if (ms <= 0) return 'closed';
   const mins = Math.floor(ms / 60000);
   const hours = Math.floor(mins / 60);
@@ -2706,37 +2706,82 @@ async function renderBiddingList() {
     }
 
     const auctions = Array.isArray(data.auctions) ? data.auctions : [];
+    const recentAllotted = Array.isArray(data.recent_allotted) ? data.recent_allotted : [];
     state.bidding.availableTrips = auctions;
 
-    const verificationBanner = data.can_bid === false
+    const viewerRole = window.CURRENT_USER ? window.CURRENT_USER.role : null;
+    const isAdminViewer = viewerRole === 'admin' || data.is_admin === true;
+    const canBidRole = viewerRole === 'driver' || isAdminViewer;
+
+    const verificationBanner = (data.can_bid === false && !isAdminViewer)
       ? '<div style="text-align:center; padding:14px 16px; margin-bottom:12px; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; font-size:12.5px;">Your driver profile is pending verification. Auctions are visible now; bidding unlocks once operations approves your profile.</div>'
       : '';
 
+    const allottedSectionHtml = recentAllotted.length
+      ? '<div style="margin-top:18px;">'
+        + '<div style="font-size:12px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:8px;">Allotted Trips</div>'
+        + recentAllotted.map(function (item) {
+          const allottedBadge = item.allotted_to_you
+            ? '<span class="admin-badge badge-success" style="font-size:10.5px;">✓ Allotted to You</span>'
+            : '<span class="admin-badge badge-gold" style="font-size:10.5px;">✓ Allotted</span>';
+          const dist = item.distance_km ? item.distance_km + ' KM' : 'On request';
+          const payout = (item.allotted_to_you && item.winning_amount !== null && item.winning_amount !== undefined)
+            ? ' &bull; Your payout <strong style="color:#16a34a;">' + auctionMoney(item.winning_amount) + '</strong>'
+            : '';
+          return '<div class="bid-card" style="display:flex; flex-direction:column; align-items:stretch; gap:8px; padding:12px 16px; border:1px solid #e2e8f0; background:#f8fafc; border-radius:12px; margin-bottom:10px;">'
+            + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">'
+            + '<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">'
+            + '<span class="admin-badge badge-primary" style="font-size:10.5px; font-family:monospace;">' + auctionEscape(item.booking_reference) + '</span>'
+            + allottedBadge
+            + '</div>'
+            + '<span style="font-size:11px; color:#64748b; font-weight:600;">Driver allotted</span>'
+            + '</div>'
+            + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; font-size:13px; color:#0f172a;">'
+            + '<div><strong>' + auctionEscape(item.pickup_city) + '</strong> &rarr; <strong>' + auctionEscape(item.drop_city) + '</strong> <span style="color:#64748b; font-size:12px;">(' + auctionEscape(dist) + ')</span></div>'
+            + '<div style="font-size:12px; color:#475569;">Status: <strong style="color:#b45309;">Allotted</strong>' + payout + '</div>'
+            + '</div>'
+            + '</div>';
+        }).join('')
+        + '</div>'
+      : '';
+
     if (!auctions.length) {
+      const adminCta = isAdminViewer
+        ? '<button type="button" class="btn btn-sm btn-primary" onclick="switchTab(\'admin\'); switchAdminSection(\'bookings\');">'
+          + '<span class="material-symbols-outlined" style="font-size:15px;">gavel</span>'
+          + '<span>Open Auction in Admin Panel</span>'
+          + '</button>'
+        : '';
+
       container.innerHTML = verificationBanner
         + '<div style="text-align:center; padding:32px 18px; color:#64748b; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;">'
         + '<span class="material-symbols-outlined" style="font-size:36px; color:#cbd5e1; display:block; margin-bottom:6px;">gavel</span>'
         + '<div style="font-weight:700; font-size:14px; color:#334155;">No live outstation auctions are open right now</div>'
         + '<p style="font-size:12px; margin:6px auto 14px; max-width:440px; color:#64748b; line-height:1.5;">When operations publishes a trip for bidding, it appears here (and via WhatsApp link) with an inline bid box so you can submit a price below the starting rate.</p>'
+        + '<div style="display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">'
+        + adminCta
         + '<button type="button" class="btn btn-sm btn-outline" onclick="renderBiddingList()">'
         + '<span class="material-symbols-outlined" style="font-size:15px;">refresh</span>'
         + '<span>Refresh Auctions</span>'
         + '</button>'
-        + '</div>';
+        + '</div>'
+        + '</div>'
+        + allottedSectionHtml;
       return;
     }
 
-    const viewerRole = window.CURRENT_USER ? window.CURRENT_USER.role : null;
-    const isDriverRole = viewerRole === 'driver';
-    const canBidNow = data.can_bid !== false && isDriverRole;
+    const canBidNow = data.can_bid !== false && canBidRole;
 
     container.innerHTML = verificationBanner + auctions.map(function (auction) {
       const auctionId = Number(auction.id || 0);
       const hasLowest = auction.current_lowest !== null && auction.current_lowest !== undefined;
       const lowest = hasLowest ? auctionMoney(auction.current_lowest) : '—';
       const ceiling = hasLowest ? Number(auction.current_lowest) : Number(auction.start_amount || 0);
-      const maxAllowed = Math.max(1, Math.floor(ceiling - 1));
-      const suggestedBid = ceiling > 100 ? Math.floor(ceiling - 100) : maxAllowed;
+      const maxAllowed = hasLowest ? Math.max(1, Math.floor(ceiling - 1)) : Math.max(1, Math.floor(ceiling));
+      const minFloor = Math.max(1, Math.floor(Number(auction.min_driver_price || 1)));
+      const effectiveMax = Math.max(minFloor, maxAllowed);
+      const suggestedBid = effectiveMax > minFloor + 100 ? Math.floor(effectiveMax - 100) : minFloor;
+      const termsUrl = (window.PLATFORM_SETTINGS && window.PLATFORM_SETTINGS.terms_conditions_url) || '/terms-conditions';
 
       const badge = auction.you_are_lowest
         ? '<span class="admin-badge badge-success" style="font-size:10.5px;">✓ Lowest</span>'
@@ -2756,24 +2801,28 @@ async function renderBiddingList() {
 
       let bidPanelHtml = '';
       if (canBidNow && remainingBids > 0 && auction.is_open !== false) {
-        bidPanelHtml = '<div style="width:100%; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; gap:6px;">'
+        bidPanelHtml = '<div style="width:100%; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; gap:8px;">'
           + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; font-size:11.5px; color:#475569;">'
-          + '<span>Submit your bid (must be below <strong style="color:#0f172a;">' + auctionMoney(ceiling) + '</strong>, max ' + auctionMoney(maxAllowed) + ')</span>'
+          + '<span>Quote <strong style="color:#0f172a;">' + auctionMoney(minFloor) + ' – ' + auctionMoney(effectiveMax) + '</strong> <span style="color:#15803d; font-weight:600;">(' + auctionMoney(minFloor) + ' = instant win)</span></span>'
           + '<span style="color:#64748b;">' + remainingBids + ' bid' + (remainingBids === 1 ? '' : 's') + ' left</span>'
           + '</div>'
           + '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">'
-          + '<input type="number" id="console-bid-input-' + auctionId + '" class="form-control" inputmode="numeric" min="1" max="' + maxAllowed + '" step="1" placeholder="e.g. ' + suggestedBid + '" style="flex:1; min-width:140px; height:36px; font-size:13.5px; font-weight:700;" onkeydown="if(event.key===\'Enter\'){event.preventDefault();submitConsoleAuctionBid(\'' + auctionEscape(auction.token) + '\',' + auctionId + ');}">'
+          + '<input type="number" id="console-bid-input-' + auctionId + '" class="form-control" inputmode="numeric" min="' + minFloor + '" max="' + effectiveMax + '" step="1" placeholder="e.g. ' + suggestedBid + '" style="flex:1; min-width:140px; height:36px; font-size:13.5px; font-weight:700;" onkeydown="if(event.key===\'Enter\'){event.preventDefault();submitConsoleAuctionBid(\'' + auctionEscape(auction.token) + '\',' + auctionId + ');}">'
           + '<button type="button" id="console-bid-btn-' + auctionId + '" class="btn btn-sm btn-primary" onclick="submitConsoleAuctionBid(\'' + auctionEscape(auction.token) + '\',' + auctionId + ')">'
           + '<span class="material-symbols-outlined" style="font-size:15px;">gavel</span>'
           + '<span>' + action + '</span>'
           + '</button>'
           + '</div>'
+          + '<label style="display:flex; align-items:flex-start; gap:6px; font-size:11px; color:#475569; cursor:pointer; line-height:1.4;">'
+          + '<input type="checkbox" id="console-bid-terms-' + auctionId + '" style="margin-top:2px; accent-color:var(--primary);">'
+          + '<span>I agree to the <a href="' + auctionEscape(termsUrl) + '" target="_blank" rel="noopener" style="color:var(--primary); text-decoration:underline;">Terms &amp; Conditions</a> and commit to complete this trip if allotted.</span>'
+          + '</label>'
           + '<div id="console-bid-msg-' + auctionId + '" style="display:none; font-size:11.5px; border-radius:6px; padding:6px 9px;"></div>'
           + '</div>';
-      } else if (isDriverRole && remainingBids === 0) {
+      } else if (canBidRole && remainingBids === 0) {
         bidPanelHtml = '<div style="width:100%; font-size:11.5px; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:8px 10px;">You have reached the bid limit for this auction.</div>';
-      } else if (!isDriverRole) {
-        bidPanelHtml = '<div style="width:100%; font-size:11.5px; color:#475569; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px;">Preview mode: verified driver accounts enter their bid amount here (below ' + auctionMoney(ceiling) + ').</div>';
+      } else if (isAdminViewer && data.can_bid === false) {
+        bidPanelHtml = '<div style="width:100%; font-size:11.5px; color:#475569; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px;">Register at least one driver profile in the fleet to submit bids from Admin access.</div>';
       }
 
       return '<div class="bid-card" style="display:flex; flex-direction:column; align-items:stretch; gap:10px; padding:14px 16px; border:1px solid #e2e8f0; background:#ffffff; border-radius:12px; margin-bottom:12px; box-shadow:0 2px 8px rgba(15,23,42,0.04);">'
@@ -2814,7 +2863,7 @@ async function renderBiddingList() {
         + '</div>'
         + '</div>'
         + '</div>';
-    }).join('');
+    }).join('') + allottedSectionHtml;
   } catch (err) {
     console.error('renderBiddingList', err);
     container.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">Could not load live auctions. Check your connection, then press Refresh.</div>';
@@ -2823,6 +2872,7 @@ async function renderBiddingList() {
 
 window.submitConsoleAuctionBid = async function (token, auctionId) {
   const input = document.getElementById('console-bid-input-' + auctionId);
+  const terms = document.getElementById('console-bid-terms-' + auctionId);
   const btn = document.getElementById('console-bid-btn-' + auctionId);
   const msg = document.getElementById('console-bid-msg-' + auctionId);
 
@@ -2842,6 +2892,12 @@ window.submitConsoleAuctionBid = async function (token, auctionId) {
     return;
   }
 
+  if (terms && !terms.checked) {
+    showMsg('Please agree to the Terms & Conditions before placing your bid.', false);
+    terms.focus();
+    return;
+  }
+
   const origHtml = btn ? btn.innerHTML : '';
   if (btn) {
     btn.disabled = true;
@@ -2855,7 +2911,7 @@ window.submitConsoleAuctionBid = async function (token, auctionId) {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      body: JSON.stringify({ amount: amount })
+      body: JSON.stringify({ amount: amount, agreed_terms: true })
     });
     const data = await res.json().catch(() => ({}));
 
@@ -4823,6 +4879,9 @@ function renderAdminBookingsTable(bookings) {
             <button type="button" class="btn-action-icon btn-action-invoice" onclick="openInvoiceModal(${b.id})" title="Generate Tax Invoice">
               <span class="material-symbols-outlined">receipt</span>
             </button>
+            <button type="button" class="btn-action-icon" style="background:#f0f7ff; color:#1d4ed8; border:1px solid #bfdbfe;" onclick="openBiddingForBooking(${b.id})" title="Send to driver bidding (WhatsApp & Driver Console)">
+              <span class="material-symbols-outlined">gavel</span>
+            </button>
           </div>
         </td>
       </tr>
@@ -5541,25 +5600,38 @@ function renderAdminUsersTable(users) {
       </div>
     ` : (u.role === 'driver' ? '<span style="color:#d97706; font-size:11px;">Vehicle Pending</span>' : '<span style="color:#94a3b8; font-size:11px;">Standard Passenger</span>');
 
+    const currentUserId = window.CURRENT_USER ? Number(window.CURRENT_USER.id) : null;
+    const isSelfAdmin = currentUserId === Number(u.id) && u.role === 'admin';
     const searchStr = `${u.name} ${u.email} ${u.phone} ${u.role} ${u.driver ? u.driver.vehicle_plate + ' ' + u.driver.vehicle_model : ''}`.toLowerCase();
 
     return `
-      <tr id="user-row-${u.id}" data-id="${u.id}" data-role="${u.role}" data-search="${searchStr}">
+      <tr id="user-row-${u.id}" data-id="${u.id}" data-role="${u.role}" data-search="${auctionEscape(searchStr)}">
         <td>
           <div style="display:flex; align-items:center; gap:8px;">
             <span style="font-size:20px; width:30px; height:30px; border-radius:50%; background:#f1f5f9; display:inline-flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
               ${renderAvatarHtml(u.avatar, u.role === 'admin' ? '🛡️' : (u.role === 'driver' ? '👨🏽‍✈️' : '👤'), u.name || 'User')}
             </span>
             <div>
-              <div class="cell-primary-text">${u.name}</div>
+              <div class="cell-primary-text">${auctionEscape(u.name)}</div>
               <div class="cell-subtext">ID: #USR-${String(u.id).padStart(4, '0')}</div>
             </div>
           </div>
         </td>
         <td>
-          <span class="admin-badge ${roleClass}">
-            ${u.role.toUpperCase()}
-          </span>
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span class="admin-badge ${roleClass}">
+              ${auctionEscape(String(u.role || '').toUpperCase())}
+            </span>
+            <select class="form-control" style="width:auto; min-width:110px; height:28px; padding:2px 6px; font-size:11px; font-weight:600;"
+              aria-label="Change access level for ${auctionEscape(u.name)}"
+              data-prev-role="${auctionEscape(u.role)}"
+              onchange="changeUserRole(${Number(u.id)}, this.value, this)"
+              ${isSelfAdmin ? 'disabled title="Cannot change your own active admin role"' : ''}>
+              <option value="customer" ${u.role === 'customer' ? 'selected' : ''}>Customer</option>
+              <option value="driver" ${u.role === 'driver' ? 'selected' : ''}>Driver</option>
+              <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+            </select>
+          </div>
         </td>
         <td>
           <div class="cell-primary-text" style="font-size:11.5px;">${u.email}</div>
@@ -5594,6 +5666,46 @@ function renderAdminUsersTable(users) {
     `;
   }).join('');
 }
+
+// 1b. QUICK ROLE / PERMISSION SWITCHER
+window.changeUserRole = async function (userId, newRole, selectEl) {
+  const prevRole = selectEl ? (selectEl.dataset.prevRole || '') : '';
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+  if (selectEl) selectEl.disabled = true;
+
+  try {
+    const res = await fetch(`/api/admin/users/${userId}/role`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': csrfToken
+      },
+      body: JSON.stringify({ role: newRole })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) {
+      if (selectEl) selectEl.dataset.prevRole = newRole;
+      showToast(data.message || 'Access level updated.', 'success');
+      reloadAdminUsers();
+    } else {
+      if (selectEl && prevRole) selectEl.value = prevRole;
+      showToast(data.message || 'Could not update access level.', 'warning');
+    }
+  } catch (err) {
+    console.error('Change user role error:', err);
+    if (selectEl && prevRole) selectEl.value = prevRole;
+    showToast('Network error while updating access level.', 'warning');
+  } finally {
+    if (selectEl) {
+      const currentUserId = window.CURRENT_USER ? Number(window.CURRENT_USER.id) : null;
+      const isSelfAdmin = currentUserId === Number(userId) && (selectEl.value === 'admin');
+      selectEl.disabled = isSelfAdmin;
+    }
+  }
+};
 
 // 1. ADD USER / DRIVER MODAL
 window.openAddUserModal = function () {
@@ -8341,7 +8453,7 @@ function biddingStatusBadge(status) {
   const map = {
     open: ['badge-success', 'OPEN'],
     closed: ['badge-secondary', 'CLOSED'],
-    awarded: ['badge-gold', 'AWARDED'],
+    awarded: ['badge-gold', 'ALLOTTED'],
     cancelled: ['badge-danger', 'CANCELLED'],
   };
   const entry = map[status] || ['badge-secondary', String(status || '').toUpperCase()];
@@ -8382,10 +8494,8 @@ window.openBiddingForBooking = async function (bookingId) {
       `${b.customer_name || ''} · ${b.customer_phone || ''} · ${(b.status || '').toUpperCase()}`;
 
     const closesInput = document.getElementById('bidding-closes-at');
-    if (closesInput && !closesInput.value) {
-      const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-      closesInput.value = d.toISOString().slice(0, 16);
+    if (closesInput) {
+      closesInput.value = '';
     }
 
     document.getElementById('bidding-notes').value = '';
@@ -8623,11 +8733,95 @@ window.openBiddingDetail = async function (sessionId) {
       awardBtn.dataset.bidId = session.lowest_bid !== null ? (session.bids.find((b) => b.is_lowest) || {}).id || '' : '';
     }
 
+    const reassignWrap = document.getElementById('bidding-detail-reassign-wrap');
+    const reassignSelect = document.getElementById('bidding-detail-reassign-driver');
+    if (reassignWrap) {
+      reassignWrap.style.display = session.status === 'awarded' ? 'block' : 'none';
+    }
+    if (reassignSelect && booking.assigned_driver_id) {
+      reassignSelect.value = String(booking.assigned_driver_id);
+    }
+
     const modal = document.getElementById('admin-bidding-detail-modal');
     if (modal) modal.classList.add('active');
   } catch (err) {
     console.error('openBiddingDetail', err);
     showToast('Network error while loading the auction.', 'danger');
+  }
+};
+
+window.reassignAllottedDriverFromBidding = async function () {
+  const detail = window.biddingState.detail;
+  if (!detail || !detail.booking) return;
+
+  const driverId = document.getElementById('bidding-detail-reassign-driver')?.value;
+  if (!driverId) return;
+
+  biddingShowError('bidding-detail-error', '');
+
+  try {
+    const res = await fetch(`/api/admin/bookings/${detail.booking.id}/allot-driver`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify({ driver_id: Number(driverId) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      biddingShowError('bidding-detail-error', data.message || 'Could not change allotted driver.');
+      return;
+    }
+
+    showToast(data.message || 'Allotted driver updated.', 'success');
+    await window.openBiddingDetail(detail.id);
+    window.renderAdminBiddings();
+    if (typeof reloadAdminBookings === 'function') reloadAdminBookings();
+  } catch (err) {
+    console.error('reassignAllottedDriverFromBidding', err);
+    biddingShowError('bidding-detail-error', 'Network error while updating driver.');
+  }
+};
+
+window.saveBiddingServiceChargeSettings = async function () {
+  const minPct = parseFloat(document.getElementById('bidding-setting-min-pct')?.value ?? 15);
+  const maxPct = parseFloat(document.getElementById('bidding-setting-max-pct')?.value ?? 75);
+
+  if (Number.isNaN(minPct) || Number.isNaN(maxPct) || minPct < 0 || maxPct < minPct) {
+    showToast('Max service charge % must be greater than or equal to Min service charge %.', 'warning');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/settings/bidding', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify({
+        bidding_min_service_charge_pct: minPct,
+        bidding_max_service_charge_pct: maxPct,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      showToast(data.message || 'Could not update bidding limits.', 'warning');
+      return;
+    }
+
+    window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+    const ruleMin = document.getElementById('rule-bidding-min-pct');
+    const ruleMax = document.getElementById('rule-bidding-max-pct');
+    if (ruleMin) ruleMin.value = String(minPct);
+    if (ruleMax) ruleMax.value = String(maxPct);
+    showToast(data.message || 'Bidding service charge limits updated.', 'success');
+  } catch (err) {
+    console.error('saveBiddingServiceChargeSettings', err);
+    showToast('Network error while saving bidding limits.', 'danger');
   }
 };
 
@@ -9138,6 +9332,8 @@ window.savePricingConditions = async function () {
     free_waiting_minutes: parseInt(document.getElementById('rule-waiting-grace')?.value ?? 45, 10) || 0,
     waiting_charge_per_hour: parseFloat(document.getElementById('rule-waiting-hour-rate')?.value ?? 150) || 0,
     free_cancellation_hours: parseInt(document.getElementById('rule-free-cancel-hours')?.value ?? 1, 10) || 0,
+    bidding_min_service_charge_pct: parseFloat(document.getElementById('rule-bidding-min-pct')?.value ?? 15) || 0,
+    bidding_max_service_charge_pct: parseFloat(document.getElementById('rule-bidding-max-pct')?.value ?? 75) || 0,
     other_booking_conditions: document.getElementById('rule-other-conditions')?.value || '',
   };
 
@@ -9154,6 +9350,10 @@ window.savePricingConditions = async function () {
     const data = await res.json();
     if (res.ok && data.success) {
       window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+      const bMin = document.getElementById('bidding-setting-min-pct');
+      const bMax = document.getElementById('bidding-setting-max-pct');
+      if (bMin) bMin.value = String(payload.bidding_min_service_charge_pct);
+      if (bMax) bMax.value = String(payload.bidding_max_service_charge_pct);
       state.admin.pricingRules.petCharge = payload.addon_pet_friendly_rate;
       state.admin.pricingRules.nightCharge = payload.addon_night_allowance_rate;
       state.admin.pricingRules.luggageCharge = payload.addon_luggage_carrier_rate;

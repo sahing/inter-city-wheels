@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\BiddingSession;
+use App\Models\Driver;
 use App\Services\BiddingService;
 use Illuminate\Http\Request;
 
@@ -30,6 +31,9 @@ class BiddingPageController extends Controller
 
         $user = $request->user();
         $driver = $user?->driverProfile();
+        if (! $driver && $user?->isAdmin()) {
+            $driver = Driver::where('is_verified', true)->first() ?? Driver::first();
+        }
 
         $winning = $session->winningBid()->first();
         $awardedToYou = $winning !== null
@@ -53,7 +57,7 @@ class BiddingPageController extends Controller
             'payload' => $session->toDriverPayload($driver?->id),
             'user' => $user,
             'driver' => $driver,
-            'isVerified' => $driver?->is_verified ?? false,
+            'isVerified' => $user?->isAdmin() ? ($driver !== null) : ($driver?->is_verified ?? false),
             'awardedToYou' => $awardedToYou,
             'revealedBooking' => $revealedBooking,
             'myBids' => $myBids,

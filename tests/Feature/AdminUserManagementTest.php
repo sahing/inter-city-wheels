@@ -154,5 +154,58 @@ class AdminUserManagementTest extends TestCase
         $response->assertSee('admin-add-user-modal', false);
         $response->assertSee('admin-edit-user-modal', false);
         $response->assertSee('admin-view-user-modal', false);
+        $response->assertSee('changeUserRole(', false);
+    }
+
+    public function test_admin_can_grant_driver_customer_or_admin_permission_to_any_user(): void
+    {
+        $admin = User::where('role', 'admin')->firstOrFail();
+        $user = User::where('role', 'customer')->firstOrFail();
+
+        // 1. Grant driver-level permission -> provisions verified Driver profile
+        $toDriver = $this->actingAs($admin)->patchJson("/api/admin/users/{$user->id}/role", [
+            'role' => 'driver',
+        ]);
+        $toDriver->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('user.role', 'driver')
+            ->assertJsonPath('driver.is_verified', true);
+
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'role' => 'driver']);
+        $this->assertNotNull($user->fresh()->driverProfile());
+
+        // Promoted user can immediately access driver auction feed with can_bid = true
+        $this->actingAs($user->fresh())
+            ->getJson('/api/driver/auctions')
+            ->assertStatus(200)
+            ->assertJsonPath('can_bid', true);
+
+        // 2. Grant admin-level permission -> user can reach admin APIs
+        $toAdmin = $this->actingAs($admin)->patchJson("/api/admin/users/{$user->id}/role", [
+            'role' => 'admin',
+        ]);
+        $toAdmin->assertStatus(200)
+            ->assertJsonPath('user.role', 'admin');
+
+        $this->actingAs($user->fresh())
+            ->getJson('/api/admin/users')
+            ->assertStatus(200);
+
+        // 3. Revert back to customer-level permission
+        $toCustomer = $this->actingAs($admin)->putJson("/api/admin/users/{$user->id}", [
+            'role' => 'customer',
+        ]);
+        $toCustomer->assertStatus(200)
+            ->assertJsonPath('user.role', 'customer');
+
+        $this->actingAs($user->fresh())
+            ->getJson('/api/admin/users')
+            ->assertStatus(403);
+
+        // 4. Admin cannot demote their own active admin session
+        $selfDemote = $this->actingAs($admin)->patchJson("/api/admin/users/{$admin->id}/role", [
+            'role' => 'customer',
+        ]);
+        $selfDemote->assertStatus(422);
     }
 }

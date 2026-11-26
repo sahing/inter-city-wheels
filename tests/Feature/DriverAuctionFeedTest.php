@@ -306,4 +306,78 @@ class DriverAuctionFeedTest extends TestCase
             ->assertStatus(200)
             ->assertSee('01 Dec 2026, 06:30 AM');
     }
+
+    public function test_admin_has_full_access_to_driver_auctions_and_bidding(): void
+    {
+        $session = $this->openSession($this->booking());
+
+        $this->actingAs($this->admin)->get('/')
+            ->assertStatus(200)
+            ->assertSee('data-section="bidding"', false)
+            ->assertSee('id="admin-sec-bidding"', false)
+            ->assertSee('openBiddingForBooking(', false)
+            ->assertSee('id="admin-bidding-open-modal"', false)
+            ->assertSee('id="admin-bidding-detail-modal"', false)
+            ->assertSee('id="bidding-cards-stream"', false);
+
+        $this->actingAs($this->admin)
+            ->getJson('/api/driver/auctions')
+            ->assertStatus(200)
+            ->assertJsonPath('can_bid', true)
+            ->assertJsonPath('is_admin', true)
+            ->assertJsonPath('count', 1);
+
+        $this->actingAs($this->admin)
+            ->get("/bid/{$session->token}")
+            ->assertStatus(200)
+            ->assertSee('Place your bid')
+            ->assertDontSee('pending verification');
+
+        $this->actingAs($this->admin)
+            ->postJson("/api/bidding/{$session->token}/bids", ['amount' => 3850])
+            ->assertStatus(200)
+            ->assertJsonPath('bid.amount', 3850);
+    }
+
+    public function test_new_booking_opens_auction_until_driver_allotted_and_shows_allotted_status(): void
+    {
+        // Booking creation automatically opens an auction with no expiry deadline.
+        $booking = $this->booking('Pune', 'Mumbai');
+
+        $feed = $this->actingAs($this->driverUser)
+            ->getJson('/api/driver/auctions')
+            ->assertStatus(200)
+            ->assertJsonPath('count', 1);
+
+        $auction = $feed->json('auctions.0');
+        $this->assertSame($booking->booking_reference, $auction['booking_reference']);
+        $this->assertNull($auction['closes_at']);
+        $this->assertTrue($auction['is_open']);
+
+        // Allotting a driver marks the auction as Allotted (awarded) and closes it.
+        $this->actingAs($this->admin)
+            ->postJson("/api/admin/bookings/{$booking->id}/allot-driver", [
+                'driver_id' => $this->driver->id,
+            ])
+            ->assertStatus(200)
+            ->assertJsonPath('booking.status', 'Driver Assigned');
+
+        $session = BiddingSession::where('booking_id', $booking->id)->firstOrFail();
+        $this->assertSame(BiddingSession::STATUS_AWARDED, $session->status);
+
+        // No longer in open auctions; appears in recent_allotted with status = allotted.
+        $afterAllot = $this->actingAs($this->driverUser)
+            ->getJson('/api/driver/auctions')
+            ->assertStatus(200)
+            ->assertJsonPath('count', 0);
+
+        $this->assertSame($booking->booking_reference, $afterAllot->json('recent_allotted.0.booking_reference'));
+        $this->assertSame('allotted', $afterAllot->json('recent_allotted.0.status'));
+        $this->assertTrue($afterAllot->json('recent_allotted.0.allotted_to_you'));
+
+        // Public bidding page displays "Allotted".
+        $this->get("/bid/{$session->token}")
+            ->assertStatus(200)
+            ->assertSee('Allotted');
+    }
 }

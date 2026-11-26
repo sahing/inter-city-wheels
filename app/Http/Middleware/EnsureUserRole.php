@@ -24,7 +24,7 @@ class EnsureUserRole
                 : redirect()->guest(route('login'));
         }
 
-        if ($roles !== [] && ! in_array($user->role, $roles, true)) {
+        if ($roles !== [] && ! $user->isAdmin() && ! in_array($user->role, $roles, true)) {
             return $request->expectsJson()
                 ? response()->json([
                     'success' => false,

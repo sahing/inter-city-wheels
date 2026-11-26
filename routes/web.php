@@ -180,7 +180,7 @@ Route::prefix('api')->group(function () {
         ->name('api.bidding.show');
 });
 
-Route::prefix('api')->middleware(['auth', 'role:driver'])->group(function () {
+Route::prefix('api')->middleware(['auth', 'role:driver,admin'])->group(function () {
     Route::post('/bidding/{token}/bids', [BiddingController::class, 'placeBid'])
         ->name('api.bidding.bids.store');
     Route::get('/bidding/{token}/mine', [BiddingController::class, 'mine'])
@@ -231,6 +231,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::post('/admin/users', [UserAdminController::class, 'store'])->name('api.admin.users.store');
     Route::get('/admin/users/{id}', [UserAdminController::class, 'show'])->name('api.admin.users.show');
     Route::put('/admin/users/{id}', [UserAdminController::class, 'update'])->name('api.admin.users.update');
+    Route::patch('/admin/users/{id}/role', [UserAdminController::class, 'updateRole'])->name('api.admin.users.updateRole');
     Route::delete('/admin/users/{id}', [UserAdminController::class, 'destroy'])->name('api.admin.users.destroy');
 
     // Dynamic Form Builder
@@ -314,6 +315,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::post('/admin/settings/toggle-feature', [PlatformSettingAdminController::class, 'toggleFeature'])->name('api.admin.settings.toggleFeature');
     Route::post('/admin/settings/booking-type-car-types', [PlatformSettingAdminController::class, 'updateBookingTypeCarTypes'])->name('api.admin.settings.bookingTypeCarTypes');
     Route::post('/admin/settings/pricing-conditions', [PlatformSettingAdminController::class, 'updatePricingConditions'])->name('api.admin.settings.pricingConditions');
+    Route::post('/admin/settings/bidding', [PlatformSettingAdminController::class, 'updateBiddingSettings'])->name('api.admin.settings.bidding');
 
     // Driver Bidding Marketplace
     Route::get('/admin/biddings', [BiddingAdminController::class, 'index'])->name('api.admin.biddings.index');

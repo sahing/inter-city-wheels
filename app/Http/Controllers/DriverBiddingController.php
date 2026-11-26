@@ -444,6 +444,10 @@ class DriverBiddingController extends Controller
             }
         }
 
+        if ($user->isAdmin()) {
+            return Driver::where('is_verified', true)->first() ?? Driver::first();
+        }
+
         return null;
     }
 

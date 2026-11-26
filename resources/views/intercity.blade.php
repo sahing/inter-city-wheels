@@ -1651,6 +1651,13 @@
                                 </a>
                             </li>
                             <li class="admin-nav-item">
+                                <a href="javascript:void(0)" class="admin-nav-link" data-section="bidding" onclick="switchAdminSection('bidding')">
+                                    <span class="material-symbols-outlined admin-nav-icon">gavel</span>
+                                    <span class="admin-nav-text">Driver Bidding</span>
+                                    <span class="admin-nav-badge badge-gold">Auction</span>
+                                </a>
+                            </li>
+                            <li class="admin-nav-item">
                                 <a href="javascript:void(0)" class="admin-nav-link" data-section="booking-types" onclick="switchAdminSection('booking-types')">
                                     <span class="material-symbols-outlined admin-nav-icon">category</span>
                                     <span class="admin-nav-text">Booking Types & Packages</span>
@@ -1970,7 +1977,93 @@
                             </div>
                         </div>
 
-                        <!-- 2. BOOKINGS MANAGEMENT (DIRECTLY AFTER DASHBOARD) -->
+                        <!-- 2. DRIVER BIDDING MARKETPLACE -->
+                        <div class="admin-section" id="admin-sec-bidding">
+                            <div class="card" style="margin-bottom:20px;">
+                                <div class="card-header" style="flex-wrap:wrap; gap:12px;">
+                                    <div>
+                                        <h3 class="card-title">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">gavel</span>
+                                            <span>Driver Bidding Marketplace</span>
+                                        </h3>
+                                        <p class="card-subtitle">
+                                            Publish a booking to verified drivers (and the Driver Console). Drivers bid downwards; the lowest bid wins once you approve it.
+                                            Customer identity and exact addresses stay hidden until approval.
+                                        </p>
+                                    </div>
+                                    <div style="display:flex; gap:8px; align-items:center;">
+                                        <select id="admin-bidding-filter-status" class="form-control" style="height:36px; font-size:12.5px; width:150px;" onchange="renderAdminBiddings()">
+                                            <option value="all" selected>All auctions</option>
+                                            <option value="open">Open</option>
+                                            <option value="closed">Closed</option>
+                                            <option value="awarded">Allotted</option>
+                                            <option value="cancelled">Cancelled</option>
+                                        </select>
+                                        <button type="button" class="btn btn-outline" onclick="renderAdminBiddings()">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">refresh</span> Refresh
+                                        </button>
+                                    </div>
+                                </div>
+                                <div style="background:#f8fafc; border-bottom:1px solid #e2e8f0; padding:12px 18px; display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                                    <div style="display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+                                        <div class="form-group" style="margin:0;">
+                                            <label class="form-label" for="bidding-setting-min-pct" style="font-size:11px;">Min Service Charge % (Max Bid Cap)</label>
+                                            <input type="number" id="bidding-setting-min-pct" class="form-control" min="0" max="90" step="0.5" value="{{ $ps['bidding_min_service_charge_pct'] ?? 15 }}" style="width:140px; height:34px; font-weight:700;">
+                                        </div>
+                                        <div class="form-group" style="margin:0;">
+                                            <label class="form-label" for="bidding-setting-max-pct" style="font-size:11px;">Max Service Charge % (Instant-Win Floor)</label>
+                                            <input type="number" id="bidding-setting-max-pct" class="form-control" min="0" max="95" step="0.5" value="{{ $ps['bidding_max_service_charge_pct'] ?? 75 }}" style="width:155px; height:34px; font-weight:700;">
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-primary" onclick="saveBiddingServiceChargeSettings()">
+                                            <span class="material-symbols-outlined" style="font-size:15px;">save</span>
+                                            <span>Save Bid Limits</span>
+                                        </button>
+                                    </div>
+                                    <div style="font-size:11.5px; color:#64748b; max-width:340px; line-height:1.4;">
+                                        Example: On ₹5,000, 10% min caps bids at ₹4,500; 50% max sets ₹2,500 floor where the first driver to quote it wins immediately.
+                                    </div>
+                                </div>
+                                <div class="card-body" style="padding:0;">
+                                    <table class="admin-data-table admin-table-compact" id="admin-biddings-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Booking</th>
+                                                <th>Route</th>
+                                                <th>Status</th>
+                                                <th>Start price</th>
+                                                <th>Lowest bid</th>
+                                                <th>Admin profit</th>
+                                                <th>Bids</th>
+                                                <th>Closes</th>
+                                                <th style="text-align:right;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="admin-biddings-tbody">
+                                            <tr>
+                                                <td colspan="9" style="text-align:center; padding:30px; color:#94a3b8;">
+                                                    Loading auctions…
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="card" style="padding:16px 18px;">
+                                <div style="display:flex; gap:10px; align-items:flex-start;">
+                                    <span class="material-symbols-outlined" style="color:var(--primary);">info</span>
+                                    <div style="font-size:12.5px; color:#475569; line-height:1.7;">
+                                        <strong>How it works:</strong> open an auction from a booking's row (gavel icon in Bookings Management),
+                                        set the start price and the minimum admin margin, then share the link or let drivers bid directly in the Driver Console.
+                                        Every new bid must undercut the current lowest bid by at least ₹1.
+                                        When you approve the winner, the booking becomes <em>Driver Assigned</em>, the driver receives the customer's
+                                        name, mobile and full addresses, and their payout is fixed at their winning bid.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. BOOKINGS MANAGEMENT (DIRECTLY AFTER DASHBOARD) -->
                         <div class="admin-section" id="admin-sec-bookings">
                             <div class="card" style="margin-bottom:20px;">
                                 <div class="card-header" style="flex-wrap:wrap; gap:12px;">
@@ -2123,6 +2216,9 @@
                                                         <button type="button" class="btn-action-icon btn-action-invoice" onclick="openInvoiceModal({{ $b->id }})" title="Generate Tax Invoice">
                                                             <span class="material-symbols-outlined">receipt</span>
                                                         </button>
+                                                        <button type="button" class="btn-action-icon" style="background:#f0f7ff; color:#1d4ed8; border:1px solid #bfdbfe;" onclick="openBiddingForBooking({{ $b->id }})" title="Send to driver bidding (WhatsApp & Driver Console)">
+                                                            <span class="material-symbols-outlined">gavel</span>
+                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -2188,7 +2284,7 @@
                                         <thead>
                                             <tr>
                                                 <th>USER & IDENTITY</th>
-                                                <th>ROLE</th>
+                                                <th>ROLE &amp; ACCESS LEVEL</th>
                                                 <th>CONTACT DETAILS</th>
                                                 <th>VEHICLE / FLEET (DRIVERS)</th>
                                                 <th>TRIPS / ACTIVITY</th>
@@ -2199,16 +2295,14 @@
                                         <tbody id="admin-users-table-tbody">
                                             @forelse($allUsers ?? [] as $u)
                                             @php
-                                                $driver = null;
-                                                if ($u->role === 'driver') {
-                                                    $driver = \App\Models\Driver::where('phone', $u->phone)->orWhere('name', 'like', '%' . explode(' ', $u->name)[0] . '%')->first();
-                                                }
+                                                $driver = $u->role === 'driver' ? $u->driverProfile() : null;
                                                 $trips = 0;
                                                 if ($u->role === 'customer') {
                                                     $trips = \App\Models\Booking::where('customer_phone', $u->phone)->orWhere('customer_email', $u->email)->count();
                                                 } elseif ($driver) {
                                                     $trips = $driver->trips_count;
                                                 }
+                                                $isSelfAdmin = Auth::id() === $u->id && $u->role === 'admin';
                                             @endphp
                                             <tr id="user-row-{{ $u->id }}" data-id="{{ $u->id }}" data-role="{{ $u->role }}" data-search="{{ strtolower($u->name . ' ' . $u->email . ' ' . $u->phone . ' ' . $u->role . ' ' . ($driver ? $driver->vehicle_plate . ' ' . $driver->vehicle_model : '')) }}">
                                                 <td>
@@ -2223,9 +2317,20 @@
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <span class="admin-badge @if($u->role === 'admin') badge-gold @elseif($u->role === 'driver') badge-success @else badge-primary @endif">
-                                                        {{ strtoupper($u->role) }}
-                                                    </span>
+                                                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                                        <span class="admin-badge @if($u->role === 'admin') badge-gold @elseif($u->role === 'driver') badge-success @else badge-primary @endif">
+                                                            {{ strtoupper($u->role) }}
+                                                        </span>
+                                                        <select class="form-control" style="width:auto; min-width:110px; height:28px; padding:2px 6px; font-size:11px; font-weight:600;"
+                                                            aria-label="Change access level for {{ $u->name }}"
+                                                            data-prev-role="{{ $u->role }}"
+                                                            onchange="changeUserRole({{ $u->id }}, this.value, this)"
+                                                            @if($isSelfAdmin) disabled title="Cannot change your own active admin role" @endif>
+                                                            <option value="customer" {{ $u->role === 'customer' ? 'selected' : '' }}>Customer</option>
+                                                            <option value="driver" {{ $u->role === 'driver' ? 'selected' : '' }}>Driver</option>
+                                                            <option value="admin" {{ $u->role === 'admin' ? 'selected' : '' }}>Admin</option>
+                                                        </select>
+                                                    </div>
                                                 </td>
                                                 <td>
                                                     <div class="cell-primary-text" style="font-size:11.5px;">{{ $u->email }}</div>
@@ -2548,6 +2653,17 @@
                                                     <div class="form-group" style="margin:0;">
                                                         <label class="form-label" for="rule-free-cancel-hours">Free Cancel (Hrs)</label>
                                                         <input type="number" id="rule-free-cancel-hours" class="form-control" min="0" max="168" value="{{ $freeCancelHrs }}">
+                                                    </div>
+                                                </div>
+
+                                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                                                    <div class="form-group" style="margin:0;">
+                                                        <label class="form-label" for="rule-bidding-min-pct">Min Bidding Service Charge (%)</label>
+                                                        <input type="number" id="rule-bidding-min-pct" class="form-control" min="0" max="90" step="0.5" value="{{ $ps['bidding_min_service_charge_pct'] ?? 15 }}" title="Drivers cannot bid higher than Fare × (1 - Min%)">
+                                                    </div>
+                                                    <div class="form-group" style="margin:0;">
+                                                        <label class="form-label" for="rule-bidding-max-pct">Max Bidding Service Charge / Auto-Win (%)</label>
+                                                        <input type="number" id="rule-bidding-max-pct" class="form-control" min="0" max="95" step="0.5" value="{{ $ps['bidding_max_service_charge_pct'] ?? 75 }}" title="Driver reaching Fare × (1 - Max%) becomes instant winner">
                                                     </div>
                                                 </div>
 
@@ -4399,6 +4515,148 @@
 </div>
 
 <!-- ======================================================== -->
+<!-- MODAL: OPEN DRIVER BIDDING (reverse auction)             -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="admin-bidding-open-modal">
+    <div class="modal-dialog" style="max-width: 560px;">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">gavel</span>
+                <span>Send Booking to Driver Bidding</span>
+            </h3>
+            <button type="button" class="modal-close-btn" onclick="closeModal('admin-bidding-open-modal')">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="bidding-open-form">
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <span id="bidding-info-ref" style="font-family:monospace; font-weight:700; color:var(--primary); font-size:13px;">—</span>
+                        <span id="bidding-info-fare" style="font-weight:800; color:#0f172a;">₹0</span>
+                    </div>
+                    <div id="bidding-info-route" style="font-weight:600; color:#334155;">—</div>
+                    <div id="bidding-info-customer" style="color:#64748b; margin-top:2px;">—</div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="bidding-fee-pct">Minimum admin margin (%)</label>
+                        <input type="number" id="bidding-fee-pct" class="form-control" value="{{ $ps['bidding_min_service_charge_pct'] ?? 15 }}" min="0" max="90" step="0.5" oninput="recalculateBiddingCeiling()">
+                        <small style="color:#64748b; font-size:11px;">Your guaranteed cut of the customer fare.</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="bidding-start-amount">Start price (max driver price)</label>
+                        <input type="number" id="bidding-start-amount" class="form-control" min="1" step="1">
+                        <small style="color:#64748b; font-size:11px;" id="bidding-ceiling-hint">Max allowed: ₹0</small>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="bidding-closes-at">Bidding deadline (optional)</label>
+                    <input type="datetime-local" id="bidding-closes-at" class="form-control">
+                    <small style="color:#64748b; font-size:11px;">Leave blank to keep the auction open until a driver is allotted.</small>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="bidding-notes">Internal note (optional)</label>
+                    <input type="text" id="bidding-notes" class="form-control" placeholder="e.g. Airport pickup, toll included">
+                </div>
+
+                <div id="bidding-open-error" style="display:none; font-size:12px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:6px; padding:8px 10px; margin-bottom:10px;"></div>
+
+                <button type="button" class="btn btn-primary btn-block" id="bidding-open-submit" onclick="submitOpenBidding()">
+                    <span class="material-symbols-outlined" style="font-size:18px;">campaign</span>
+                    Open bidding &amp; generate WhatsApp link
+                </button>
+            </div>
+
+            <div id="bidding-share-panel" style="display:none;">
+                <div style="font-size:12.5px; background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; border-radius:6px; padding:8px 10px; margin-bottom:12px;">
+                    Bidding is live. Send this link to your verified drivers.
+                </div>
+                <label class="form-label" for="bidding-share-url">Driver bidding link</label>
+                <div style="display:flex; gap:8px; margin-bottom:12px;">
+                    <input type="text" id="bidding-share-url" class="form-control" readonly style="font-family:monospace; font-size:12px;">
+                    <button type="button" class="btn btn-outline" onclick="copyBiddingShare()" style="white-space:nowrap;">Copy</button>
+                </div>
+                <a id="bidding-whatsapp-link" class="btn btn-primary btn-block" target="_blank" rel="noopener" style="text-decoration:none;">
+                    <span class="material-symbols-outlined" style="font-size:18px;">chat</span>
+                    Share on WhatsApp
+                </a>
+                <label class="form-label" style="margin-top:14px;">Message preview</label>
+                <pre id="bidding-share-text" style="white-space:pre-wrap; background:#0f172a; color:#e2e8f0; border-radius:8px; padding:12px; font-size:11.5px; line-height:1.6;"></pre>
+                <button type="button" class="btn btn-outline btn-block" style="margin-top:10px;" onclick="closeModal('admin-bidding-open-modal'); switchAdminSection('bidding'); renderAdminBiddings();">
+                    View the auction board
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: BIDDING DETAIL / AWARD WINNER                     -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="admin-bidding-detail-modal">
+    <div class="modal-dialog" style="max-width: 720px;">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">format_list_numbered</span>
+                <span>Bids &amp; Winner Approval</span>
+            </h3>
+            <button type="button" class="modal-close-btn" onclick="closeModal('admin-bidding-detail-modal')">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="bidding-detail-summary" style="margin-bottom:12px;"></div>
+
+            <table class="admin-data-table admin-table-compact">
+                <thead>
+                    <tr>
+                        <th>Driver</th>
+                        <th>Vehicle</th>
+                        <th>Bid</th>
+                        <th>Placed</th>
+                        <th>IP</th>
+                        <th style="text-align:right;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="bidding-detail-bids">
+                    <tr><td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">No bids yet.</td></tr>
+                </tbody>
+            </table>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;">
+                <button type="button" class="btn btn-primary" id="bidding-detail-award" onclick="awardWinningBid()">
+                    <span class="material-symbols-outlined" style="font-size:18px;">verified</span>
+                    Approve lowest bid &amp; assign
+                </button>
+                <button type="button" class="btn btn-outline" id="bidding-detail-close" onclick="closeBiddingSession()">
+                    Close bidding
+                </button>
+                <button type="button" class="btn btn-outline" style="color:#b91c1c; border-color:#fecaca;" onclick="cancelBiddingSession()">
+                    Cancel auction
+                </button>
+                <button type="button" class="btn btn-outline" onclick="copyBiddingDetailLink()">
+                    Copy driver link
+                </button>
+            </div>
+            <div id="bidding-detail-reassign-wrap" style="display:none; margin-top:12px; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
+                <div style="font-size:11.5px; font-weight:700; color:#334155; margin-bottom:6px;">Change Allotted Driver</div>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <select id="bidding-detail-reassign-driver" class="form-control" style="flex:1; min-width:200px; height:34px; font-size:12.5px;">
+                        @foreach($allDrivers as $d)
+                            <option value="{{ $d->id }}">{{ $d->name }} — {{ $d->vehicle_model }} ({{ $d->vehicle_plate }})</option>
+                        @endforeach
+                    </select>
+                    <button type="button" class="btn btn-sm btn-primary" onclick="reassignAllottedDriverFromBidding()">
+                        Update Allotted Driver
+                    </button>
+                </div>
+            </div>
+            <div id="bidding-detail-error" style="display:none; margin-top:10px; font-size:12px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:6px; padding:8px 10px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
 <!-- MODAL: ALLOT CHAUFFEUR / DRIVER (AdminLTE 3)             -->
 <!-- ======================================================== -->
 <div class="modal-overlay" id="admin-allot-driver-modal">
@@ -5195,12 +5453,13 @@
                 <input type="hidden" id="edit-user-id" value="">
 
                 <div class="form-group" style="margin-bottom:12px;">
-                    <label class="form-label" for="edit-user-role">Account Role *</label>
+                    <label class="form-label" for="edit-user-role">Account Role &amp; Access Level *</label>
                     <select id="edit-user-role" class="form-control">
                         <option value="customer">Customer (Traveler / Passenger)</option>
                         <option value="driver">Driver Partner (Commercial Chauffeur)</option>
                         <option value="admin">Platform Administrator (Operations Super Admin)</option>
                     </select>
+                    <small style="display:block; margin-top:4px; font-size:11px; color:#64748b;">Granting <strong>Driver</strong> provisions a verified chauffeur profile automatically; <strong>Admin</strong> grants full platform access.</small>
                 </div>
 
                 <div class="form-group" style="margin-bottom:12px;">

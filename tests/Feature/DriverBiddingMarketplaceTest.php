@@ -539,4 +539,93 @@ class DriverBiddingMarketplaceTest extends TestCase
 
         $this->assertSame((int) $route->distance_km, $session->distance_km);
     }
+
+    public function test_min_and_max_service_charge_limits_instant_win_terms_and_post_win_reassignment(): void
+    {
+        // Admin configures 10% min service charge and 50% max service charge (auto-win floor).
+        $this->actingAs($this->admin)
+            ->postJson('/api/admin/settings/bidding', [
+                'bidding_min_service_charge_pct' => 10,
+                'bidding_max_service_charge_pct' => 50,
+            ])
+            ->assertStatus(200)
+            ->assertJsonPath('settings.bidding_min_service_charge_pct', '10')
+            ->assertJsonPath('settings.bidding_max_service_charge_pct', '50');
+
+        // Booking of ₹5,000 auto-opens auction capped at ₹4,500 (10%) with ₹2,500 floor (50%).
+        $booking = Booking::create([
+            'booking_reference' => 'ICW-BID-5000',
+            'service_type' => 'cab',
+            'trip_type' => 'oneway',
+            'route_summary' => 'Kolkata → Digha',
+            'pickup_location' => 'Esplanade, Kolkata',
+            'drop_location' => 'New Digha Beach',
+            'customer_name' => 'Ananya Roy',
+            'customer_phone' => '+91 98300 55555',
+            'base_fare' => 5000,
+            'total_amount' => 5000,
+            'status' => 'Requested',
+            'start_otp' => '4321',
+        ]);
+
+        $session = app(\App\Services\BiddingService::class)->openForNewBooking($booking);
+        $this->assertNotNull($session);
+        $this->assertEquals(4500, $session->start_amount);
+        $this->assertEquals(2500, $session->minDriverPrice());
+
+        $url = "/api/bidding/{$session->token}/bids";
+
+        // Bidder must accept terms when agreed_terms is provided.
+        $this->actingAs($this->driverUser)
+            ->postJson($url, ['amount' => 4500, 'agreed_terms' => false])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['agreed_terms']);
+
+        // Bidding beyond ₹4,500 (10% min service charge cap) is refused.
+        $this->actingAs($this->driverUser)
+            ->postJson($url, ['amount' => 4501, 'agreed_terms' => true])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'bid_not_low_enough');
+
+        // Driver 1 quotes ₹4,500, Driver 2 undercuts at ₹4,300.
+        $this->fromIp('10.20.0.1')->actingAs($this->driverUser)
+            ->postJson($url, ['amount' => 4500, 'agreed_terms' => true])
+            ->assertStatus(200)
+            ->assertJsonPath('instant_win', false);
+
+        $this->fromIp('10.20.0.2')->actingAs($this->otherDriverUser)
+            ->postJson($url, ['amount' => 4300, 'agreed_terms' => true])
+            ->assertStatus(200)
+            ->assertJsonPath('instant_win', false);
+
+        // Bidding below the 50% floor (₹2,500) is rejected.
+        $this->fromIp('10.20.0.1')->actingAs($this->driverUser)
+            ->postJson($url, ['amount' => 2400, 'agreed_terms' => true])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'bid_below_minimum');
+
+        // Reaching the 50% max discount floor (₹2,500) wins immediately and stops bidding.
+        $this->fromIp('10.20.0.1')->actingAs($this->driverUser)
+            ->postJson($url, ['amount' => 2500, 'agreed_terms' => true])
+            ->assertStatus(200)
+            ->assertJsonPath('instant_win', true)
+            ->assertJsonPath('session.status', BiddingSession::STATUS_AWARDED);
+
+        $this->assertSame('Driver Assigned', $booking->fresh()->status);
+        $this->assertSame($this->driver->id, $booking->fresh()->assigned_driver_id);
+
+        // Bidding is now stopped.
+        $this->fromIp('10.20.0.2')->actingAs($this->otherDriverUser)
+            ->postJson($url, ['amount' => 2500, 'agreed_terms' => true])
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'bidding_already_awarded');
+
+        // Admin can change the allotted driver after winning.
+        $this->actingAs($this->admin)
+            ->postJson("/api/admin/bookings/{$booking->id}/allot-driver", [
+                'driver_id' => $this->otherDriver->id,
+            ])
+            ->assertStatus(200)
+            ->assertJsonPath('booking.assigned_driver_id', $this->otherDriver->id);
+    }
 }

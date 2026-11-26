@@ -7,6 +7,7 @@ use App\Exceptions\DistanceUnresolvable;
 use App\Models\Booking;
 use App\Models\PlatformSetting;
 use App\Models\SeatLayout;
+use App\Services\BiddingService;
 use App\Services\BookingReferenceGenerator;
 use App\Services\BookingWorkflow;
 use App\Services\FareCalculatorService;
@@ -25,6 +26,7 @@ class BookingController extends Controller
         private readonly FareCalculatorService $fares,
         private readonly BookingReferenceGenerator $references,
         private readonly BookingWorkflow $workflow,
+        private readonly BiddingService $bidding,
     ) {}
 
     /**
@@ -195,6 +197,10 @@ class BookingController extends Controller
                 'code' => 'berth_unavailable',
                 'message' => $e->getMessage(),
             ] + $e->toArray(), 409);
+        }
+
+        if (! $isBus) {
+            $this->bidding->openForNewBooking($booking);
         }
 
         return response()->json([

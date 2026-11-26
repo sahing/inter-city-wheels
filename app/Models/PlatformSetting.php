@@ -44,6 +44,8 @@ class PlatformSetting extends Model
             'waiting_charge_per_hour' => '150',
             'free_cancellation_hours' => '1',
             'other_booking_conditions' => 'Highway tolls, state taxes & parking as applicable. Night stay applies during configured night hours.',
+            'bidding_min_service_charge_pct' => '15',
+            'bidding_max_service_charge_pct' => '75',
         ];
     }
 

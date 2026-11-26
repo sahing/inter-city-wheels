@@ -34,6 +34,121 @@ class BiddingService
     public function __construct(private readonly BookingWorkflow $workflow) {}
 
     /**
+     * Automatically open a bidding session for a newly created booking so it stays
+     * open for driver bids until a driver is allotted.
+     */
+    public function openForNewBooking(Booking $booking): ?BiddingSession
+    {
+        if ($booking->service_type !== 'cab' || $booking->assigned_driver_id !== null) {
+            return null;
+        }
+
+        if (! in_array((string) $booking->status, [
+            BookingWorkflow::REQUESTED,
+            BookingWorkflow::BIDDING,
+            BookingWorkflow::CONFIRMED,
+        ], true)) {
+            return null;
+        }
+
+        $alreadyExists = $booking->biddingSessions()
+            ->whereIn('status', [
+                BiddingSession::STATUS_OPEN,
+                BiddingSession::STATUS_CLOSED,
+                BiddingSession::STATUS_AWARDED,
+            ])
+            ->exists();
+
+        if ($alreadyExists) {
+            return null;
+        }
+
+        $feePct = $this->resolveFeePct(null);
+        $probe = new BiddingSession([
+            'booking_id' => $booking->id,
+            'pickup_city' => '',
+            'drop_city' => '',
+            'start_amount' => 0,
+            'admin_fee_pct' => $feePct,
+        ]);
+        $probe->setRelation('booking', $booking);
+        $maxDriverPrice = $probe->maxDriverPrice();
+
+        if ($maxDriverPrice < BiddingSession::MIN_BID_STEP) {
+            return null;
+        }
+
+        [$pickupCity, $dropCity] = $this->routeCities($booking);
+        $distanceKm = $this->routeDistance($booking, $pickupCity, $dropCity);
+
+        return BiddingSession::create([
+            'booking_id' => $booking->id,
+            'token' => BiddingSession::generateToken(),
+            'pickup_city' => $pickupCity,
+            'drop_city' => $dropCity,
+            'distance_km' => $distanceKm,
+            'start_amount' => $maxDriverPrice,
+            'admin_fee_pct' => $feePct,
+            'status' => BiddingSession::STATUS_OPEN,
+            'closes_at' => null,
+            'opened_by' => null,
+        ]);
+    }
+
+    /**
+     * Mark open/closed auctions for this booking as Allotted (awarded) when a
+     * driver is allotted, or re-open one if allotment is removed.
+     */
+    public function syncWithDriverAllotment(Booking $booking, ?int $driverId): void
+    {
+        if ($driverId !== null) {
+            $sessions = $booking->biddingSessions()
+                ->whereIn('status', [
+                    BiddingSession::STATUS_OPEN,
+                    BiddingSession::STATUS_CLOSED,
+                    BiddingSession::STATUS_AWARDED,
+                ])
+                ->get();
+
+            foreach ($sessions as $session) {
+                $matchingBid = $session->bids()
+                    ->where('driver_id', $driverId)
+                    ->orderBy('bid_amount')
+                    ->orderBy('id')
+                    ->first();
+
+                $session->bids()->update(['is_winning' => false]);
+
+                if ($matchingBid) {
+                    $matchingBid->forceFill(['is_winning' => true, 'status' => 'accepted'])->save();
+                    $session->awarded_bid_id = $matchingBid->id;
+                    $booking->forceFill([
+                        'assigned_bid_id' => $matchingBid->id,
+                        'driver_payout_amount' => (float) $matchingBid->bid_amount,
+                    ])->save();
+                } else {
+                    $session->awarded_bid_id = null;
+                    $booking->forceFill([
+                        'assigned_bid_id' => null,
+                        'driver_payout_amount' => null,
+                    ])->save();
+                }
+
+                $session->status = BiddingSession::STATUS_AWARDED;
+                $session->awarded_at = $session->awarded_at ?? now();
+                $session->closed_at = $session->closed_at ?? now();
+                $session->save();
+            }
+
+            return;
+        }
+
+        // Driver allotment was removed; ensure an auction is open if booking is
+        // back in an unallotted pre-pickup stage.
+        $this->openForNewBooking($booking);
+    }
+
+    /**
      * Open (or return) the auction for a booking.
      *
      * @param  array{start_amount?: mixed, admin_fee_pct?: mixed, closes_at?: mixed, admin_notes?: mixed}  $input
@@ -42,17 +157,25 @@ class BiddingService
      */
     public function open(Booking $booking, array $input, User $admin): BiddingSession
     {
+        if (! in_array($booking->status, [
+            BookingWorkflow::REQUESTED,
+            BookingWorkflow::CONFIRMED,
+            BookingWorkflow::BIDDING,
+        ], true)) {
+            throw BiddingException::bookingNotBiddable((string) $booking->status);
+        }
+
         $existing = $booking->biddingSessions()
             ->whereIn('status', [BiddingSession::STATUS_OPEN, BiddingSession::STATUS_CLOSED])
             ->latest('id')
             ->first();
 
-        if ($existing) {
-            throw BiddingException::alreadyOpen($existing->id);
-        }
+        $reconfiguringAutoSession = $existing !== null
+            && $existing->opened_by === null
+            && $existing->bids()->count() === 0;
 
-        if (! in_array($booking->status, [BookingWorkflow::REQUESTED, BookingWorkflow::CONFIRMED], true)) {
-            throw BiddingException::bookingNotBiddable((string) $booking->status);
+        if ($existing && ! $reconfiguringAutoSession) {
+            throw BiddingException::alreadyOpen($existing->id);
         }
 
         $feePct = $this->resolveFeePct($input['admin_fee_pct'] ?? null);
@@ -92,23 +215,41 @@ class BiddingService
             $pickupCity,
             $dropCity,
             $distanceKm,
-            $input
+            $input,
+            $existing,
+            $reconfiguringAutoSession
         ) {
             $locked = Booking::whereKey($booking->id)->lockForUpdate()->firstOrFail();
 
-            $session = BiddingSession::create([
-                'booking_id' => $locked->id,
-                'token' => BiddingSession::generateToken(),
-                'pickup_city' => $pickupCity,
-                'drop_city' => $dropCity,
-                'distance_km' => $distanceKm,
-                'start_amount' => $startAmount,
-                'admin_fee_pct' => $feePct,
-                'status' => BiddingSession::STATUS_OPEN,
-                'closes_at' => $closesAt,
-                'opened_by' => $admin->id,
-                'admin_notes' => $input['admin_notes'] ?? null,
-            ]);
+            if ($reconfiguringAutoSession && $existing) {
+                $existing->update([
+                    'pickup_city' => $pickupCity,
+                    'drop_city' => $dropCity,
+                    'distance_km' => $distanceKm,
+                    'start_amount' => $startAmount,
+                    'admin_fee_pct' => $feePct,
+                    'status' => BiddingSession::STATUS_OPEN,
+                    'closes_at' => $closesAt,
+                    'closed_at' => null,
+                    'opened_by' => $admin->id,
+                    'admin_notes' => $input['admin_notes'] ?? null,
+                ]);
+                $session = $existing->refresh();
+            } else {
+                $session = BiddingSession::create([
+                    'booking_id' => $locked->id,
+                    'token' => BiddingSession::generateToken(),
+                    'pickup_city' => $pickupCity,
+                    'drop_city' => $dropCity,
+                    'distance_km' => $distanceKm,
+                    'start_amount' => $startAmount,
+                    'admin_fee_pct' => $feePct,
+                    'status' => BiddingSession::STATUS_OPEN,
+                    'closes_at' => $closesAt,
+                    'opened_by' => $admin->id,
+                    'admin_notes' => $input['admin_notes'] ?? null,
+                ]);
+            }
 
             // Requested/Confirmed -> Bidding is a legal step in the workflow.
             if ($locked->status !== BookingWorkflow::BIDDING) {
@@ -124,8 +265,13 @@ class BiddingService
      *
      * @throws BiddingException
      */
-    public function placeBid(BiddingSession $session, Driver $driver, float $amount, ?string $ip = null): DriverBid
-    {
+    public function placeBid(
+        BiddingSession $session,
+        Driver $driver,
+        float $amount,
+        ?string $ip = null,
+        bool $skipVerification = false
+    ): DriverBid {
         $session = $this->closeIfDue($session);
 
         if ($session->status === BiddingSession::STATUS_AWARDED) {
@@ -140,13 +286,17 @@ class BiddingService
             throw BiddingException::closed();
         }
 
-        $this->assertDriverEligible($driver, $session);
+        $this->assertDriverEligible($driver, $session, $skipVerification);
 
         $amount = round($amount, 2);
         $lowest = $session->currentLowestAmount();
-        $ceiling = $lowest ?? (float) $session->start_amount;
+        $minDriverPrice = $session->minDriverPrice();
 
-        if ($amount > $ceiling - BiddingSession::MIN_BID_STEP) {
+        if ($lowest === null) {
+            if ($amount > (float) $session->start_amount) {
+                throw BiddingException::bidTooHigh(null, (float) $session->start_amount, true);
+            }
+        } elseif ($amount > $lowest - BiddingSession::MIN_BID_STEP) {
             throw BiddingException::bidTooHigh($lowest, (float) $session->start_amount);
         }
 
@@ -158,13 +308,17 @@ class BiddingService
             );
         }
 
+        if ($amount < $minDriverPrice) {
+            throw BiddingException::bidTooLow($minDriverPrice);
+        }
+
         $bidCount = $session->bids()->where('driver_id', $driver->id)->count();
 
         if ($bidCount >= BiddingSession::MAX_BIDS_PER_DRIVER) {
             throw BiddingException::bidLimitReached(BiddingSession::MAX_BIDS_PER_DRIVER);
         }
 
-        return DB::transaction(function () use ($session, $driver, $amount, $ip) {
+        return DB::transaction(function () use ($session, $driver, $amount, $ip, $minDriverPrice) {
             $locked = BiddingSession::whereKey($session->id)->lockForUpdate()->firstOrFail();
 
             // Re-check inside the lock: two simultaneous bids must not both win.
@@ -173,9 +327,12 @@ class BiddingService
             }
 
             $lowestNow = $locked->currentLowestAmount();
-            $ceiling = $lowestNow ?? (float) $locked->start_amount;
 
-            if ($amount > $ceiling - BiddingSession::MIN_BID_STEP) {
+            if ($lowestNow === null) {
+                if ($amount > (float) $locked->start_amount) {
+                    throw BiddingException::bidTooHigh(null, (float) $locked->start_amount, true);
+                }
+            } elseif ($amount > $lowestNow - BiddingSession::MIN_BID_STEP) {
                 throw BiddingException::bidTooHigh($lowestNow, (float) $locked->start_amount);
             }
 
@@ -193,7 +350,27 @@ class BiddingService
                 'flag_reason' => $flagReason,
             ]);
 
-            $this->refreshProvisionalWinner($locked);
+            // Reaching the maximum service-charge floor immediately wins and stops bidding.
+            if ($flagReason === null && $amount <= $minDriverPrice) {
+                $booking = Booking::whereKey($locked->booking_id)->lockForUpdate()->firstOrFail();
+
+                $this->workflow->transition($booking, BookingWorkflow::DRIVER_ASSIGNED, [
+                    'assigned_driver_id' => $driver->id,
+                    'assigned_bid_id' => $bid->id,
+                    'driver_payout_amount' => (float) $bid->bid_amount,
+                ]);
+
+                $locked->bids()->update(['is_winning' => false]);
+                $bid->forceFill(['is_winning' => true, 'status' => 'accepted'])->save();
+
+                $locked->status = BiddingSession::STATUS_AWARDED;
+                $locked->awarded_bid_id = $bid->id;
+                $locked->awarded_at = now();
+                $locked->closed_at = $locked->closed_at ?? now();
+                $locked->save();
+            } else {
+                $this->refreshProvisionalWinner($locked);
+            }
 
             return $bid->refresh();
         });
@@ -384,9 +561,9 @@ class BiddingService
     /**
      * @throws BiddingException
      */
-    private function assertDriverEligible(Driver $driver, BiddingSession $session): void
+    private function assertDriverEligible(Driver $driver, BiddingSession $session, bool $skipVerification = false): void
     {
-        if (! $driver->is_verified) {
+        if (! $skipVerification && ! $driver->is_verified) {
             throw BiddingException::driverNotEligible('Only verified drivers may bid.');
         }
 
@@ -444,15 +621,17 @@ class BiddingService
             return round(min(90.0, max(0.0, (float) $input)), 2);
         }
 
-        $configured = PlatformSetting::get('bidding_admin_fee_pct', (string) BiddingSession::DEFAULT_ADMIN_FEE_PCT);
+        $configured = PlatformSetting::get('bidding_min_service_charge_pct')
+            ?? PlatformSetting::get('bidding_admin_fee_pct', (string) BiddingSession::DEFAULT_ADMIN_FEE_PCT);
 
         return round(min(90.0, max(0.0, (float) $configured)), 2);
     }
 
-    private function resolveDeadline(mixed $input): Carbon
+    private function resolveDeadline(mixed $input): ?Carbon
     {
         if ($input === null || $input === '') {
-            return now()->addHours(BiddingSession::DEFAULT_WINDOW_HOURS);
+            // Keep auction open until a driver is allotted when no explicit deadline is provided.
+            return null;
         }
 
         try {
