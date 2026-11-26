@@ -137,13 +137,18 @@ class BiddingController extends Controller
 
         $auctions = $sessions->map(function (BiddingSession $session) use ($driver) {
             $payload = $session->toDriverPayload($driver?->id);
-            $myBids = $driver
-                ? $session->bids()->where('driver_id', $driver->id)->count()
-                : 0;
+            $myBidsQuery = $driver
+                ? $session->bids()->where('driver_id', $driver->id)
+                : null;
+            $myBids = $myBidsQuery ? $myBidsQuery->count() : 0;
+            $myLatestBid = $myBidsQuery ? $myBidsQuery->latest('id')->first() : null;
 
             $payload['bid_url'] = route('bidding.page', ['token' => $session->token]);
             $payload['my_bids'] = $myBids;
+            $payload['my_latest_bid'] = $myLatestBid ? (float) $myLatestBid->bid_amount : null;
             $payload['remaining_bids'] = max(0, BiddingSession::MAX_BIDS_PER_DRIVER - $myBids);
+            $payload['bid_count'] = $session->bids()->where('flagged', false)->count();
+            $payload['has_bids'] = $payload['current_lowest'] !== null;
 
             return $payload;
         })->values();

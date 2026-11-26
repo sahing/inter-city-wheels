@@ -1197,39 +1197,67 @@
             <!-- Chauffeur Master Header & Navigation -->
             @include('partials.driver_header', ['activeDriverTab' => 'bidding'])
 
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-                <div>
-                    <h3 style="font-family:var(--font-display); font-size:15.5px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
-                        <span class="material-symbols-outlined" style="color:var(--primary); font-size:21px;">hail</span>
-                        <span>Available Outstation Trips for Driver Bidding</span>
-                    </h3>
-                    <p style="font-size:11.5px; color:#64748b; margin:2px 0 0;">Review route, distance &amp; submit a lower bid directly below. Customer contact &amp; exact addresses unlock only if you win the auction.</p>
+            <div class="driver-panel-card animate-load stagger-2">
+                <div class="driver-panel-card-header">
+                    <div>
+                        <h3 class="driver-panel-card-title">
+                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:21px;">hail</span>
+                            <span>Available Outstation Trips for Driver Bidding</span>
+                        </h3>
+                        <p class="driver-panel-card-subtitle">Review route, distance &amp; submit a lower bid directly below. Customer contact &amp; exact addresses unlock only if you win the auction.</p>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="admin-badge badge-success" style="font-size:11px;">Live</span>
+                        <button type="button" class="btn btn-sm btn-outline" onclick="refreshDriverAuctions()" title="Refresh live auctions">
+                            <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
+                            <span>Refresh</span>
+                        </button>
+                    </div>
                 </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span class="admin-badge badge-success" style="font-size:11px;">🟢 Live</span>
-                    <button type="button" class="btn btn-sm btn-outline" onclick="refreshDriverAuctions()" title="Refresh live auctions">
-                        <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
-                        <span>Refresh</span>
-                    </button>
+                <div class="driver-panel-card-body">
+                    <div class="bidding-howto-grid">
+                        <div class="bidding-howto-step">
+                            <span class="admin-badge badge-primary" style="font-size:10px; padding:2px 7px; flex-shrink:0;">1</span>
+                            <div><strong>Pick an Open Trip</strong><span class="step-sub">Trips stay open below until a driver is allotted.</span></div>
+                        </div>
+                        <div class="bidding-howto-step">
+                            <span class="admin-badge badge-gold" style="font-size:10px; padding:2px 7px; flex-shrink:0;">2</span>
+                            <div><strong>Bid Lower to Lead</strong><span class="step-sub">Agree to T&amp;C and bid within the allowed floor &amp; cap.</span></div>
+                        </div>
+                        <div class="bidding-howto-step">
+                            <span class="admin-badge badge-success" style="font-size:10px; padding:2px 7px; flex-shrink:0;">3</span>
+                            <div><strong>Win &amp; Unlock</strong><span class="step-sub">Allotted trips move to My Assigned Trips with details.</span></div>
+                        </div>
+                    </div>
+
+                    <div class="admin-trip-type-filters" id="driver-bidding-status-filters" role="group" aria-label="Filter auctions by bid status" style="border:1px solid var(--outline); border-radius:10px; margin-bottom:14px; padding:8px 12px; justify-content:space-between;">
+                        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
+                            <span class="admin-trip-type-label">Status:</span>
+                            <button type="button" class="admin-trip-type-btn active" data-bid-filter="all" onclick="setDriverAuctionFilter('all', this)">
+                                All <span id="bidding-count-all">(0)</span>
+                            </button>
+                            <button type="button" class="admin-trip-type-btn" data-bid-filter="fresh" onclick="setDriverAuctionFilter('fresh', this)">
+                                Fresh (No Bids) <span id="bidding-count-fresh">(0)</span>
+                            </button>
+                            <button type="button" class="admin-trip-type-btn" data-bid-filter="active_bids" onclick="setDriverAuctionFilter('active_bids', this)">
+                                Bid Placed <span id="bidding-count-active">(0)</span>
+                            </button>
+                            <button type="button" class="admin-trip-type-btn" data-bid-filter="my_bids" onclick="setDriverAuctionFilter('my_bids', this)">
+                                My Bids <span id="bidding-count-mine">(0)</span>
+                            </button>
+                            <button type="button" class="admin-trip-type-btn" data-bid-filter="allotted" onclick="setDriverAuctionFilter('allotted', this)">
+                                Allotted <span id="bidding-count-allotted">(0)</span>
+                            </button>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:4px;">
+                            <button type="button" class="admin-trip-type-btn active" data-bid-view="table" onclick="setDriverAuctionView('table', this)" title="Compact Table View">Table</button>
+                            <button type="button" class="admin-trip-type-btn" data-bid-view="cards" onclick="setDriverAuctionView('cards', this)" title="Compact Card View">Cards</button>
+                        </div>
+                    </div>
+
+                    <div class="bidding-cards-list" id="bidding-cards-stream"></div>
                 </div>
             </div>
-
-            <div class="driver-bidding-howto animate-load stagger-1" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap:8px; margin-bottom:14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px;">
-                <div style="display:flex; align-items:flex-start; gap:8px;">
-                    <span class="admin-badge badge-primary" style="font-size:10px; padding:2px 7px; flex-shrink:0;">1</span>
-                    <div style="font-size:11.5px; color:#334155; line-height:1.35;"><strong>Pick an Open Trip</strong><br><span style="color:#64748b;">Trips sent for bidding appear below &amp; via WhatsApp.</span></div>
-                </div>
-                <div style="display:flex; align-items:flex-start; gap:8px;">
-                    <span class="admin-badge badge-gold" style="font-size:10px; padding:2px 7px; flex-shrink:0;">2</span>
-                    <div style="font-size:11.5px; color:#334155; line-height:1.35;"><strong>Bid Lower to Lead</strong><br><span style="color:#64748b;">Enter a price below Start / Lowest &amp; click Place Bid.</span></div>
-                </div>
-                <div style="display:flex; align-items:flex-start; gap:8px;">
-                    <span class="admin-badge badge-success" style="font-size:10px; padding:2px 7px; flex-shrink:0;">3</span>
-                    <div style="font-size:11.5px; color:#334155; line-height:1.35;"><strong>Win &amp; Unlock</strong><br><span style="color:#64748b;">Approved lowest bid moves to My Assigned Trips.</span></div>
-                </div>
-            </div>
-
-            <div class="bidding-cards-list animate-load stagger-2" id="bidding-cards-stream"></div>
 
             <!-- Driver Registered Vehicles & Approval Status -->
             <div class="card driver-panel-card animate-load stagger-3" style="margin-top:16px; margin-bottom:16px; padding:14px 16px; border:1px solid #e2e8f0; background:#ffffff;">

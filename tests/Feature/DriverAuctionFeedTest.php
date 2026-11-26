@@ -166,6 +166,9 @@ class DriverAuctionFeedTest extends TestCase
 
         $this->assertEquals(3900, $auction['current_lowest']);
         $this->assertTrue($auction['you_are_lowest']);
+        $this->assertTrue($auction['has_bids']);
+        $this->assertSame(1, $auction['bid_count']);
+        $this->assertEquals(3900, $auction['my_latest_bid']);
         $this->assertSame(1, $auction['my_bids']);
         $this->assertSame(BiddingSession::MAX_BIDS_PER_DRIVER - 1, $auction['remaining_bids']);
 
@@ -177,6 +180,8 @@ class DriverAuctionFeedTest extends TestCase
 
         $this->assertEquals(3900, $otherView['current_lowest']);
         $this->assertFalse($otherView['you_are_lowest']);
+        $this->assertTrue($otherView['has_bids']);
+        $this->assertNull($otherView['my_latest_bid']);
         $this->assertSame(0, $otherView['my_bids']);
         $this->assertArrayNotHasKey('driver_name', $otherView);
     }
@@ -235,6 +240,11 @@ class DriverAuctionFeedTest extends TestCase
             ->assertSee('Pick an Open Trip')
             ->assertSee('Bid Lower to Lead')
             ->assertSee('Win &amp; Unlock', false)
+            ->assertSee('id="driver-bidding-status-filters"', false)
+            ->assertSee("setDriverAuctionFilter('fresh'", false)
+            ->assertSee("setDriverAuctionFilter('active_bids'", false)
+            ->assertSee("setDriverAuctionFilter('my_bids'", false)
+            ->assertSee("setDriverAuctionFilter('allotted'", false)
             ->assertSee('refreshDriverAuctions()', false)
             ->assertSee('id="bidding-cards-stream"', false);
     }
