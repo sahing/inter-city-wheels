@@ -11,6 +11,7 @@ use App\Services\BiddingService;
 use App\Services\BookingReferenceGenerator;
 use App\Services\BookingWorkflow;
 use App\Services\FareCalculatorService;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +28,7 @@ class BookingController extends Controller
         private readonly BookingReferenceGenerator $references,
         private readonly BookingWorkflow $workflow,
         private readonly BiddingService $bidding,
+        private readonly NotificationService $notifications,
     ) {}
 
     /**
@@ -62,6 +64,7 @@ class BookingController extends Controller
             'night_allowance' => 'nullable|boolean',
             'luggage_carrier' => 'nullable|boolean',
             'coupon_code' => 'nullable|string|max:40',
+            'payment_mode' => 'nullable|string|in:full_online,part_pay,full_upi,cash,full,advance',
             'dynamic_fields' => 'nullable|array',
             'from_lat' => 'nullable|numeric|between:-90,90',
             'from_lng' => 'nullable|numeric|between:-180,180',
@@ -130,6 +133,44 @@ class BookingController extends Controller
             ]);
         }
 
+        $paymentConfig = PlatformSetting::paymentSettings();
+        $enabledModes = [];
+        if (($paymentConfig['payment_show_full_online'] ?? '1') === '1') {
+            $enabledModes[] = 'full_online';
+        }
+        if (($paymentConfig['payment_show_part_pay'] ?? '1') === '1') {
+            $enabledModes[] = 'part_pay';
+        }
+        if (($paymentConfig['payment_show_full_upi'] ?? '1') === '1') {
+            $enabledModes[] = 'full_upi';
+        }
+        if (($paymentConfig['payment_show_cash'] ?? '1') === '1') {
+            $enabledModes[] = 'cash';
+        }
+        if ($enabledModes === []) {
+            $enabledModes = ['full_online'];
+        }
+
+        $requestedMode = $validated['payment_mode'] ?? null;
+        if ($requestedMode === 'full') {
+            $requestedMode = 'full_online';
+        } elseif ($requestedMode === 'advance') {
+            $requestedMode = 'part_pay';
+        }
+
+        if ($requestedMode !== null && ! in_array($requestedMode, $enabledModes, true)) {
+            throw ValidationException::withMessages([
+                'payment_mode' => 'The selected payment option is currently disabled by platform settings.',
+            ]);
+        }
+
+        $paymentMode = $requestedMode ?? (
+            in_array($paymentConfig['payment_default_option'] ?? '', $enabledModes, true)
+                ? $paymentConfig['payment_default_option']
+                : $enabledModes[0]
+        );
+        $configuredAdvancePct = max(1.0, min(99.0, (float) ($paymentConfig['payment_advance_pct'] ?? 20)));
+
         try {
             [$booking, $quote] = DB::transaction(function () use (
                 $validated,
@@ -140,7 +181,9 @@ class BookingController extends Controller
                 $fleet,
                 $options,
                 $isBus,
-                $selectedUnits
+                $selectedUnits,
+                $paymentMode,
+                $configuredAdvancePct
             ) {
                 $berths = new Collection;
 
@@ -159,6 +202,17 @@ class BookingController extends Controller
 
                 // P0-5: every booking starts Requested; nothing may be created
                 // already Confirmed or Completed.
+                $totalAmount = (float) $quote['total_amount'];
+                [$advancePct, $advanceAmount, $balanceAmount] = match ($paymentMode) {
+                    'part_pay' => [
+                        $configuredAdvancePct,
+                        $adv = round($totalAmount * ($configuredAdvancePct / 100), 2),
+                        round(max(0.0, $totalAmount - $adv), 2),
+                    ],
+                    'cash' => [0.0, 0.0, $totalAmount],
+                    default => [100.0, $totalAmount, 0.0],
+                };
+
                 $booking = $this->workflow->create([
                     'booking_reference' => $this->references->generate(),
                     'customer_user_id' => auth()->id(),
@@ -179,7 +233,11 @@ class BookingController extends Controller
                     'toll_fare' => $quote['toll_fare'],
                     'addon_fare' => $quote['addon_fare'],
                     'discount_fare' => $quote['discount_fare'],
-                    'total_amount' => $quote['total_amount'],
+                    'total_amount' => $totalAmount,
+                    'payment_mode' => $paymentMode,
+                    'advance_percentage' => $advancePct,
+                    'advance_amount' => $advanceAmount,
+                    'balance_amount' => $balanceAmount,
                     'start_otp' => $this->references->startOtp(),
                     'dynamic_fields_data' => $validated['dynamic_fields'] ?? [],
                 ]);
@@ -202,6 +260,8 @@ class BookingController extends Controller
         if (! $isBus) {
             $this->bidding->openForNewBooking($booking);
         }
+
+        $this->notifications->bookingCreated($booking, 'customer');
 
         return response()->json([
             'success' => true,

@@ -23,6 +23,9 @@ class Booking extends Model
         'addon_fare' => 'float',
         'discount_fare' => 'float',
         'total_amount' => 'float',
+        'advance_percentage' => 'float',
+        'advance_amount' => 'float',
+        'balance_amount' => 'float',
         'driver_payout_amount' => 'float',
     ];
 

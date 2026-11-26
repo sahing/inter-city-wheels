@@ -3,12 +3,26 @@
 @section('content')
 @php
     $userRole = Auth::check() ? Auth::user()->role : null;
+    $ps = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
+    $isSchedulesOn = ($ps['enable_schedules_and_berths'] ?? '0') === '1';
+    $requestedTab = (string) request()->query('tab', '');
+    $bookedParam = trim((string) request()->query('booked', ''));
+    $hasValidBookedParam = $bookedParam !== '' && preg_match('/^ICW-[A-Z0-9-]{3,24}$/i', $bookedParam) === 1;
+    $allowedTabsForRole = match($userRole) {
+        'admin' => ['admin', 'cabs', 'schedules', 'bidding'],
+        'driver' => ['bidding', 'driver-trips', 'driver-wallet', 'driver-profile'],
+        default => $isSchedulesOn ? ['cabs', 'schedules', 'my-bookings'] : ['cabs', 'my-bookings'],
+    };
     $defaultTab = match($userRole) {
         'admin' => 'admin',
         'driver' => 'bidding',
         default => 'cabs'
     };
-    $ps = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
+    if (in_array($requestedTab, $allowedTabsForRole, true)) {
+        $defaultTab = $requestedTab;
+    } elseif ($hasValidBookedParam && in_array('my-bookings', $allowedTabsForRole, true)) {
+        $defaultTab = 'my-bookings';
+    }
     $petRate = (float) ($ps['addon_pet_friendly_rate'] ?? 350);
     $nightRate = (float) ($ps['addon_night_allowance_rate'] ?? 400);
     $luggageRate = (float) ($ps['addon_luggage_carrier_rate'] ?? 200);
@@ -437,11 +451,27 @@
             <!-- ======================================================== -->
             <div class="rental-promo-section">
                 <div class="rental-promo-grid">
+                    @php
+                        $promoPaySettings = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
+                        $promoAdvPct = $promoPaySettings['payment_advance_pct'] ?? '20';
+                        $promoPartPayOn = ($promoPaySettings['payment_show_part_pay'] ?? '1') === '1';
+                        $promoCashOn = ($promoPaySettings['payment_show_cash'] ?? '1') === '1';
+                    @endphp
                     <!-- Card 1 -->
                     <div class="rental-promo-card card-zero-cost" onclick="exploreCabs()">
                         <span class="rental-promo-badge">PROMO ASSURED</span>
                         <h3 class="rental-promo-title">Book Now at zero cost</h3>
-                        <p class="rental-promo-sub">No booking charges. Pay 20% advance or pay later to driver.</p>
+                        <p class="rental-promo-sub" id="promo-advance-copy">
+                            @if($promoPartPayOn && $promoCashOn)
+                                No booking charges. Pay {{ $promoAdvPct }}% advance or pay later to driver.
+                            @elseif($promoPartPayOn)
+                                No booking charges. Pay just {{ $promoAdvPct }}% advance to lock your ride.
+                            @elseif($promoCashOn)
+                                No booking charges. Pay directly to driver on pickup.
+                            @else
+                                Instant online booking confirmation with transparent pricing.
+                            @endif
+                        </p>
                     </div>
 
                     <!-- Card 2 -->
@@ -756,21 +786,73 @@
                             </div>
                         </div>
 
+                        @php
+                            $paySettings = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
+                            $payAdvPct = (float) ($paySettings['payment_advance_pct'] ?? 20);
+                            $payAdvLabel = fmod($payAdvPct, 1.0) === 0.0 ? (string) (int) $payAdvPct : rtrim(rtrim(number_format($payAdvPct, 2, '.', ''), '0'), '.');
+                            $showFullOnline = ($paySettings['payment_show_full_online'] ?? '1') === '1';
+                            $showPartPay = ($paySettings['payment_show_part_pay'] ?? '1') === '1';
+                            $showFullUpi = ($paySettings['payment_show_full_upi'] ?? '1') === '1';
+                            $showCash = ($paySettings['payment_show_cash'] ?? '1') === '1';
+                            $enabledPayList = array_values(array_filter([
+                                $showFullOnline ? 'full_online' : null,
+                                $showPartPay ? 'part_pay' : null,
+                                $showFullUpi ? 'full_upi' : null,
+                                $showCash ? 'cash' : null,
+                            ]));
+                            if ($enabledPayList === []) {
+                                $showFullOnline = true;
+                                $enabledPayList = ['full_online'];
+                            }
+                            $defaultPayMode = in_array($paySettings['payment_default_option'] ?? '', $enabledPayList, true)
+                                ? $paySettings['payment_default_option']
+                                : $enabledPayList[0];
+                        @endphp
                         <!-- Payment Method Radios -->
-                        <div style="margin-top:14px; background:#f8fafc; border-radius:8px; padding:10px 12px;">
-                            <div style="font-size:11.5px; font-weight:700; color:#334155; text-transform:uppercase; margin-bottom:6px;">Select Payment Mode</div>
-                            <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; margin-bottom:4px; cursor:pointer;">
-                                <input type="radio" name="rental_pay_mode" value="full" checked>
-                                <span>Pay Full Online (UPI / Card / NetBanking)</span>
-                            </label>
-                            <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; margin-bottom:4px; cursor:pointer;">
-                                <input type="radio" name="rental_pay_mode" value="advance">
-                                <span>Pay 20% Advance (Balance to Driver)</span>
-                            </label>
-                            <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; cursor:pointer;">
-                                <input type="radio" name="rental_pay_mode" value="cash">
-                                <span>Pay Later to Chauffeur (Cash / UPI)</span>
-                            </label>
+                        <div id="checkout-payment-modes-box" style="margin-top:14px; background:#f8fafc; border-radius:8px; padding:10px 12px; border:1px solid #e2e8f0;">
+                            <div style="font-size:11.5px; font-weight:700; color:#334155; text-transform:uppercase; margin-bottom:8px;">Select Payment Mode</div>
+                            <div id="checkout-payment-options-list" style="display:flex; flex-direction:column; gap:6px;">
+                                @if($showFullOnline)
+                                <label class="checkout-pay-opt" data-mode="full_online" style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12.5px; cursor:pointer;">
+                                    <span style="display:flex; align-items:center; gap:8px;">
+                                        <input type="radio" name="rental_pay_mode" value="full_online" {{ $defaultPayMode === 'full_online' ? 'checked' : '' }} onchange="updateTotalCabFare()">
+                                        <span>Pay Full Online (Card / NetBanking / UPI)</span>
+                                    </span>
+                                    <strong class="checkout-pay-amt" data-amt-for="full_online" style="color:#0f172a; font-size:12px;"></strong>
+                                </label>
+                                @endif
+                                @if($showPartPay)
+                                <label class="checkout-pay-opt" data-mode="part_pay" style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12.5px; cursor:pointer;">
+                                    <span style="display:flex; align-items:center; gap:8px;">
+                                        <input type="radio" name="rental_pay_mode" value="part_pay" {{ $defaultPayMode === 'part_pay' ? 'checked' : '' }} onchange="updateTotalCabFare()">
+                                        <span>Part Pay ({{ $payAdvLabel }}% Advance, Balance to Driver)</span>
+                                    </span>
+                                    <strong class="checkout-pay-amt" data-amt-for="part_pay" style="color:#0284c7; font-size:12px;"></strong>
+                                </label>
+                                @endif
+                                @if($showFullUpi)
+                                <label class="checkout-pay-opt" data-mode="full_upi" style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12.5px; cursor:pointer;">
+                                    <span style="display:flex; align-items:center; gap:8px;">
+                                        <input type="radio" name="rental_pay_mode" value="full_upi" {{ $defaultPayMode === 'full_upi' ? 'checked' : '' }} onchange="updateTotalCabFare()">
+                                        <span>Full UPI (Instant Zero-Fee UPI)</span>
+                                    </span>
+                                    <strong class="checkout-pay-amt" data-amt-for="full_upi" style="color:#0f172a; font-size:12px;"></strong>
+                                </label>
+                                @endif
+                                @if($showCash)
+                                <label class="checkout-pay-opt" data-mode="cash" style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12.5px; cursor:pointer;">
+                                    <span style="display:flex; align-items:center; gap:8px;">
+                                        <input type="radio" name="rental_pay_mode" value="cash" {{ $defaultPayMode === 'cash' ? 'checked' : '' }} onchange="updateTotalCabFare()">
+                                        <span>Pay Later to Chauffeur (Cash / UPI)</span>
+                                    </span>
+                                    <strong class="checkout-pay-amt" data-amt-for="cash" style="color:#16a34a; font-size:12px;">₹0 now</strong>
+                                </label>
+                                @endif
+                            </div>
+                            <div id="checkout-payable-now-bar" style="margin-top:8px; padding-top:8px; border-top:1px dashed #cbd5e1; display:flex; justify-content:space-between; font-size:12px; color:#334155;">
+                                <span>Payable Now to Confirm:</span>
+                                <strong id="checkout-payable-now-amount" style="color:#0f172a;">₹2,550</strong>
+                            </div>
                         </div>
 
                         <!-- Terms & Conditions Checkbox -->
@@ -1093,99 +1175,201 @@
         <!-- ======================================================== -->
         <!-- TAB: CUSTOMER MY BOOKINGS & PASSENGER MANIFEST          -->
         <!-- ======================================================== -->
+        @php
+            $customerTripsList = collect($customerBookings ?? []);
+            $activeTripCount = $customerTripsList->filter(fn ($t) => ! in_array($t->status, ['Completed', 'Cancelled'], true))->count();
+            $completedTripCount = $customerTripsList->where('status', 'Completed')->count();
+            $allTripCount = $customerTripsList->count();
+            $bookedQuery = trim((string) request()->query('booked', ''));
+            $bookedHighlight = ($bookedQuery !== '' && preg_match('/^ICW-[A-Z0-9-]{3,24}$/i', $bookedQuery) === 1) ? strtoupper($bookedQuery) : null;
+        @endphp
         <section id="tab-my-bookings" class="tab-pane {{ $defaultTab === 'my-bookings' ? 'active' : '' }}">
-            <div class="card" style="margin-bottom:20px;">
-                <div class="card-header" style="flex-wrap:wrap; gap:10px;">
+            <div class="card my-trips-shell">
+                <div class="card-header my-trips-header">
                     <div>
-                        <h2 class="card-title" style="display:flex; align-items:center; gap:8px;">
-                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px;">confirmation_number</span>
-                            <span>My Outstation Trips & Digital Tickets</span>
+                        <h2 class="card-title my-trips-heading">
+                            <span class="material-symbols-outlined" style="color:var(--gold-dark); font-size:21px;">confirmation_number</span>
+                            <span>My Trips &amp; Booking History</span>
                         </h2>
-                        <p class="card-subtitle">Manage upcoming rides, verify chauffeur assignments, view OTP and access GST tax invoices</p>
+                        <p class="card-subtitle">Track upcoming rides, chauffeur details, ride OTPs &amp; boarding passes</p>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-gold" onclick="switchTab('cabs')">
+                    <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('cabs')">
                         <span class="material-symbols-outlined" style="font-size:15px;">add</span>
-                        <span>Book Another Trip</span>
+                        <span>Book a Trip</span>
                     </button>
                 </div>
 
-                <div class="customer-bookings-grid" style="display:flex; flex-direction:column; gap:14px; padding:16px 0;">
-                    @forelse($customerBookings ?? [] as $cb)
-                    <div class="customer-trip-card" style="border:1px solid #e2e8f0; border-radius:10px; padding:16px; background:#ffffff; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:12px; margin-bottom:12px;">
-                            <div>
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <span style="font-family:monospace; font-weight:800; color:var(--primary); font-size:14px;">{{ $cb->booking_reference }}</span>
-                                    <span class="admin-badge @if($cb->status === 'Confirmed') badge-success @elseif($cb->status === 'Driver Assigned') badge-gold @elseif($cb->status === 'Started') badge-info @elseif($cb->status === 'Completed') badge-primary @else badge-secondary @endif">
-                                        {{ $cb->status }}
-                                    </span>
-                                    <span class="admin-badge {{ $cb->service_type === 'cab' ? 'badge-primary' : 'badge-gold' }}" style="font-size:9.5px;">
-                                        {{ strtoupper($cb->service_type) }}
-                                    </span>
-                                </div>
-                                <div style="font-size:16px; font-weight:800; color:#0f172a; margin-top:4px;">{{ $cb->route_summary }}</div>
-                                <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
-                                    <span>Departure: <strong>{{ $cb->departure_time ? $cb->departure_time->format('D, d M Y, h:i A') : 'Scheduled' }}</strong></span>
-                                </div>
-                            </div>
-                            <div style="text-align:right;">
-                                <div style="font-size:18px; font-weight:800; color:#0f172a;">₹{{ number_format($cb->total_amount) }}</div>
-                                <div style="font-size:10.5px; color:#16a34a; font-weight:600;">✓ Prepaid (Escrow Protected)</div>
-                            </div>
+                @auth
+                    @if($bookedHighlight)
+                    <div class="trips-booked-banner" role="status">
+                        <span class="material-symbols-outlined" style="font-size:18px; color:#15803d;">check_circle</span>
+                        <span><strong>Booking {{ $bookedHighlight }} confirmed.</strong> Your trip details and boarding OTP are ready below.</span>
+                    </div>
+                    @endif
+
+                    <div class="trips-toolbar">
+                        <div class="trips-filters" role="tablist" aria-label="Filter trips by status">
+                            <button type="button" class="trip-filter-pill" data-filter="active" role="tab" aria-selected="false" onclick="filterMyTrips('active')">
+                                <span>Upcoming Trips</span>
+                                <span class="trip-filter-count" id="trips-count-active">{{ $activeTripCount }}</span>
+                            </button>
+                            <button type="button" class="trip-filter-pill" data-filter="completed" role="tab" aria-selected="false" onclick="filterMyTrips('completed')">
+                                <span>Completed Trips</span>
+                                <span class="trip-filter-count" id="trips-count-completed">{{ $completedTripCount }}</span>
+                            </button>
+                            <button type="button" class="trip-filter-pill active" data-filter="all" role="tab" aria-selected="true" onclick="filterMyTrips('all')">
+                                <span>All Trips</span>
+                                <span class="trip-filter-count" id="trips-count-all">{{ $allTripCount }}</span>
+                            </button>
                         </div>
+                        <div class="trips-summary" id="trips-summary">
+                            @if($allTripCount === 0)
+                                No trips booked yet
+                            @else
+                                {{ $activeTripCount }} active · {{ $completedTripCount }} completed
+                            @endif
+                        </div>
+                    </div>
 
-                        <!-- Trip Manifest Grid -->
-                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:14px; font-size:12px;">
-                            <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
-                                <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Pickup & Drop Details</div>
-                                <div style="margin-top:4px; color:#1e293b;"><strong>Pickup:</strong> {{ $cb->pickup_location }}</div>
-                                <div style="margin-top:2px; color:#1e293b;"><strong>Drop:</strong> {{ $cb->drop_location }}</div>
+                    <div class="customer-bookings-grid" id="my-trips-list">
+                        @foreach($customerTripsList as $cb)
+                        @php
+                            $bucket = $cb->status === 'Completed'
+                                ? 'completed'
+                                : ($cb->status === 'Cancelled' ? 'cancelled' : 'active');
+                            $isHighlighted = $bookedHighlight !== null && strtoupper((string) $cb->booking_reference) === $bookedHighlight;
+                            $payBadgeLabel = match($cb->payment_mode) {
+                                'part_pay' => ((float) $cb->advance_percentage).'% Adv Paid',
+                                'cash' => 'Pay Driver',
+                                'full_upi' => 'Paid UPI',
+                                default => 'Prepaid',
+                            };
+                        @endphp
+                        <div class="customer-trip-card{{ $isHighlighted ? ' is-new' : '' }}" id="trip-card-{{ $cb->booking_reference }}" data-bucket="{{ $bucket }}" data-status="{{ $cb->status }}">
+                            <div class="trip-card-top">
+                                <div class="trip-card-title-group">
+                                    <div class="trip-card-badges">
+                                        <span class="trip-ref-badge">{{ $cb->booking_reference }}</span>
+                                        <span class="trip-status-pill status-{{ strtolower(str_replace(' ', '-', $cb->status)) }}">{{ $cb->status }}</span>
+                                        <span class="trip-service-tag">{{ strtoupper($cb->service_type) }}</span>
+                                        @if($isHighlighted)
+                                            <span class="trip-new-flag">Just booked</span>
+                                        @endif
+                                    </div>
+                                    <div class="trip-card-route">{{ $cb->route_summary }}</div>
+                                    <div class="trip-card-date">
+                                        <span class="material-symbols-outlined" style="font-size:13px;">schedule</span>
+                                        <span>{{ $cb->departure_time ? $cb->departure_time->format('D, d M Y, h:i A') : 'Scheduled Departure' }}</span>
+                                    </div>
+                                </div>
+                                <div class="trip-card-fare-col">
+                                    <div class="trip-card-fare">₹{{ number_format($cb->total_amount) }}</div>
+                                    <div class="trip-card-pay-tag">{{ $payBadgeLabel }}</div>
+                                </div>
                             </div>
 
-                            <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
-                                <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Chauffeur & Vehicle</div>
-                                @if($cb->driver)
-                                <div style="margin-top:4px; font-weight:700; color:#0f172a;">{{ $cb->driver->name }} (★{{ $cb->driver->rating }})</div>
-                                <div style="color:#15803d; font-size:11px; margin-top:2px;">{{ $cb->driver->vehicle_model }} • <strong>{{ $cb->driver->vehicle_plate }}</strong></div>
-                                <div style="margin-top:2px;"><a href="tel:{{ $cb->driver->phone }}" style="color:#0284c7; text-decoration:none;">📞 {{ $cb->driver->phone }}</a></div>
+                            <div class="trip-card-grid">
+                                <div class="trip-info-tile">
+                                    <div class="trip-tile-label">Pickup &amp; Drop</div>
+                                    <div class="trip-tile-line"><strong>From:</strong> {{ $cb->pickup_location }}</div>
+                                    <div class="trip-tile-line"><strong>To:</strong> {{ $cb->drop_location }}</div>
+                                </div>
+
+                                <div class="trip-info-tile">
+                                    <div class="trip-tile-label">Chauffeur &amp; Vehicle</div>
+                                    @if($cb->driver)
+                                        <div class="trip-tile-line" style="font-weight:700; color:#0f172a;">{{ $cb->driver->name }} (★{{ $cb->driver->rating }})</div>
+                                        <div class="trip-tile-sub">{{ $cb->driver->vehicle_model }} · <strong>{{ $cb->driver->vehicle_plate }}</strong> · <a href="tel:{{ $cb->driver->phone }}" class="trip-driver-tel">{{ $cb->driver->phone }}</a></div>
+                                    @elseif($bucket === 'completed')
+                                        <div class="trip-tile-line" style="color:#475569; font-weight:600;">Trip closed</div>
+                                        <div class="trip-tile-sub">Completed journey</div>
+                                    @else
+                                        <div class="trip-tile-line" style="color:#92400e; font-weight:700;">Allotment in progress</div>
+                                        <div class="trip-tile-sub">Verified chauffeur assigned prior to pickup</div>
+                                    @endif
+                                </div>
+
+                                @if($bucket === 'active')
+                                <div class="trip-otp-tile">
+                                    <div class="trip-otp-label">Ride Start OTP</div>
+                                    <div class="trip-otp-code">{{ $cb->start_otp }}</div>
+                                    <div class="trip-otp-hint">Share with chauffeur</div>
+                                </div>
+                                @elseif($bucket === 'completed')
+                                <div class="trip-state-tile state-completed">
+                                    <div class="trip-state-title">✓ Trip Completed</div>
+                                    <div class="trip-state-sub">Thanks for riding with us</div>
+                                </div>
                                 @else
-                                <div style="margin-top:4px; color:#d97706; font-weight:600;">Allotment In Progress</div>
-                                <div style="font-size:11px; color:#64748b; margin-top:2px;">A verified chauffeur will be allotted 2 hours before pickup.</div>
+                                <div class="trip-state-tile state-cancelled">
+                                    <div class="trip-state-title">Cancelled</div>
+                                    <div class="trip-state-sub">No active OTP</div>
+                                </div>
                                 @endif
                             </div>
 
-                            <div style="background:#fffbeb; border:1px solid #fef3c7; padding:10px 12px; border-radius:6px; text-align:center;">
-                                <div style="font-weight:700; color:#92400e; font-size:10.5px; text-transform:uppercase;">Ride Start Validation OTP</div>
-                                <div style="font-family:monospace; font-size:22px; font-weight:800; color:var(--primary); letter-spacing:0.1em; margin:4px 0;">
-                                    {{ $cb->start_otp }}
+                            <div class="trip-card-footer">
+                                <span class="trip-footer-meta">
+                                    @if($cb->payment_mode === 'part_pay' && $cb->balance_amount > 0)
+                                        Balance to driver: <strong>₹{{ number_format($cb->balance_amount) }}</strong>
+                                    @elseif(is_array($cb->passengers) && count($cb->passengers) > 0)
+                                        {{ count($cb->passengers) }} passenger(s)
+                                    @else
+                                        Escrow Verified
+                                    @endif
+                                </span>
+                                <div class="trip-card-actions">
+                                    <button type="button" class="btn btn-xs trip-btn-secondary" onclick="copyTripReference('{{ $cb->booking_reference }}')">
+                                        <span class="material-symbols-outlined" style="font-size:14px;">content_copy</span>
+                                        <span>Reference</span>
+                                    </button>
+                                    <button type="button" class="btn btn-xs trip-btn-primary" onclick="openTicketModal('{{ $cb->booking_reference }}')">
+                                        <span class="material-symbols-outlined" style="font-size:14px;">confirmation_number</span>
+                                        <span>{{ $bucket === 'active' ? 'Digital Boarding Pass' : 'View Trip Ticket' }}</span>
+                                    </button>
                                 </div>
-                                <div style="font-size:10px; color:#78350f;">Show this 4-digit OTP to your chauffeur before boarding.</div>
                             </div>
                         </div>
+                        @endforeach
+                    </div>
 
-                        <!-- Card Actions -->
-                        <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px dashed #e2e8f0; padding-top:10px;">
-                            <button type="button" class="btn btn-sm btn-outline" onclick="openTicketModal('{{ $cb->booking_reference }}')">
-                                <span class="material-symbols-outlined" style="font-size:15px;">confirmation_number</span>
-                                <span>Digital Boarding Pass</span>
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-gold" onclick="openInvoiceModal({{ $cb->id }})">
-                                <span class="material-symbols-outlined" style="font-size:15px;">receipt</span>
-                                <span>GST Tax Invoice</span>
-                            </button>
+                    <div class="trips-empty" id="trips-empty" style="display:{{ $allTripCount === 0 ? 'block' : 'none' }};">
+                        <span class="material-symbols-outlined" style="font-size:34px; color:#64748b; display:block; margin-bottom:6px;">directions_car</span>
+                        <div id="trips-empty-title" style="font-weight:700; font-size:14px; color:#0f172a;">No trips booked yet</div>
+                        <p id="trips-empty-copy" style="font-size:12px; color:#475569; margin:4px 0 12px;">Book an outstation cab or sleeper berth to see your upcoming and completed trips here.</p>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('cabs')">Book Outstation Cab</button>
+                    </div>
+                @else
+                    <div class="trips-guest-card" style="padding:18px 0;">
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px;">
+                            <div style="background:#0b0f19; color:#f8fafc; border-radius:10px; padding:18px; display:flex; flex-direction:column; justify-content:space-between; gap:12px;">
+                                <div>
+                                    <span style="display:inline-block; background:rgba(212,155,76,0.18); color:#f5d061; font-size:10.5px; font-weight:800; padding:3px 9px; border-radius:999px; letter-spacing:0.05em;">CUSTOMER PORTAL</span>
+                                    <h3 style="font-size:16px; font-weight:800; color:#ffffff; margin:10px 0 4px;">Sign in to see your trip history</h3>
+                                    <p style="font-size:12px; color:#cbd5e1; margin:0; line-height:1.45;">View upcoming rides, completed history, live chauffeur contact and boarding OTPs in one place.</p>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-gold" onclick="openLoginModal('customer', 'signin')" style="align-self:flex-start;">
+                                    <span class="material-symbols-outlined" style="font-size:16px;">login</span>
+                                    <span>Sign In / Register</span>
+                                </button>
+                            </div>
+
+                            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:18px;">
+                                <h4 style="font-size:14px; font-weight:800; color:#0f172a; margin:0 0 4px;">Track a Booking Without Signing In</h4>
+                                <p style="font-size:12px; color:#475569; margin:0 0 12px;">Enter your booking reference and mobile number used at checkout.</p>
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+                                    <input type="text" id="trips-track-reference" class="form-control" placeholder="Ref (e.g. ICW-AB12CD)" style="font-size:12.5px;">
+                                    <input type="text" id="trips-track-phone" class="form-control" placeholder="Mobile Number" style="font-size:12.5px;">
+                                </div>
+                                <button type="button" class="btn btn-sm btn-primary" onclick="trackGuestBooking()">
+                                    <span class="material-symbols-outlined" style="font-size:15px;">search</span>
+                                    <span>Track Booking</span>
+                                </button>
+                                <div id="trips-track-result" style="margin-top:10px;"></div>
+                            </div>
                         </div>
                     </div>
-                    @empty
-                    <div style="text-align:center; padding:40px 20px; color:#94a3b8; background:#f8fafc; border-radius:8px;">
-                        <span class="material-symbols-outlined" style="font-size:40px; color:#cbd5e1; display:block; margin-bottom:8px;">receipt_long</span>
-                        <div style="font-weight:700; font-size:14px; color:#475569;">No active bookings found under your account</div>
-                        <p style="font-size:12px; margin:4px 0 14px;">Book an outstation cab or luxury sleeper berth to view your live tickets and chauffeur dispatch.</p>
-                        <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('cabs')">
-                            <span>Book Outstation Cab</span>
-                        </button>
-                    </div>
-                    @endforelse
-                </div>
+                @endauth
             </div>
         </section>
 
@@ -2824,6 +3008,10 @@
                                                     <span class="material-symbols-outlined">save</span>
                                                     <span>Save Night Stay, Hours & Conditions</span>
                                                 </button>
+                                                <button type="button" class="btn btn-sm btn-outline btn-block" onclick="switchAdminSection('system')" style="margin-top:6px;">
+                                                    <span class="material-symbols-outlined" style="font-size:16px;">payments</span>
+                                                    <span>Configure Checkout Payment Modes & Advance %</span>
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -3703,6 +3891,260 @@
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+
+                            <!-- Checkout Payment Options & Advance Percentage Settings -->
+                            @php
+                                $adminPaySettings = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
+                                $adminAdvPct = $adminPaySettings['payment_advance_pct'] ?? '20';
+                                $adminPayDefault = $adminPaySettings['payment_default_option'] ?? 'full_online';
+                            @endphp
+                            <div class="card" style="margin-top:20px;" id="admin-payment-options-card">
+                                <div class="card-header" style="flex-wrap:wrap; gap:10px;">
+                                    <div>
+                                        <h3 class="card-title" style="display:flex; align-items:center; gap:8px;">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">payments</span>
+                                            <span>Checkout Payment Options & Advance Percentage</span>
+                                        </h3>
+                                        <p class="card-subtitle">Control which payment modes customers see at checkout and set the advance percentage for Part Pay</p>
+                                    </div>
+                                    <span class="admin-badge badge-gold">Checkout Controls</span>
+                                </div>
+
+                                <form id="admin-payment-options-form" onsubmit="saveAdminPaymentOptions(event)" style="padding:16px 20px;">
+                                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:16px;">
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-payment-advance-pct">
+                                                <span style="font-weight:700;">Advance Payment Percentage (%)</span>
+                                                <span style="font-size:11px; color:#64748b;">(1% – 99% for Part Pay)</span>
+                                            </label>
+                                            <div class="input-with-icon">
+                                                <span class="material-symbols-outlined">percent</span>
+                                                <input type="number" id="setting-payment-advance-pct" class="form-control" min="1" max="99" step="1" value="{{ $adminAdvPct }}" required>
+                                            </div>
+                                        </div>
+
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-payment-default-option">
+                                                <span style="font-weight:700;">Default Selected Option</span>
+                                                <span style="font-size:11px; color:#64748b;">(Pre-selected at checkout)</span>
+                                            </label>
+                                            <select id="setting-payment-default-option" class="form-control">
+                                                <option value="full_online" {{ $adminPayDefault === 'full_online' ? 'selected' : '' }}>Full Pay Online (Card / NetBanking / UPI)</option>
+                                                <option value="part_pay" {{ $adminPayDefault === 'part_pay' ? 'selected' : '' }}>Part Pay (Advance % + Balance to Driver)</option>
+                                                <option value="full_upi" {{ $adminPayDefault === 'full_upi' ? 'selected' : '' }}>Full UPI Payment</option>
+                                                <option value="cash" {{ $adminPayDefault === 'cash' ? 'selected' : '' }}>Cash / Pay Later to Chauffeur</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div style="font-size:12px; font-weight:700; color:#334155; margin-bottom:8px;">Visible Checkout Payment Options</div>
+                                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-bottom:16px;">
+                                        <label style="display:flex; align-items:center; gap:8px; padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; cursor:pointer; font-size:13px;">
+                                            <input type="checkbox" id="setting-pay-show-part" {{ ($adminPaySettings['payment_show_part_pay'] ?? '1') === '1' ? 'checked' : '' }}>
+                                            <span><strong>Part Pay</strong> (Advance %)</span>
+                                        </label>
+                                        <label style="display:flex; align-items:center; gap:8px; padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; cursor:pointer; font-size:13px;">
+                                            <input type="checkbox" id="setting-pay-show-full" {{ ($adminPaySettings['payment_show_full_online'] ?? '1') === '1' ? 'checked' : '' }}>
+                                            <span><strong>Full Pay Online</strong> (Card / NetBanking)</span>
+                                        </label>
+                                        <label style="display:flex; align-items:center; gap:8px; padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; cursor:pointer; font-size:13px;">
+                                            <input type="checkbox" id="setting-pay-show-upi" {{ ($adminPaySettings['payment_show_full_upi'] ?? '1') === '1' ? 'checked' : '' }}>
+                                            <span><strong>Full UPI</strong> (Instant UPI)</span>
+                                        </label>
+                                        <label style="display:flex; align-items:center; gap:8px; padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; cursor:pointer; font-size:13px;">
+                                            <input type="checkbox" id="setting-pay-show-cash" {{ ($adminPaySettings['payment_show_cash'] ?? '1') === '1' ? 'checked' : '' }}>
+                                            <span><strong>Cash / Pay Later</strong> (To Chauffeur)</span>
+                                        </label>
+                                    </div>
+
+                                    <div style="display:flex; justify-content:flex-end;">
+                                        <button type="submit" id="save-payment-options-btn" class="btn btn-sm btn-primary">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">save</span>
+                                            <span>Save Payment Options</span>
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+
+                            <!-- Invoice Template & Branding Settings -->
+                            @php
+                                $invCfg = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
+                                $invStyle = $invCfg['invoice_template_style'] ?? 'classic_gst';
+                                $invAccent = $invCfg['invoice_accent_color'] ?? '#d49b4c';
+                            @endphp
+                            <div class="card" style="margin-top:20px;" id="admin-invoice-template-card">
+                                <div class="card-header" style="flex-wrap:wrap; gap:10px;">
+                                    <div>
+                                        <h3 class="card-title" style="display:flex; align-items:center; gap:8px;">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">receipt_long</span>
+                                            <span>Tax Invoice Template & Branding</span>
+                                        </h3>
+                                        <p class="card-subtitle">Choose from 4 pre-built invoice layouts and customize company details, GST rates, and footer notes</p>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline" onclick="previewInvoiceTemplate()">
+                                        <span class="material-symbols-outlined" style="font-size:16px;">visibility</span>
+                                        <span>Preview Sample Invoice</span>
+                                    </button>
+                                </div>
+
+                                <form id="admin-invoice-template-form" onsubmit="saveAdminInvoiceTemplate(event)" style="padding:16px 20px;">
+                                    <div style="font-size:12px; font-weight:700; color:#334155; margin-bottom:8px;">Select Pre-Built Invoice Style</div>
+                                    <div class="inv-style-picker-grid" id="inv-style-picker-grid">
+                                        <label class="inv-style-card {{ $invStyle === 'classic_gst' ? 'selected' : '' }}" data-style-option="classic_gst" onclick="selectInvoiceTemplateStyle('classic_gst')">
+                                            <input type="radio" name="invoice_template_style" value="classic_gst" {{ $invStyle === 'classic_gst' ? 'checked' : '' }}>
+                                            <div class="inv-mini-thumb thumb-classic">
+                                                <div class="inv-mini-bar"></div>
+                                                <div class="inv-mini-bar short"></div>
+                                                <div class="inv-mini-bar"></div>
+                                            </div>
+                                            <div>
+                                                <div class="inv-style-label">Classic GST</div>
+                                                <div class="inv-style-desc">Traditional corporate tax invoice with gold border & seal</div>
+                                            </div>
+                                        </label>
+
+                                        <label class="inv-style-card {{ $invStyle === 'executive_dark' ? 'selected' : '' }}" data-style-option="executive_dark" onclick="selectInvoiceTemplateStyle('executive_dark')">
+                                            <input type="radio" name="invoice_template_style" value="executive_dark" {{ $invStyle === 'executive_dark' ? 'checked' : '' }}>
+                                            <div class="inv-mini-thumb thumb-executive">
+                                                <div class="mini-top"></div>
+                                                <div style="padding:5px; display:flex; flex-direction:column; gap:4px;">
+                                                    <div class="inv-mini-bar"></div>
+                                                    <div class="inv-mini-bar short"></div>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div class="inv-style-label">Executive Navy</div>
+                                                <div class="inv-style-desc">Bold dark navy banner header with boxed party cards</div>
+                                            </div>
+                                        </label>
+
+                                        <label class="inv-style-card {{ $invStyle === 'modern_minimal' ? 'selected' : '' }}" data-style-option="modern_minimal" onclick="selectInvoiceTemplateStyle('modern_minimal')">
+                                            <input type="radio" name="invoice_template_style" value="modern_minimal" {{ $invStyle === 'modern_minimal' ? 'checked' : '' }}>
+                                            <div class="inv-mini-thumb thumb-minimal">
+                                                <div class="inv-mini-bar"></div>
+                                                <div class="inv-mini-bar short"></div>
+                                                <div class="inv-mini-bar"></div>
+                                            </div>
+                                            <div>
+                                                <div class="inv-style-label">Modern Minimal</div>
+                                                <div class="inv-style-desc">Clean borderless layout with left accent stripe & pill badge</div>
+                                            </div>
+                                        </label>
+
+                                        <label class="inv-style-card {{ $invStyle === 'compact_receipt' ? 'selected' : '' }}" data-style-option="compact_receipt" onclick="selectInvoiceTemplateStyle('compact_receipt')">
+                                            <input type="radio" name="invoice_template_style" value="compact_receipt" {{ $invStyle === 'compact_receipt' ? 'checked' : '' }}>
+                                            <div class="inv-mini-thumb thumb-compact">
+                                                <div class="inv-mini-bar" style="margin:0 auto;"></div>
+                                                <div class="inv-mini-bar short" style="margin:0 auto;"></div>
+                                                <div class="inv-mini-bar" style="margin:0 auto;"></div>
+                                            </div>
+                                            <div>
+                                                <div class="inv-style-label">Compact Receipt</div>
+                                                <div class="inv-style-desc">Narrow dashed thermal-style express trip receipt</div>
+                                            </div>
+                                        </label>
+                                    </div>
+
+                                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:12px;">
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-brand-name">Brand Heading</label>
+                                            <input type="text" id="setting-inv-brand-name" class="form-control" value="{{ $invCfg['invoice_brand_name'] ?? 'INTERCITY WHEELS' }}" required>
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-legal-name">Legal Company Name</label>
+                                            <input type="text" id="setting-inv-legal-name" class="form-control" value="{{ $invCfg['invoice_company_legal'] ?? 'IntercityWheels Mobility Services Pvt. Ltd.' }}" required>
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-title">Document Title</label>
+                                            <input type="text" id="setting-inv-title" class="form-control" value="{{ $invCfg['invoice_title'] ?? 'TAX INVOICE' }}" required>
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-prefix">Invoice Number Prefix</label>
+                                            <input type="text" id="setting-inv-prefix" class="form-control" value="{{ $invCfg['invoice_prefix'] ?? 'INV' }}" required>
+                                        </div>
+                                    </div>
+
+                                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:12px;">
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-gstin">GSTIN</label>
+                                            <input type="text" id="setting-inv-gstin" class="form-control" value="{{ $invCfg['invoice_gstin'] ?? '27AAACI9912K1Z8' }}">
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-sac">HSN / SAC Code</label>
+                                            <input type="text" id="setting-inv-sac" class="form-control" value="{{ $invCfg['invoice_sac_code'] ?? '996412 (Passenger Transport Service)' }}">
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-pos">Place of Supply</label>
+                                            <input type="text" id="setting-inv-pos" class="form-control" value="{{ $invCfg['invoice_place_of_supply'] ?? 'Maharashtra (27)' }}">
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-accent">Accent Color</label>
+                                            <div style="display:flex; gap:6px; align-items:center;">
+                                                <input type="color" id="setting-inv-accent" value="{{ $invAccent }}" style="width:44px; height:38px; padding:2px; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer;">
+                                                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('setting-inv-accent').value='#d49b4c'">Gold</button>
+                                                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('setting-inv-accent').value='#0284c7'">Blue</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; margin-bottom:12px;">
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-phone">Support Helpline</label>
+                                            <input type="text" id="setting-inv-phone" class="form-control" value="{{ $invCfg['invoice_support_phone'] ?? '700 3434 088' }}">
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-email">Billing Email</label>
+                                            <input type="email" id="setting-inv-email" class="form-control" value="{{ $invCfg['invoice_support_email'] ?? 'billing@intercitywheels.com' }}">
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-cgst">CGST (%)</label>
+                                            <input type="number" id="setting-inv-cgst" class="form-control" min="0" max="25" step="0.5" value="{{ $invCfg['invoice_cgst_pct'] ?? '2.5' }}" required>
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-sgst">SGST (%)</label>
+                                            <input type="number" id="setting-inv-sgst" class="form-control" min="0" max="25" step="0.5" value="{{ $invCfg['invoice_sgst_pct'] ?? '2.5' }}" required>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group" style="margin-bottom:12px;">
+                                        <label class="form-label" for="setting-inv-address">Registered Office Address</label>
+                                        <input type="text" id="setting-inv-address" class="form-control" value="{{ $invCfg['invoice_company_address'] ?? '' }}" required>
+                                    </div>
+
+                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-signatory-name">Signatory Organization</label>
+                                            <input type="text" id="setting-inv-signatory-name" class="form-control" value="{{ $invCfg['invoice_signatory_name'] ?? 'IntercityWheels Mobility Services' }}">
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label class="form-label" for="setting-inv-signatory-label">Signatory Title</label>
+                                            <input type="text" id="setting-inv-signatory-label" class="form-control" value="{{ $invCfg['invoice_signatory_label'] ?? 'Authorized Signatory' }}">
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group" style="margin-bottom:12px;">
+                                        <label class="form-label" for="setting-inv-terms">Invoice Terms & Notes (one per line)</label>
+                                        <textarea id="setting-inv-terms" class="form-control" rows="3">{{ $invCfg['invoice_terms'] ?? '' }}</textarea>
+                                    </div>
+
+                                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                                        <div style="display:flex; gap:16px; flex-wrap:wrap;">
+                                            <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; cursor:pointer;">
+                                                <input type="checkbox" id="setting-inv-show-stamp" {{ ($invCfg['invoice_show_stamp'] ?? '1') === '1' ? 'checked' : '' }}>
+                                                <span>Show Payment Status Stamp</span>
+                                            </label>
+                                            <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; cursor:pointer;">
+                                                <input type="checkbox" id="setting-inv-show-otp" {{ ($invCfg['invoice_show_otp'] ?? '1') === '1' ? 'checked' : '' }}>
+                                                <span>Show Ride Start OTP on Invoice</span>
+                                            </label>
+                                        </div>
+                                        <button type="submit" id="save-invoice-template-btn" class="btn btn-sm btn-primary">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">save</span>
+                                            <span>Save Invoice Template</span>
+                                        </button>
+                                    </div>
+                                </form>
                             </div>
 
                             <!-- Platform Legal & Policy URLs Settings -->
@@ -5332,25 +5774,25 @@
         </div>
         <div class="modal-body" style="max-height: calc(88vh - 120px); overflow-y:auto; padding:20px; background:#f1f5f9;">
             <!-- Official Invoice Canvas (Printable Area) -->
-            <div class="invoice-paper-card" id="invoice-printable-area">
+            <div class="invoice-paper-card" id="invoice-printable-area" data-invoice-style="{{ $invStyle ?? 'classic_gst' }}" style="--inv-accent: {{ $invAccent ?? '#d49b4c' }};">
                 <!-- Header: Company & Tax Identity -->
                 <div class="invoice-header-row">
                     <div class="invoice-brand">
                         <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
                             <span style="font-size:22px;">🚗</span>
-                            <span class="invoice-company-name">INTERCITY WHEELS</span>
+                            <span class="invoice-company-name" id="inv-brand-name">INTERCITY WHEELS</span>
                         </div>
-                        <div class="invoice-company-legal">IntercityWheels Mobility Services Pvt. Ltd.</div>
-                        <div class="invoice-company-sub">Regd. Office: Floor 4, Tech Vista Towers, Senapati Bapat Road, Pune - 411016</div>
-                        <div class="invoice-company-sub"><strong>GSTIN:</strong> 27AAACI9912K1Z8 &nbsp;|&nbsp; <strong>SAC Code:</strong> 996412 (Passenger Transport)</div>
-                        <div class="invoice-company-sub">Helpline: 1800-209-WHEELS &nbsp;|&nbsp; billing@intercitywheels.com</div>
+                        <div class="invoice-company-legal" id="inv-company-legal">IntercityWheels Mobility Services Pvt. Ltd.</div>
+                        <div class="invoice-company-sub" id="inv-company-address">Regd. Office: Floor 4, Tech Vista Towers, Senapati Bapat Road, Pune - 411016</div>
+                        <div class="invoice-company-sub"><strong>GSTIN:</strong> <span id="inv-gstin">27AAACI9912K1Z8</span> &nbsp;|&nbsp; <strong>SAC Code:</strong> <span id="inv-sac-code">996412 (Passenger Transport)</span></div>
+                        <div class="invoice-company-sub">Helpline: <span id="inv-support-phone">700 3434 088</span> &nbsp;|&nbsp; <span id="inv-support-email">billing@intercitywheels.com</span></div>
                     </div>
                     <div class="invoice-meta-box">
-                        <div class="invoice-badge-title">TAX INVOICE</div>
+                        <div class="invoice-badge-title" id="inv-badge-title">TAX INVOICE</div>
                         <div class="invoice-meta-item"><strong>Invoice No:</strong> <span id="inv-doc-number">INV-2026-ICW-00000</span></div>
                         <div class="invoice-meta-item"><strong>Invoice Date:</strong> <span id="inv-doc-date">08 Nov 2026</span></div>
                         <div class="invoice-meta-item"><strong>Booking Ref:</strong> <span id="inv-booking-ref" style="font-family:monospace; font-weight:700;">ICW-00000</span></div>
-                        <div class="invoice-meta-item"><strong>Place of Supply:</strong> Maharashtra (27)</div>
+                        <div class="invoice-meta-item"><strong>Place of Supply:</strong> <span id="inv-place-of-supply">Maharashtra (27)</span></div>
                     </div>
                 </div>
 
@@ -5437,14 +5879,14 @@
                 <!-- Summary & Tax Totals -->
                 <div class="invoice-summary-row">
                     <div class="invoice-stamp-col">
-                        <div class="invoice-paid-stamp">
+                        <div class="invoice-paid-stamp" id="inv-paid-stamp-box">
                             <span class="material-symbols-outlined" style="font-size:18px;">verified</span>
-                            <span>PAID IN FULL</span>
+                            <span id="inv-paid-stamp-text">PAID IN FULL</span>
                         </div>
                         <div style="font-size:10.5px; color:#64748b; margin-top:6px;">
-                            <strong>Payment Mode:</strong> Online Escrow (Prepaid)<br>
+                            <strong>Payment Mode:</strong> <span id="inv-payment-mode-text">Online Escrow (Prepaid)</span><br>
                             <strong>Ref:</strong> <span id="inv-txn-ref">TXN-0000000</span><br>
-                            <strong>Start OTP:</strong> <span id="inv-start-otp" class="admin-otp-pill">0000</span>
+                            <span id="inv-otp-line"><strong>Start OTP:</strong> <span id="inv-start-otp" class="admin-otp-pill">0000</span></span>
                         </div>
                     </div>
 
@@ -5454,11 +5896,11 @@
                             <span id="inv-subtotal">₹0.00</span>
                         </div>
                         <div class="inv-calc-line">
-                            <span>CGST (2.5%):</span>
+                            <span id="inv-cgst-label">CGST (2.5%):</span>
                             <span id="inv-cgst">₹0.00</span>
                         </div>
                         <div class="inv-calc-line">
-                            <span>SGST (2.5%):</span>
+                            <span id="inv-sgst-label">SGST (2.5%):</span>
                             <span id="inv-sgst">₹0.00</span>
                         </div>
                         <div class="inv-calc-line inv-grand-total">
@@ -5475,16 +5917,18 @@
                 <div class="invoice-footer-row">
                     <div class="invoice-notes">
                         <div style="font-weight:700; color:#334155;">Terms & Conditions:</div>
-                        <div>1. This is a computer-generated tax invoice and complies with Section 31 of CGST Act 2017.</div>
-                        <div>2. All tolls and state border permits are included per the scheduled booking agreement.</div>
-                        <div>3. Disputes are subject to Pune, Maharashtra jurisdiction.</div>
+                        <div id="inv-terms-list">
+                            <div>1. This is a computer-generated tax invoice and complies with Section 31 of CGST Act 2017.</div>
+                            <div>2. All tolls and state border permits are included per the scheduled booking agreement.</div>
+                            <div>3. Disputes are subject to Pune, Maharashtra jurisdiction.</div>
+                        </div>
                     </div>
                     <div class="invoice-signatory">
                         <div class="signatory-stamp">
-                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:28px;">verified_user</span>
+                            <span class="material-symbols-outlined" style="color:var(--inv-accent); font-size:28px;">verified_user</span>
                         </div>
-                        <div style="font-weight:700; font-size:11.5px; color:#0f172a;">IntercityWheels Mobility Services</div>
-                        <div style="font-size:10px; color:#64748b;">Authorized Signatory</div>
+                        <div id="inv-signatory-name" style="font-weight:700; font-size:11.5px; color:#0f172a;">IntercityWheels Mobility Services</div>
+                        <div id="inv-signatory-label" style="font-size:10px; color:#64748b;">Authorized Signatory</div>
                     </div>
                 </div>
             </div>

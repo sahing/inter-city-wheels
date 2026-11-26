@@ -69,6 +69,91 @@ class PlatformSetting extends Model
     }
 
     /**
+     * Default checkout payment options and advance percentage.
+     *
+     * @return array<string, string>
+     */
+    public static function paymentDefaults(): array
+    {
+        return [
+            'payment_advance_pct' => '20',
+            'payment_show_full_online' => '1',
+            'payment_show_part_pay' => '1',
+            'payment_show_full_upi' => '1',
+            'payment_show_cash' => '1',
+            'payment_default_option' => 'full_online',
+        ];
+    }
+
+    /**
+     * Load all configurable checkout payment settings with defaults.
+     *
+     * @return array<string, string>
+     */
+    public static function paymentSettings(): array
+    {
+        $defaults = static::paymentDefaults();
+        $stored = static::whereIn('key', array_keys($defaults))->pluck('value', 'key')->all();
+
+        $resolved = [];
+        foreach ($defaults as $key => $default) {
+            $val = $stored[$key] ?? null;
+            $resolved[$key] = ($val !== null && $val !== '') ? (string) $val : $default;
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * Default invoice template style, company branding, GST rates, and terms.
+     *
+     * @return array<string, string>
+     */
+    public static function invoiceDefaults(): array
+    {
+        return [
+            'invoice_template_style' => 'classic_gst',
+            'invoice_accent_color' => '#d49b4c',
+            'invoice_title' => 'TAX INVOICE',
+            'invoice_prefix' => 'INV',
+            'invoice_brand_name' => 'INTERCITY WHEELS',
+            'invoice_company_legal' => 'IntercityWheels Mobility Services Pvt. Ltd.',
+            'invoice_company_address' => 'Floor 4, Tech Vista Towers, Senapati Bapat Road, Pune - 411016, Maharashtra, India',
+            'invoice_gstin' => '27AAACI9912K1Z8',
+            'invoice_sac_code' => '996412 (Passenger Transport Service)',
+            'invoice_place_of_supply' => 'Maharashtra (27)',
+            'invoice_support_phone' => '700 3434 088',
+            'invoice_support_email' => 'billing@intercitywheels.com',
+            'invoice_cgst_pct' => '2.5',
+            'invoice_sgst_pct' => '2.5',
+            'invoice_show_stamp' => '1',
+            'invoice_show_otp' => '1',
+            'invoice_terms' => "1. This is a computer-generated tax invoice and complies with Section 31 of CGST Act 2017.\n2. All tolls and state border permits are included per the scheduled booking agreement.\n3. Disputes are subject to Pune, Maharashtra jurisdiction.",
+            'invoice_signatory_name' => 'IntercityWheels Mobility Services',
+            'invoice_signatory_label' => 'Authorized Signatory',
+        ];
+    }
+
+    /**
+     * Load all configurable invoice template settings with defaults.
+     *
+     * @return array<string, string>
+     */
+    public static function invoiceSettings(): array
+    {
+        $defaults = static::invoiceDefaults();
+        $stored = static::whereIn('key', array_keys($defaults))->pluck('value', 'key')->all();
+
+        $resolved = [];
+        foreach ($defaults as $key => $default) {
+            $val = $stored[$key] ?? null;
+            $resolved[$key] = ($val !== null && $val !== '') ? (string) $val : $default;
+        }
+
+        return $resolved;
+    }
+
+    /**
      * Load all platform settings exposed to the admin & customer UI.
      *
      * @return array<string, string>
@@ -83,6 +168,6 @@ class PlatformSetting extends Model
             'default_car_type_roundtrip' => static::get('default_car_type_roundtrip', '') ?? '',
             'default_car_type_local' => static::get('default_car_type_local', '') ?? '',
             'default_car_type_airport' => static::get('default_car_type_airport', '') ?? '',
-        ], static::pricingSettings());
+        ], static::pricingSettings(), static::paymentSettings(), static::invoiceSettings());
     }
 }

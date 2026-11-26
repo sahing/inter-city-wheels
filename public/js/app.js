@@ -2178,6 +2178,7 @@ async function handleConfirmCabBooking() {
     night_allowance: Boolean(state.cab.nightAllowance),
     luggage_carrier: Boolean(state.cab.luggageCarrier),
     coupon_code: state.cab.appliedCoupon || '',
+    payment_mode: document.querySelector('input[name="rental_pay_mode"]:checked')?.value || (window.PLATFORM_SETTINGS?.payment_default_option || 'full_online'),
     dynamic_fields: dynamicFieldsData
   };
 
@@ -2230,6 +2231,7 @@ async function handleConfirmCabBooking() {
       goToCabStep(1);
       switchTab('my-bookings');
       window.showBookingInHistory(b);
+      if (typeof window.refreshAppNotifications === 'function') window.refreshAppNotifications();
     } else {
       showToast(data.message || 'Booking validation error. Please verify input.', 'danger');
     }
@@ -2327,6 +2329,10 @@ function updateTotalCabFare() {
   if (elAddons) elAddons.textContent = `₹${Math.round(addons).toLocaleString('en-IN')}`;
   if (elDiscount) elDiscount.textContent = `-₹${Math.round(discount).toLocaleString('en-IN')}`;
   if (elTotal) elTotal.textContent = `₹${Math.round(total).toLocaleString('en-IN')}`;
+
+  if (typeof updateCheckoutPaymentDisplay === 'function') {
+    updateCheckoutPaymentDisplay(total);
+  }
 
   // Update fleet prices on the comparison cards from the same source.
   for (const key of Object.keys(FLEET_TYPES)) {
@@ -5498,6 +5504,49 @@ window.submitAddBooking = async function (e) {
 };
 
 // 5. PROFESSIONAL GST TAX INVOICE
+function applyInvoiceTemplateToDom(inv) {
+  const tpl = inv.template || {};
+  const comp = inv.company || {};
+  const paper = document.getElementById('invoice-printable-area');
+  if (paper) {
+    paper.setAttribute('data-invoice-style', tpl.style || window.PLATFORM_SETTINGS?.invoice_template_style || 'classic_gst');
+    paper.style.setProperty('--inv-accent', tpl.accent_color || window.PLATFORM_SETTINGS?.invoice_accent_color || '#d49b4c');
+  }
+
+  const setTxt = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && val !== undefined && val !== null) el.textContent = val;
+  };
+
+  setTxt('inv-brand-name', comp.brand_name || tpl.brand_name || 'INTERCITY WHEELS');
+  setTxt('inv-company-legal', comp.name || 'IntercityWheels Mobility Services Pvt. Ltd.');
+  setTxt('inv-company-address', comp.address ? `Regd. Office: ${comp.address}` : '');
+  setTxt('inv-gstin', comp.gstin || '—');
+  setTxt('inv-sac-code', comp.hsn_sac || '—');
+  setTxt('inv-support-phone', comp.support_phone || '—');
+  setTxt('inv-support-email', comp.support_email || '—');
+  setTxt('inv-badge-title', tpl.title || 'TAX INVOICE');
+  setTxt('inv-place-of-supply', tpl.place_of_supply || comp.place_of_supply || 'Maharashtra (27)');
+  setTxt('inv-cgst-label', `CGST (${tpl.cgst_pct ?? 2.5}%):`);
+  setTxt('inv-sgst-label', `SGST (${tpl.sgst_pct ?? 2.5}%):`);
+  setTxt('inv-signatory-name', tpl.signatory_name || comp.name || 'IntercityWheels Mobility Services');
+  setTxt('inv-signatory-label', tpl.signatory_label || 'Authorized Signatory');
+
+  const stampBox = document.getElementById('inv-paid-stamp-box');
+  if (stampBox) stampBox.style.display = (tpl.show_stamp === false) ? 'none' : 'inline-flex';
+  const otpLine = document.getElementById('inv-otp-line');
+  if (otpLine) otpLine.style.display = (tpl.show_otp === false) ? 'none' : '';
+
+  const termsList = document.getElementById('inv-terms-list');
+  if (termsList && Array.isArray(tpl.terms)) {
+    termsList.innerHTML = tpl.terms.map(t => {
+      const div = document.createElement('div');
+      div.textContent = t;
+      return div.outerHTML;
+    }).join('');
+  }
+}
+
 window.openInvoiceModal = async function (bookingId) {
   window.currentViewingBookingId = bookingId;
   try {
@@ -5506,6 +5555,7 @@ window.openInvoiceModal = async function (bookingId) {
     if (!data.success || !data.invoice) return;
 
     const inv = data.invoice;
+    applyInvoiceTemplateToDom(inv);
     document.getElementById('inv-doc-number').textContent = inv.invoice_number;
     document.getElementById('inv-doc-date').textContent = inv.invoice_date;
     document.getElementById('inv-booking-ref').textContent = data.booking.booking_reference;
@@ -5558,6 +5608,8 @@ window.openInvoiceModal = async function (bookingId) {
     document.getElementById('inv-amount-in-words').textContent = `(${numberToWordsINR(inv.charges.total_amount)})`;
 
     // Payment details
+    document.getElementById('inv-paid-stamp-text').textContent = inv.payment.status || 'PAID IN FULL';
+    document.getElementById('inv-payment-mode-text').textContent = inv.payment.method || 'Online Escrow (Prepaid)';
     document.getElementById('inv-txn-ref').textContent = inv.payment.transaction_ref;
     document.getElementById('inv-start-otp').textContent = inv.payment.start_otp || '----';
 
@@ -9266,11 +9318,11 @@ window.filterMyTrips = function (filter) {
     if (visible === 0 && cards.length > 0) {
       const title = document.getElementById('trips-empty-title');
       const copy = document.getElementById('trips-empty-copy');
-      if (title) title.textContent = activeTripFilter === 'completed' ? 'No completed trips yet' : 'No active trips right now';
+      if (title) title.textContent = activeTripFilter === 'completed' ? 'No completed trips yet' : 'No upcoming trips right now';
       if (copy) {
         copy.textContent = activeTripFilter === 'completed'
           ? 'Finished rides will appear here once a trip is completed.'
-          : 'All your live bookings will appear here. Book a trip to get started.';
+          : 'Your upcoming & active bookings will appear here. Book a trip to get started.';
       }
     }
   }
@@ -9288,8 +9340,8 @@ window.copyTripReference = async function (reference) {
 };
 
 /**
- * Render a booking as a trip card. Used for the instant post-booking redirect
- * and for guest lookups, so the same booking looks identical everywhere.
+ * Render a booking as a compact, high-contrast trip card. Used for the instant
+ * post-booking redirect and for guest lookups.
  */
 function buildTripCardHtml(booking) {
   const status = booking.status || 'Requested';
@@ -9297,68 +9349,75 @@ function buildTripCardHtml(booking) {
   const ref = booking.booking_reference || '';
   const departure = booking.departure_time
     ? new Date(booking.departure_time).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
-    : 'Scheduled';
+    : 'Scheduled Departure';
   const driver = booking.driver;
   const passengers = Array.isArray(booking.passengers) ? booking.passengers.length : 0;
+  const statusSlug = String(status).toLowerCase().replace(/\s+/g, '-');
+
+  const payTag = booking.payment_mode === 'part_pay'
+    ? `${Number(booking.advance_percentage || 20)}% Adv Paid`
+    : (booking.payment_mode === 'cash' ? 'Pay Driver' : (booking.payment_mode === 'full_upi' ? 'Paid UPI' : 'Prepaid'));
 
   const driverBlock = driver
-    ? `<div style="margin-top:4px; font-weight:700; color:#0f172a;">${tripsEscape(driver.name)} (★${tripsEscape(driver.rating)})</div>
-       <div style="color:#15803d; font-size:11px; margin-top:2px;">${tripsEscape(driver.vehicle_model)} • <strong>${tripsEscape(driver.vehicle_plate)}</strong></div>`
-    : `<div style="margin-top:4px; color:#d97706; font-weight:600;">${bucket === 'completed' ? 'Trip closed' : 'Allotment in progress'}</div>
-       <div style="font-size:11px; color:#64748b; margin-top:2px;">${bucket === 'completed' ? 'This trip is finished.' : 'A verified chauffeur will be allotted before pickup.'}</div>`;
+    ? `<div class="trip-tile-line" style="font-weight:700; color:#0f172a;">${tripsEscape(driver.name)} (★${tripsEscape(driver.rating)})</div>
+       <div class="trip-tile-sub">${tripsEscape(driver.vehicle_model)} · <strong>${tripsEscape(driver.vehicle_plate)}</strong></div>`
+    : `<div class="trip-tile-line" style="color:${bucket === 'completed' ? '#475569' : '#92400e'}; font-weight:700;">${bucket === 'completed' ? 'Trip closed' : 'Allotment in progress'}</div>
+       <div class="trip-tile-sub">${bucket === 'completed' ? 'Completed journey' : 'Verified chauffeur assigned prior to pickup'}</div>`;
 
   const finalBlock = bucket === 'active'
-    ? `<div style="background:#fffbeb; border:1px solid #fef3c7; padding:10px 12px; border-radius:6px; text-align:center;">
-         <div style="font-weight:700; color:#92400e; font-size:10.5px; text-transform:uppercase;">Ride Start Validation OTP</div>
-         <div style="font-family:monospace; font-size:22px; font-weight:800; color:var(--primary); letter-spacing:0.1em; margin:4px 0;">${tripsEscape(booking.start_otp)}</div>
-         <div style="font-size:10px; color:#78350f;">Show this 4-digit OTP to your chauffeur before boarding.</div>
+    ? `<div class="trip-otp-tile">
+         <div class="trip-otp-label">Ride Start OTP</div>
+         <div class="trip-otp-code">${tripsEscape(booking.start_otp)}</div>
+         <div class="trip-otp-hint">Share with chauffeur</div>
        </div>`
-    : `<div style="background:${bucket === 'completed' ? '#f0fdf4' : '#f8fafc'}; border:1px solid ${bucket === 'completed' ? '#bbf7d0' : '#e2e8f0'}; padding:10px 12px; border-radius:6px; text-align:center;">
-         <div style="font-weight:700; color:${bucket === 'completed' ? '#166534' : '#475569'}; font-size:10.5px; text-transform:uppercase;">${bucket === 'completed' ? 'Trip completed' : 'Booking cancelled'}</div>
-         <div style="font-size:22px; margin:6px 0;">${bucket === 'completed' ? '✓' : '—'}</div>
-         <div style="font-size:10px; color:#64748b;">${bucket === 'completed' ? 'Thanks for travelling with us.' : 'No ride OTP is issued.'}</div>
+    : `<div class="trip-state-tile ${bucket === 'completed' ? 'state-completed' : 'state-cancelled'}">
+         <div class="trip-state-title">${bucket === 'completed' ? '✓ Trip Completed' : 'Cancelled'}</div>
+         <div class="trip-state-sub">${bucket === 'completed' ? 'Thanks for riding with us' : 'No active OTP'}</div>
        </div>`;
 
   return `
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:12px; margin-bottom:12px;">
-      <div>
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <span style="font-family:monospace; font-weight:800; color:var(--primary); font-size:14px;">${tripsEscape(ref)}</span>
-          <span class="admin-badge ${tripStatusBadgeClass(status)}">${tripsEscape(status)}</span>
-          <span class="admin-badge ${booking.service_type === 'cab' ? 'badge-primary' : 'badge-gold'}" style="font-size:9.5px;">${tripsEscape(String(booking.service_type || '').toUpperCase())}</span>
+    <div class="trip-card-top">
+      <div class="trip-card-title-group">
+        <div class="trip-card-badges">
+          <span class="trip-ref-badge">${tripsEscape(ref)}</span>
+          <span class="trip-status-pill status-${tripsEscape(statusSlug)}">${tripsEscape(status)}</span>
+          <span class="trip-service-tag">${tripsEscape(String(booking.service_type || '').toUpperCase())}</span>
           <span class="trip-new-flag">Just booked</span>
         </div>
-        <div style="font-size:16px; font-weight:800; color:#0f172a; margin-top:4px;">${tripsEscape(booking.route_summary)}</div>
-        <div style="font-size:11.5px; color:#64748b; margin-top:2px;">Departure: <strong>${tripsEscape(departure)}</strong></div>
+        <div class="trip-card-route">${tripsEscape(booking.route_summary)}</div>
+        <div class="trip-card-date">
+          <span class="material-symbols-outlined" style="font-size:13px;">schedule</span>
+          <span>${tripsEscape(departure)}</span>
+        </div>
       </div>
-      <div style="text-align:right;">
-        <div style="font-size:18px; font-weight:800; color:#0f172a;">${tripsMoney(booking.total_amount)}</div>
-        <div style="font-size:10.5px; color:#16a34a; font-weight:600;">✓ Prepaid (Escrow Protected)</div>
+      <div class="trip-card-fare-col">
+        <div class="trip-card-fare">${tripsMoney(booking.total_amount)}</div>
+        <div class="trip-card-pay-tag">${tripsEscape(payTag)}</div>
       </div>
     </div>
 
-    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:14px; font-size:12px;">
-      <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
-        <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Pickup &amp; Drop Details</div>
-        <div style="margin-top:4px; color:#1e293b;"><strong>Pickup:</strong> ${tripsEscape(booking.pickup_location)}</div>
-        <div style="margin-top:2px; color:#1e293b;"><strong>Drop:</strong> ${tripsEscape(booking.drop_location)}</div>
+    <div class="trip-card-grid">
+      <div class="trip-info-tile">
+        <div class="trip-tile-label">Pickup &amp; Drop</div>
+        <div class="trip-tile-line"><strong>From:</strong> ${tripsEscape(booking.pickup_location)}</div>
+        <div class="trip-tile-line"><strong>To:</strong> ${tripsEscape(booking.drop_location)}</div>
       </div>
-      <div style="background:#f8fafc; padding:10px 12px; border-radius:6px;">
-        <div style="font-weight:700; color:#64748b; font-size:10.5px; text-transform:uppercase;">Chauffeur &amp; Vehicle</div>
+      <div class="trip-info-tile">
+        <div class="trip-tile-label">Chauffeur &amp; Vehicle</div>
         ${driverBlock}
       </div>
       ${finalBlock}
     </div>
 
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; border-top:1px dashed #e2e8f0; padding-top:10px; flex-wrap:wrap;">
-      <div style="font-size:11px; color:#94a3b8;">${passengers ? passengers + ' passenger(s)' : ''}</div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button type="button" class="btn btn-sm btn-outline" onclick="copyTripReference('${tripsEscape(ref)}')">
-          <span class="material-symbols-outlined" style="font-size:15px;">content_copy</span>
+    <div class="trip-card-footer">
+      <span class="trip-footer-meta">${passengers ? passengers + ' passenger(s)' : 'Escrow Verified'}</span>
+      <div class="trip-card-actions">
+        <button type="button" class="btn btn-xs trip-btn-secondary" onclick="copyTripReference('${tripsEscape(ref)}')">
+          <span class="material-symbols-outlined" style="font-size:14px;">content_copy</span>
           <span>Reference</span>
         </button>
-        <button type="button" class="btn btn-sm btn-outline-gold" onclick="openTicketModal('${tripsEscape(ref)}')">
-          <span class="material-symbols-outlined" style="font-size:15px;">confirmation_number</span>
+        <button type="button" class="btn btn-xs trip-btn-primary" onclick="openTicketModal('${tripsEscape(ref)}')">
+          <span class="material-symbols-outlined" style="font-size:14px;">confirmation_number</span>
           <span>${bucket === 'active' ? 'Digital Boarding Pass' : 'View Trip Ticket'}</span>
         </button>
       </div>
@@ -9793,4 +9852,443 @@ window.refreshAdminRouteFareDisplays = function () {
     const isRt = el.dataset.roundtrip === '1';
     el.outerHTML = window.buildRouteFareScheduleHtml(route, isRt);
   });
+};
+
+// ===== IN-APP NOTIFICATIONS =====
+(function () {
+  let latestNotifIds = new Set();
+  let initialNotifLoadDone = false;
+
+  function csrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  }
+
+  function escapeNotifHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function categoryIcon(category) {
+    switch (category) {
+      case 'bidding': return 'local_offer';
+      case 'trip': return 'local_taxi';
+      case 'wallet': return 'account_balance_wallet';
+      case 'fleet': return 'directions_car';
+      default: return 'confirmation_number';
+    }
+  }
+
+  function renderNotifications(data) {
+    const badge = document.getElementById('app-notif-badge');
+    const list = document.getElementById('app-notif-list');
+    if (!badge || !list) return;
+
+    const unread = Number(data.unread_count || 0);
+    badge.textContent = unread > 99 ? '99+' : String(unread);
+    badge.style.display = unread > 0 ? 'inline-block' : 'none';
+
+    const items = Array.isArray(data.notifications) ? data.notifications : [];
+    if (items.length === 0) {
+      list.innerHTML = '<div class="app-notif-empty">No notifications yet. Booking, bidding & trip alerts will appear here.</div>';
+      return;
+    }
+
+    list.innerHTML = items.map(item => `
+      <div class="app-notif-item ${item.is_read ? '' : 'unread'}" data-notif-id="${escapeNotifHtml(item.id)}" data-tab="${escapeNotifHtml(item.meta?.tab || '')}" data-url="${escapeNotifHtml(item.action_url || '')}" onclick="handleNotificationClick(this)">
+        <div class="app-notif-icon">
+          <span class="material-symbols-outlined">${categoryIcon(item.category)}</span>
+        </div>
+        <div class="app-notif-body">
+          <div class="app-notif-item-title">
+            <span>${escapeNotifHtml(item.title)}</span>
+            ${item.is_read ? '' : '<span class="app-notif-dot" title="Unread"></span>'}
+          </div>
+          <div class="app-notif-item-msg">${escapeNotifHtml(item.message)}</div>
+          <div class="app-notif-item-time">${escapeNotifHtml(item.time_ago)}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  window.fetchAppNotifications = async function (showNewToasts = false) {
+    if (!window.INTERCITY_AUTH?.authenticated && !window.CURRENT_USER) return;
+    if (!document.getElementById('app-notif-menu')) return;
+
+    try {
+      const res = await fetch('/api/notifications', {
+        headers: { 'Accept': 'application/json' },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.success) return;
+
+      const items = Array.isArray(data.notifications) ? data.notifications : [];
+      if (initialNotifLoadDone && showNewToasts && typeof showToast === 'function') {
+        const freshUnread = items.filter(i => !i.is_read && !latestNotifIds.has(i.id));
+        if (freshUnread.length > 0) {
+          showToast(freshUnread[0].title, 'info');
+        }
+      }
+
+      latestNotifIds = new Set(items.map(i => i.id));
+      initialNotifLoadDone = true;
+      renderNotifications(data);
+    } catch (_) {
+      // Ignore transient network errors during background poll
+    }
+  };
+
+  window.refreshAppNotifications = function () {
+    return window.fetchAppNotifications(false);
+  };
+
+  window.toggleAppNotifications = function () {
+    const dropdown = document.getElementById('app-notif-dropdown');
+    if (!dropdown) return;
+    const isHidden = dropdown.style.display === 'none' || !dropdown.style.display;
+    dropdown.style.display = isHidden ? 'block' : 'none';
+    if (isHidden) {
+      window.fetchAppNotifications(false);
+    }
+  };
+
+  window.handleNotificationClick = async function (el) {
+    const id = el?.dataset?.notifId;
+    const tab = el?.dataset?.tab;
+    const url = el?.dataset?.url;
+
+    if (id && el.classList.contains('unread')) {
+      el.classList.remove('unread');
+      el.querySelector('.app-notif-dot')?.remove();
+      try {
+        const res = await fetch(`/api/notifications/${encodeURIComponent(id)}/read`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': csrfToken(),
+          },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const badge = document.getElementById('app-notif-badge');
+          if (badge) {
+            const unread = Number(data.unread_count || 0);
+            badge.textContent = unread > 99 ? '99+' : String(unread);
+            badge.style.display = unread > 0 ? 'inline-block' : 'none';
+          }
+        }
+      } catch (_) {}
+    }
+
+    const dropdown = document.getElementById('app-notif-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+
+    if (tab && typeof switchTab === 'function' && document.getElementById(`tab-${tab}`)) {
+      switchTab(tab);
+    } else if (url && url.startsWith('http') && !url.includes('/#')) {
+      window.location.href = url;
+    }
+  };
+
+  window.markAllNotificationsRead = async function () {
+    try {
+      const res = await fetch('/api/notifications/read-all', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': csrfToken(),
+        },
+      });
+      if (res.ok) {
+        window.fetchAppNotifications(false);
+      }
+    } catch (_) {}
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.INTERCITY_AUTH?.authenticated || window.CURRENT_USER) {
+      window.fetchAppNotifications(false);
+      setInterval(() => window.fetchAppNotifications(true), 25000);
+    }
+
+  window.addEventListener('click', (e) => {
+      const menu = document.getElementById('app-notif-menu');
+      const dropdown = document.getElementById('app-notif-dropdown');
+      if (dropdown && menu && !menu.contains(e.target)) {
+        dropdown.style.display = 'none';
+      }
+    });
+  });
+})();
+
+// ===== CHECKOUT PAYMENT OPTIONS & ADVANCE PERCENTAGE =====
+window.updateCheckoutPaymentDisplay = function (totalAmount) {
+  const settings = window.PLATFORM_SETTINGS || {};
+  const advPct = Math.max(1, Math.min(99, parseFloat(settings.payment_advance_pct ?? 20) || 20));
+  const roundedTotal = Math.max(0, Math.round(Number(totalAmount) || 0));
+  const advAmount = Math.round(roundedTotal * (advPct / 100));
+
+  document.querySelectorAll('.checkout-pay-amt').forEach(el => {
+    const mode = el.dataset.amtFor;
+    if (mode === 'full_online' || mode === 'full_upi') {
+      el.textContent = `₹${roundedTotal.toLocaleString('en-IN')}`;
+    } else if (mode === 'part_pay') {
+      el.textContent = `₹${advAmount.toLocaleString('en-IN')} now`;
+    } else if (mode === 'cash') {
+      el.textContent = '₹0 now';
+    }
+  });
+
+  const checkedMode = document.querySelector('input[name="rental_pay_mode"]:checked')?.value || 'full_online';
+  const payableNowEl = document.getElementById('checkout-payable-now-amount');
+  if (payableNowEl) {
+    if (checkedMode === 'part_pay') {
+      const bal = Math.max(0, roundedTotal - advAmount);
+      payableNowEl.textContent = `₹${advAmount.toLocaleString('en-IN')} (+ ₹${bal.toLocaleString('en-IN')} to Driver)`;
+    } else if (checkedMode === 'cash') {
+      payableNowEl.textContent = `₹0 now (₹${roundedTotal.toLocaleString('en-IN')} to Driver)`;
+    } else {
+      payableNowEl.textContent = `₹${roundedTotal.toLocaleString('en-IN')}`;
+    }
+  }
+};
+
+window.renderCheckoutPaymentOptionsFromSettings = function () {
+  const listEl = document.getElementById('checkout-payment-options-list');
+  if (!listEl) return;
+
+  const settings = window.PLATFORM_SETTINGS || {};
+  const advPctRaw = parseFloat(settings.payment_advance_pct ?? 20) || 20;
+  const advLabel = Number.isInteger(advPctRaw) ? String(advPctRaw) : String(advPctRaw);
+
+  const showFull = String(settings.payment_show_full_online ?? '1') === '1';
+  const showPart = String(settings.payment_show_part_pay ?? '1') === '1';
+  const showUpi = String(settings.payment_show_full_upi ?? '1') === '1';
+  const showCash = String(settings.payment_show_cash ?? '1') === '1';
+
+  const opts = [];
+  if (showFull) opts.push({ mode: 'full_online', label: 'Pay Full Online (Card / NetBanking / UPI)', color: '#0f172a' });
+  if (showPart) opts.push({ mode: 'part_pay', label: `Part Pay (${advLabel}% Advance, Balance to Driver)`, color: '#0284c7' });
+  if (showUpi) opts.push({ mode: 'full_upi', label: 'Full UPI (Instant Zero-Fee UPI)', color: '#0f172a' });
+  if (showCash) opts.push({ mode: 'cash', label: 'Pay Later to Chauffeur (Cash / UPI)', color: '#16a34a' });
+  if (opts.length === 0) {
+    opts.push({ mode: 'full_online', label: 'Pay Full Online (Card / NetBanking / UPI)', color: '#0f172a' });
+  }
+
+  const def = opts.some(o => o.mode === settings.payment_default_option) ? settings.payment_default_option : opts[0].mode;
+  listEl.innerHTML = opts.map(o => `
+    <label class="checkout-pay-opt" data-mode="${o.mode}" style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12.5px; cursor:pointer;">
+      <span style="display:flex; align-items:center; gap:8px;">
+        <input type="radio" name="rental_pay_mode" value="${o.mode}" ${o.mode === def ? 'checked' : ''} onchange="updateTotalCabFare()">
+        <span>${o.label}</span>
+      </span>
+      <strong class="checkout-pay-amt" data-amt-for="${o.mode}" style="color:${o.color}; font-size:12px;"></strong>
+    </label>
+  `).join('');
+
+  const promoCopy = document.getElementById('promo-advance-copy');
+  if (promoCopy) {
+    if (showPart && showCash) {
+      promoCopy.textContent = `No booking charges. Pay ${advLabel}% advance or pay later to driver.`;
+    } else if (showPart) {
+      promoCopy.textContent = `No booking charges. Pay just ${advLabel}% advance to lock your ride.`;
+    } else if (showCash) {
+      promoCopy.textContent = 'No booking charges. Pay directly to driver on pickup.';
+    } else {
+      promoCopy.textContent = 'Instant online booking confirmation with transparent pricing.';
+    }
+  }
+
+  if (typeof updateTotalCabFare === 'function') {
+    updateTotalCabFare();
+  }
+};
+
+window.saveAdminPaymentOptions = async function (e) {
+  if (e) e.preventDefault();
+
+  const advPct = parseFloat(document.getElementById('setting-payment-advance-pct')?.value ?? 20);
+  const showPart = Boolean(document.getElementById('setting-pay-show-part')?.checked);
+  const showFull = Boolean(document.getElementById('setting-pay-show-full')?.checked);
+  const showUpi = Boolean(document.getElementById('setting-pay-show-upi')?.checked);
+  const showCash = Boolean(document.getElementById('setting-pay-show-cash')?.checked);
+  const defaultOpt = document.getElementById('setting-payment-default-option')?.value || 'full_online';
+
+  if (!showPart && !showFull && !showUpi && !showCash) {
+    showToast('Enable at least one checkout payment option.', 'warning');
+    return;
+  }
+
+  if (Number.isNaN(advPct) || advPct < 1 || advPct > 99) {
+    showToast('Advance percentage must be between 1% and 99%.', 'warning');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/settings/payment-options', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify({
+        payment_advance_pct: advPct,
+        payment_show_full_online: showFull,
+        payment_show_part_pay: showPart,
+        payment_show_full_upi: showUpi,
+        payment_show_cash: showCash,
+        payment_default_option: defaultOpt,
+      }),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+      const selDefault = document.getElementById('setting-payment-default-option');
+      if (selDefault && data.settings?.payment_default_option) {
+        selDefault.value = data.settings.payment_default_option;
+      }
+      window.renderCheckoutPaymentOptionsFromSettings();
+      showToast(data.message || 'Checkout payment options updated!', 'success');
+    } else {
+      showToast(data.message || 'Failed to update payment options.', 'danger');
+    }
+  } catch (err) {
+    console.error('saveAdminPaymentOptions', err);
+    showToast('Network error while saving payment options.', 'danger');
+  }
+};
+
+// ===== ADMIN INVOICE TEMPLATE CUSTOMIZER =====
+function collectInvoiceTemplateForm() {
+  const style = document.querySelector('input[name="invoice_template_style"]:checked')?.value || 'classic_gst';
+  return {
+    invoice_template_style: style,
+    invoice_accent_color: document.getElementById('setting-inv-accent')?.value || '#d49b4c',
+    invoice_brand_name: document.getElementById('setting-inv-brand-name')?.value?.trim() || 'INTERCITY WHEELS',
+    invoice_company_legal: document.getElementById('setting-inv-legal-name')?.value?.trim() || 'IntercityWheels Mobility Services Pvt. Ltd.',
+    invoice_title: document.getElementById('setting-inv-title')?.value?.trim() || 'TAX INVOICE',
+    invoice_prefix: document.getElementById('setting-inv-prefix')?.value?.trim() || 'INV',
+    invoice_gstin: document.getElementById('setting-inv-gstin')?.value?.trim() || '',
+    invoice_sac_code: document.getElementById('setting-inv-sac')?.value?.trim() || '',
+    invoice_place_of_supply: document.getElementById('setting-inv-pos')?.value?.trim() || '',
+    invoice_support_phone: document.getElementById('setting-inv-phone')?.value?.trim() || '',
+    invoice_support_email: document.getElementById('setting-inv-email')?.value?.trim() || '',
+    invoice_company_address: document.getElementById('setting-inv-address')?.value?.trim() || '',
+    invoice_cgst_pct: parseFloat(document.getElementById('setting-inv-cgst')?.value ?? 2.5) || 0,
+    invoice_sgst_pct: parseFloat(document.getElementById('setting-inv-sgst')?.value ?? 2.5) || 0,
+    invoice_signatory_name: document.getElementById('setting-inv-signatory-name')?.value?.trim() || '',
+    invoice_signatory_label: document.getElementById('setting-inv-signatory-label')?.value?.trim() || '',
+    invoice_terms: document.getElementById('setting-inv-terms')?.value || '',
+    invoice_show_stamp: Boolean(document.getElementById('setting-inv-show-stamp')?.checked),
+    invoice_show_otp: Boolean(document.getElementById('setting-inv-show-otp')?.checked),
+  };
+}
+
+window.selectInvoiceTemplateStyle = function (style) {
+  document.querySelectorAll('#inv-style-picker-grid .inv-style-card').forEach(card => {
+    const isSel = card.dataset.styleOption === style;
+    card.classList.toggle('selected', isSel);
+    const radio = card.querySelector('input[type="radio"]');
+    if (radio) radio.checked = isSel;
+  });
+};
+
+window.previewInvoiceTemplate = function () {
+  const form = collectInvoiceTemplateForm();
+  const terms = form.invoice_terms.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const taxable = 3400;
+  const cgst = Number((taxable * (form.invoice_cgst_pct / 100)).toFixed(2));
+  const sgst = Number((taxable * (form.invoice_sgst_pct / 100)).toFixed(2));
+  const toll = 250;
+  const total = Math.round(taxable + cgst + sgst + toll);
+
+  applyInvoiceTemplateToDom({
+    template: {
+      style: form.invoice_template_style,
+      accent_color: form.invoice_accent_color,
+      title: form.invoice_title,
+      brand_name: form.invoice_brand_name,
+      place_of_supply: form.invoice_place_of_supply,
+      cgst_pct: form.invoice_cgst_pct,
+      sgst_pct: form.invoice_sgst_pct,
+      show_stamp: form.invoice_show_stamp,
+      show_otp: form.invoice_show_otp,
+      terms,
+      signatory_name: form.invoice_signatory_name,
+      signatory_label: form.invoice_signatory_label,
+    },
+    company: {
+      brand_name: form.invoice_brand_name,
+      name: form.invoice_company_legal,
+      address: form.invoice_company_address,
+      gstin: form.invoice_gstin,
+      hsn_sac: form.invoice_sac_code,
+      support_phone: form.invoice_support_phone,
+      support_email: form.invoice_support_email,
+    },
+  });
+
+  document.getElementById('inv-doc-number').textContent = `${form.invoice_prefix}-2026-ICW-SAMPLE`;
+  document.getElementById('inv-doc-date').textContent = 'Sample Preview';
+  document.getElementById('inv-booking-ref').textContent = 'ICW-SAMPLE';
+  document.getElementById('inv-customer-name').textContent = 'Aarav Sen (Sample)';
+  document.getElementById('inv-customer-phone').textContent = '+91 98765 43210';
+  document.getElementById('inv-customer-email').textContent = 'rider@example.com';
+  document.getElementById('inv-pickup-address').textContent = 'Salt Lake Sector V, Kolkata';
+  document.getElementById('inv-drop-address').textContent = 'New Digha Sea Beach';
+  document.getElementById('inv-service-type').textContent = 'CAB (ONEWAY)';
+  document.getElementById('inv-route').textContent = 'Kolkata → Digha';
+  document.getElementById('inv-travel-date').textContent = 'Tomorrow, 08:00 AM';
+  document.getElementById('inv-driver-name').textContent = 'Rajesh Kumar (Ph: +91 98220 11920)';
+  document.getElementById('inv-vehicle-details').textContent = 'Toyota Innova (MH12AB1234)';
+  document.getElementById('inv-row-base').textContent = '₹3400.00';
+  document.getElementById('inv-row-toll').textContent = '₹250.00';
+  document.getElementById('inv-addon-row').style.display = 'none';
+  document.getElementById('inv-discount-row').style.display = 'none';
+  document.getElementById('inv-subtotal').textContent = `₹${taxable.toFixed(2)}`;
+  document.getElementById('inv-cgst').textContent = `₹${cgst.toFixed(2)}`;
+  document.getElementById('inv-sgst').textContent = `₹${sgst.toFixed(2)}`;
+  document.getElementById('inv-grand-total').textContent = `₹${total.toLocaleString('en-IN')}.00`;
+  document.getElementById('inv-amount-in-words').textContent = `(${numberToWordsINR(total)})`;
+  document.getElementById('inv-paid-stamp-text').textContent = 'PAID IN FULL';
+  document.getElementById('inv-payment-mode-text').textContent = 'Online Escrow (Prepaid)';
+  document.getElementById('inv-txn-ref').textContent = 'TXN-SAMPLE01';
+  document.getElementById('inv-start-otp').textContent = '4829';
+
+  const modal = document.getElementById('admin-invoice-modal');
+  if (modal) modal.classList.add('active');
+};
+
+window.saveAdminInvoiceTemplate = async function (e) {
+  if (e) e.preventDefault();
+  const payload = collectInvoiceTemplateForm();
+
+  try {
+    const res = await fetch('/api/admin/settings/invoice-template', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+      showToast(data.message || 'Invoice template settings saved!', 'success');
+    } else {
+      showToast(data.message || 'Failed to save invoice template settings.', 'danger');
+    }
+  } catch (err) {
+    console.error('saveAdminInvoiceTemplate', err);
+    showToast('Network error while saving invoice template.', 'danger');
+  }
 };

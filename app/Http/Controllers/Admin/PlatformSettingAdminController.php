@@ -205,4 +205,117 @@ class PlatformSettingAdminController extends Controller
             'settings' => PlatformSetting::allAdminSettings(),
         ]);
     }
+
+    /**
+     * Persist checkout payment option visibility, default selection, and advance percentage.
+     */
+    public function updatePaymentSettings(Request $request)
+    {
+        if (! auth()->check() || auth()->user()->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Admin role required.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'payment_advance_pct' => 'required|numeric|min:1|max:99',
+            'payment_show_full_online' => 'required|boolean',
+            'payment_show_part_pay' => 'required|boolean',
+            'payment_show_full_upi' => 'required|boolean',
+            'payment_show_cash' => 'required|boolean',
+            'payment_default_option' => 'nullable|string|in:full_online,part_pay,full_upi,cash',
+        ]);
+
+        $enabledMap = [
+            'full_online' => (bool) $validated['payment_show_full_online'],
+            'part_pay' => (bool) $validated['payment_show_part_pay'],
+            'full_upi' => (bool) $validated['payment_show_full_upi'],
+            'cash' => (bool) $validated['payment_show_cash'],
+        ];
+
+        $enabledKeys = array_keys(array_filter($enabledMap));
+        if ($enabledKeys === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Enable at least one checkout payment option.',
+            ], 422);
+        }
+
+        $defaultOption = $validated['payment_default_option'] ?? $enabledKeys[0];
+        if (! in_array($defaultOption, $enabledKeys, true)) {
+            $defaultOption = $enabledKeys[0];
+        }
+
+        $advPct = (float) $validated['payment_advance_pct'];
+        $formattedPct = fmod($advPct, 1.0) === 0.0
+            ? (string) (int) $advPct
+            : rtrim(rtrim(number_format($advPct, 2, '.', ''), '0'), '.');
+
+        PlatformSetting::set('payment_advance_pct', $formattedPct);
+        PlatformSetting::set('payment_show_full_online', $enabledMap['full_online'] ? '1' : '0');
+        PlatformSetting::set('payment_show_part_pay', $enabledMap['part_pay'] ? '1' : '0');
+        PlatformSetting::set('payment_show_full_upi', $enabledMap['full_upi'] ? '1' : '0');
+        PlatformSetting::set('payment_show_cash', $enabledMap['cash'] ? '1' : '0');
+        PlatformSetting::set('payment_default_option', $defaultOption);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Checkout payment options & advance percentage updated!',
+            'settings' => PlatformSetting::allAdminSettings(),
+        ]);
+    }
+
+    /**
+     * Persist invoice template style, branding, GST rates, and footer notes.
+     */
+    public function updateInvoiceSettings(Request $request)
+    {
+        if (! auth()->check() || auth()->user()->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Admin role required.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'invoice_template_style' => 'required|string|in:classic_gst,executive_dark,modern_minimal,compact_receipt',
+            'invoice_accent_color' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'invoice_title' => 'required|string|max:60',
+            'invoice_prefix' => 'required|string|max:20',
+            'invoice_brand_name' => 'required|string|max:80',
+            'invoice_company_legal' => 'required|string|max:160',
+            'invoice_company_address' => 'required|string|max:300',
+            'invoice_gstin' => 'nullable|string|max:40',
+            'invoice_sac_code' => 'nullable|string|max:80',
+            'invoice_place_of_supply' => 'nullable|string|max:80',
+            'invoice_support_phone' => 'nullable|string|max:40',
+            'invoice_support_email' => 'nullable|email|max:120',
+            'invoice_cgst_pct' => 'required|numeric|min:0|max:25',
+            'invoice_sgst_pct' => 'required|numeric|min:0|max:25',
+            'invoice_show_stamp' => 'nullable|boolean',
+            'invoice_show_otp' => 'nullable|boolean',
+            'invoice_terms' => 'nullable|string|max:2000',
+            'invoice_signatory_name' => 'nullable|string|max:120',
+            'invoice_signatory_label' => 'nullable|string|max:80',
+        ]);
+
+        foreach (PlatformSetting::invoiceDefaults() as $key => $default) {
+            if ($key === 'invoice_show_stamp' || $key === 'invoice_show_otp') {
+                PlatformSetting::set($key, $request->boolean($key, true) ? '1' : '0');
+                continue;
+            }
+
+            if (array_key_exists($key, $validated)) {
+                $val = $validated[$key];
+                PlatformSetting::set($key, $val === null ? '' : trim((string) $val));
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Invoice template settings saved successfully!',
+            'settings' => PlatformSetting::allAdminSettings(),
+        ]);
+    }
 }

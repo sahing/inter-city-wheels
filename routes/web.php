@@ -23,6 +23,7 @@ use App\Http\Controllers\BiddingPageController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\DriverBiddingController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\NotificationController;
 use App\Models\AirportHub;
 use App\Models\CarType;
 use App\Models\LocalPackage;
@@ -143,6 +144,11 @@ Route::prefix('api')->group(function () {
 
 Route::prefix('api')->middleware(['auth'])->group(function () {
     Route::get('/auth/user', [AuthController::class, 'current'])->name('api.auth.user');
+
+    // In-app Notifications
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('api.notifications.index');
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('api.notifications.readAll');
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead'])->name('api.notifications.read');
 
     // Confirming a booking requires a signed-in customer, so every trip is
     // owned by an account. Guests are sent to the one-tap login gate.
@@ -316,6 +322,8 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::post('/admin/settings/booking-type-car-types', [PlatformSettingAdminController::class, 'updateBookingTypeCarTypes'])->name('api.admin.settings.bookingTypeCarTypes');
     Route::post('/admin/settings/pricing-conditions', [PlatformSettingAdminController::class, 'updatePricingConditions'])->name('api.admin.settings.pricingConditions');
     Route::post('/admin/settings/bidding', [PlatformSettingAdminController::class, 'updateBiddingSettings'])->name('api.admin.settings.bidding');
+    Route::post('/admin/settings/payment-options', [PlatformSettingAdminController::class, 'updatePaymentSettings'])->name('api.admin.settings.paymentOptions');
+    Route::post('/admin/settings/invoice-template', [PlatformSettingAdminController::class, 'updateInvoiceSettings'])->name('api.admin.settings.invoiceTemplate');
 
     // Driver Bidding Marketplace
     Route::get('/admin/biddings', [BiddingAdminController::class, 'index'])->name('api.admin.biddings.index');

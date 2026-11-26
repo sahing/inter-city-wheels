@@ -26,11 +26,27 @@
     $isSchedulesEnabled = isset($isSchedulesEnabled) 
         ? $isSchedulesEnabled 
         : (\App\Models\PlatformSetting::get('enable_schedules_and_berths', '0') === '1');
+    $requestedTab = (string) request()->query('tab', '');
+    $bookedParam = trim((string) request()->query('booked', ''));
+    $hasValidBookedParam = $bookedParam !== '' && preg_match('/^ICW-[A-Z0-9-]{3,24}$/i', $bookedParam) === 1;
+
+    $allowedTabsForRole = match($userRole) {
+        'admin' => ['admin', 'cabs', 'schedules', 'bidding'],
+        'driver' => ['bidding', 'driver-trips', 'driver-wallet', 'driver-profile'],
+        default => $isSchedulesEnabled ? ['cabs', 'schedules', 'my-bookings'] : ['cabs', 'my-bookings'],
+    };
+
     $defaultTab = match($userRole) {
         'admin' => 'admin',
         'driver' => 'bidding',
         default => 'cabs'
     };
+
+    if (in_array($requestedTab, $allowedTabsForRole, true)) {
+        $defaultTab = $requestedTab;
+    } elseif ($hasValidBookedParam && in_array('my-bookings', $allowedTabsForRole, true)) {
+        $defaultTab = 'my-bookings';
+    }
 @endphp
 <body class="{{ $defaultTab === 'admin' ? 'role-admin-mode admin-active-view' : '' }}@unless(config('demo.enabled')) no-demo @endunless">
 
@@ -159,6 +175,22 @@
             <!-- Header Right Actions: Role-Based Auth & Admin -->
             <div class="header-actions">
                 @auth
+                    <div class="app-notif-menu" id="app-notif-menu">
+                        <button type="button" class="app-notif-btn" id="app-notif-btn" onclick="toggleAppNotifications()" aria-label="Notifications" title="Notifications">
+                            <span class="material-symbols-outlined">notifications</span>
+                            <span class="app-notif-badge" id="app-notif-badge" style="display:none;">0</span>
+                        </button>
+                        <div class="app-notif-dropdown" id="app-notif-dropdown" style="display:none;">
+                            <div class="app-notif-header">
+                                <span class="app-notif-title">Notifications</span>
+                                <button type="button" class="app-notif-mark-all" onclick="markAllNotificationsRead()">Mark all read</button>
+                            </div>
+                            <div class="app-notif-list" id="app-notif-list">
+                                <div class="app-notif-empty">Loading notifications...</div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="user-profile-menu" id="user-profile-menu">
                         <button type="button" class="user-profile-btn" id="user-profile-btn" onclick="toggleUserMenu()">
                             <span class="user-avatar-badge">@include('partials.avatar', ['avatar' => Auth::user()->avatar, 'fallback' => Auth::user()->role === 'admin' ? '🛡️' : (Auth::user()->role === 'driver' ? '👨🏽‍✈️' : '👤'), 'alt' => Auth::user()->name])</span>

@@ -3239,6 +3239,7 @@ h1, h2, h3, h4, .font-display {
 /* GST TAX INVOICE STYLING                                 */
 /* ======================================================== */
 .invoice-paper-card {
+  --inv-accent: var(--primary);
   background: #ffffff;
   border-radius: 8px;
   border: 1px solid #cbd5e1;
@@ -3246,7 +3247,177 @@ h1, h2, h3, h4, .font-display {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: #1e293b;
+  transition: all 0.2s ease;
 }
+.invoice-paper-card .invoice-company-name { color: var(--inv-accent); }
+.invoice-paper-card .invoice-meta-box { border-left-color: var(--inv-accent); }
+.invoice-paper-card .invoice-badge-title { color: var(--inv-accent); }
+.invoice-paper-card .inv-calc-line.inv-grand-total span:last-child { color: var(--inv-accent); }
+.invoice-paper-card .signatory-stamp { border-color: var(--inv-accent); }
+
+/* --- Style 2: Executive Navy & Gold Banner --- */
+.invoice-paper-card[data-invoice-style="executive_dark"] {
+  border-top: 6px solid var(--inv-accent);
+  padding: 0 0 24px;
+  overflow: hidden;
+}
+.invoice-paper-card[data-invoice-style="executive_dark"] .invoice-header-row {
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 22px 28px;
+}
+.invoice-paper-card[data-invoice-style="executive_dark"] .invoice-company-legal { color: #f1f5f9; }
+.invoice-paper-card[data-invoice-style="executive_dark"] .invoice-company-sub { color: #94a3b8; }
+.invoice-paper-card[data-invoice-style="executive_dark"] .invoice-meta-box {
+  border-left: 2px solid var(--inv-accent);
+  color: #e2e8f0;
+}
+.invoice-paper-card[data-invoice-style="executive_dark"] .invoice-meta-item { color: #cbd5e1; }
+.invoice-paper-card[data-invoice-style="executive_dark"] .invoice-divider { display: none; }
+.invoice-paper-card[data-invoice-style="executive_dark"] .invoice-parties-grid {
+  padding: 20px 28px 0;
+}
+.invoice-paper-card[data-invoice-style="executive_dark"] .invoice-party-col {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.invoice-paper-card[data-invoice-style="executive_dark"] .invoice-table {
+  width: calc(100% - 56px);
+  margin: 0 28px 16px;
+}
+.invoice-paper-card[data-invoice-style="executive_dark"] .invoice-table th {
+  background: #0f172a;
+  color: #f8fafc;
+  border-color: #0f172a;
+}
+.invoice-paper-card[data-invoice-style="executive_dark"] .invoice-summary-row,
+.invoice-paper-card[data-invoice-style="executive_dark"] .invoice-footer-row {
+  padding-left: 28px;
+  padding-right: 28px;
+}
+
+/* --- Style 3: Modern Minimalist --- */
+.invoice-paper-card[data-invoice-style="modern_minimal"] {
+  border: none;
+  border-radius: 14px;
+  padding: 28px 32px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  border-left: 6px solid var(--inv-accent);
+}
+.invoice-paper-card[data-invoice-style="modern_minimal"] .invoice-meta-box {
+  border-left: none;
+  padding-left: 0;
+}
+.invoice-paper-card[data-invoice-style="modern_minimal"] .invoice-badge-title {
+  display: inline-block;
+  background: color-mix(in srgb, var(--inv-accent) 14%, transparent);
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+.invoice-paper-card[data-invoice-style="modern_minimal"] .invoice-table th {
+  background: transparent;
+  border-top: none;
+  border-bottom: 2px solid var(--inv-accent);
+  color: #0f172a;
+}
+.invoice-paper-card[data-invoice-style="modern_minimal"] .invoice-divider {
+  border-top: 2px solid #f1f5f9;
+}
+
+/* --- Style 4: Compact Express Receipt --- */
+.invoice-paper-card[data-invoice-style="compact_receipt"] {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 18px 20px;
+  border: 1.5px dashed #94a3b8;
+  border-radius: 4px;
+  box-shadow: none;
+}
+.invoice-paper-card[data-invoice-style="compact_receipt"] .invoice-header-row {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+}
+.invoice-paper-card[data-invoice-style="compact_receipt"] .invoice-meta-box {
+  text-align: center;
+  border-left: none;
+  padding-left: 0;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 8px;
+  width: 100%;
+}
+.invoice-paper-card[data-invoice-style="compact_receipt"] .invoice-parties-grid {
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.invoice-paper-card[data-invoice-style="compact_receipt"] .invoice-summary-row,
+.invoice-paper-card[data-invoice-style="compact_receipt"] .invoice-footer-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+.invoice-paper-card[data-invoice-style="compact_receipt"] .invoice-calc-col {
+  width: 100%;
+}
+.invoice-paper-card[data-invoice-style="compact_receipt"] .signatory-stamp {
+  display: none;
+}
+
+/* --- Admin Invoice Template Picker Grid --- */
+.inv-style-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.inv-style-card {
+  position: relative;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.inv-style-card:hover { border-color: #cbd5e1; background: #f8fafc; }
+.inv-style-card.selected {
+  border-color: var(--primary);
+  background: #fffbeb;
+  box-shadow: 0 4px 12px rgba(212, 155, 76, 0.18);
+}
+.inv-style-card input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.inv-mini-thumb {
+  height: 54px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  overflow: hidden;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.inv-mini-thumb.thumb-classic { border-top: 3px solid #d49b4c; }
+.inv-mini-thumb.thumb-executive { padding: 0; }
+.inv-mini-thumb.thumb-executive .mini-top { height: 18px; background: #0f172a; border-bottom: 2px solid #d49b4c; }
+.inv-mini-thumb.thumb-minimal { border-left: 4px solid #0284c7; }
+.inv-mini-thumb.thumb-compact { border: 1.5px dashed #94a3b8; width: 72%; margin: 0 auto; }
+.inv-mini-bar { height: 5px; border-radius: 3px; background: #e2e8f0; width: 70%; }
+.inv-mini-bar.short { width: 45%; background: #cbd5e1; }
+.inv-style-label { font-size: 12.5px; font-weight: 700; color: #0f172a; }
+.inv-style-desc { font-size: 11px; color: #64748b; line-height: 1.3; }
 .invoice-header-row {
   display: flex;
   justify-content: space-between;
@@ -3455,10 +3626,10 @@ h1, h2, h3, h4, .font-display {
     max-height: none !important;
   }
   .invoice-paper-card {
-    border: none !important;
     box-shadow: none !important;
-    padding: 0 !important;
     width: 100% !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   .invoice-no-print {
     display: none !important;
@@ -5354,22 +5525,276 @@ tr.auction-bid-drawer-row td {
 }
 
 /* ===== My Trips / booking history ===== */
-.trips-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 0 4px;}
-.trips-filters{display:flex;gap:6px;background:#f1f5f9;padding:4px;border-radius:999px;}
-.trip-filter-pill{border:0;background:transparent;padding:8px 16px;border-radius:999px;font-size:12.5px;font-weight:700;color:#475569;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:background .18s,color .18s,box-shadow .18s;font-family:inherit;}
-.trip-filter-pill:hover{color:#0f172a;}
-.trip-filter-pill:focus-visible{outline:2px solid #d49b4c;outline-offset:2px;}
-.trip-filter-pill.active{background:#0b0f19;color:#fdfaf5;box-shadow:0 4px 12px rgba(11,15,25,.18);}
-.trip-filter-count{font-size:10.5px;font-weight:800;background:rgba(15,23,42,.08);padding:1px 7px;border-radius:999px;line-height:1.6;}
-.trip-filter-pill.active .trip-filter-count{background:rgba(255,255,255,.2);}
-.trips-summary{font-size:12px;color:#64748b;}
-.customer-trip-card{transition:box-shadow .2s,transform .2s;}
-.customer-trip-card.is-new{box-shadow:0 0 0 2px rgba(212,155,76,.55),0 10px 26px rgba(15,23,42,.10);}
-.trip-new-flag{background:#16a34a;color:#ffffff;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:4px;}
-.trips-empty{padding:44px 20px;text-align:center;color:#94a3b8;background:#f8fafc;border:1px dashed #e2e8f0;border-radius:12px;}
-.trips-guest-card{position:relative;}
+.my-trips-shell { margin-bottom: 20px; border: 1px solid #cbd5e1; }
+.my-trips-header { flex-wrap: wrap; gap: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; }
+.my-trips-heading { display: flex; align-items: center; gap: 8px; color: #0f172a; }
+.trips-booked-banner {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 12px; padding: 10px 14px;
+  background: #dcfce7; border: 1px solid #86efac; border-radius: 8px;
+  color: #14532d; font-size: 12.5px; font-weight: 600;
+}
+.trips-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 0 8px; }
+.trips-filters { display:flex; gap:5px; background:#e2e8f0; padding:4px; border-radius:999px; }
+.trip-filter-pill { border:0; background:transparent; padding:7px 14px; border-radius:999px; font-size:12px; font-weight:700; color:#334155; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background .18s,color .18s,box-shadow .18s; font-family:inherit; }
+.trip-filter-pill:hover { color:#0f172a; background:rgba(255,255,255,0.55); }
+.trip-filter-pill:focus-visible { outline:2px solid #d49b4c; outline-offset:2px; }
+.trip-filter-pill.active { background:#0b0f19; color:#fdfaf5; box-shadow:0 3px 10px rgba(11,15,25,.22); }
+.trip-filter-count { font-size:10.5px; font-weight:800; background:rgba(15,23,42,.12); color:#0f172a; padding:1px 7px; border-radius:999px; line-height:1.5; }
+.trip-filter-pill.active .trip-filter-count { background:#d49b4c; color:#0b0f19; }
+.trips-summary { font-size:12px; font-weight:600; color:#475569; }
+
+.customer-bookings-grid { display: flex; flex-direction: column; gap: 10px; padding: 6px 0 8px; }
+.customer-trip-card {
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid #0b0f19;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+  transition: box-shadow .2s, transform .2s, border-color .2s;
+}
+.customer-trip-card:hover { box-shadow: 0 6px 16px rgba(15, 23, 42, 0.09); border-left-color: #d49b4c; }
+.customer-trip-card.is-new { border-left-color: #16a34a; box-shadow: 0 0 0 2px rgba(212,155,76,.55), 0 8px 20px rgba(15,23,42,.10); }
+
+.trip-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 9px;
+  margin-bottom: 9px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.trip-card-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.trip-ref-badge {
+  background: #0b0f19;
+  color: #f5d061;
+  font-family: monospace;
+  font-weight: 800;
+  font-size: 11.5px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  letter-spacing: 0.04em;
+}
+.trip-service-tag {
+  background: #f1f5f9;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+.trip-status-pill {
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.trip-status-pill.status-requested,
+.trip-status-pill.status-bidding { background: #e0f2fe; color: #075985; }
+.trip-status-pill.status-confirmed { background: #dcfce7; color: #166534; }
+.trip-status-pill.status-driver-assigned { background: #fef3c7; color: #92400e; }
+.trip-status-pill.status-started { background: #dbeafe; color: #1e40af; }
+.trip-status-pill.status-completed { background: #0f172a; color: #f8fafc; }
+.trip-status-pill.status-cancelled { background: #fee2e2; color: #991b1b; }
+
+.trip-new-flag { background:#16a34a; color:#ffffff; font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; padding:2px 7px; border-radius:4px; }
+.trip-card-route { font-size: 14.5px; font-weight: 800; color: #0f172a; margin-top: 5px; line-height: 1.25; }
+.trip-card-date { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #475569; margin-top: 2px; font-weight: 500; }
+.trip-card-fare-col { text-align: right; }
+.trip-card-fare { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16.5px; font-weight: 800; color: #0f172a; line-height: 1.1; }
+.trip-card-pay-tag { font-size: 10.5px; font-weight: 700; color: #15803d; margin-top: 2px; }
+
+.trip-card-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1.2fr 0.75fr;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+.trip-info-tile {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-size: 11.5px;
+  min-width: 0;
+}
+.trip-tile-label { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #475569; margin-bottom: 3px; }
+.trip-tile-line { color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.35; }
+.trip-tile-sub { font-size: 11px; color: #334155; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trip-driver-tel { color: #0369a1; font-weight: 700; text-decoration: none; }
+.trip-driver-tel:hover { text-decoration: underline; }
+
+.trip-otp-tile {
+  background: #0b0f19;
+  color: #f8fafc;
+  border-radius: 7px;
+  padding: 7px 10px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.trip-otp-label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #cbd5e1; }
+.trip-otp-code { font-family: monospace; font-size: 18px; font-weight: 800; color: #f5d061; letter-spacing: 0.14em; line-height: 1.2; margin: 2px 0; }
+.trip-otp-hint { font-size: 9.5px; color: #94a3b8; }
+
+.trip-state-tile {
+  border-radius: 7px;
+  padding: 7px 10px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.trip-state-tile.state-completed { background: #dcfce7; border: 1px solid #86efac; color: #14532d; }
+.trip-state-tile.state-cancelled { background: #fee2e2; border: 1px solid #fca5a5; color: #7f1d1d; }
+.trip-state-title { font-size: 11.5px; font-weight: 800; }
+.trip-state-sub { font-size: 10px; margin-top: 2px; opacity: 0.9; }
+
+.trip-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px dashed #cbd5e1;
+}
+.trip-footer-meta { font-size: 11px; color: #475569; }
+.trip-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn-xs { padding: 5px 10px; font-size: 11.5px; font-weight: 700; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.trip-btn-secondary { background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; }
+.trip-btn-secondary:hover { background: #e2e8f0; }
+.trip-btn-primary { background: #0b0f19; color: #f5d061; border: 1px solid #0b0f19; }
+.trip-btn-primary:hover { background: #1e293b; color: #fde68a; }
+
+.trips-empty { padding:34px 20px; text-align:center; color:#475569; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:10px; }
+.trips-guest-card { position:relative; }
+@media (max-width:720px){
+  .trip-card-grid { grid-template-columns: 1fr; }
+}
 @media (max-width:640px){
   .trips-filters{width:100%;justify-content:space-between;}
-  .trip-filter-pill{padding:8px 10px;font-size:12px;flex:1;justify-content:center;}
+  .trip-filter-pill{padding:7px 8px;font-size:11.5px;flex:1;justify-content:center;}
   .trips-summary{width:100%;}
 }
+
+/* ===== In-App Notification Bell & Dropdown ===== */
+.app-notif-menu { position: relative; display: flex; align-items: center; }
+.app-notif-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #f8fafc;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.app-notif-btn:hover { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.35); }
+.app-notif-btn .material-symbols-outlined { font-size: 20px; }
+.app-notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.45);
+}
+.app-notif-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28);
+  z-index: 2100;
+  overflow: hidden;
+}
+.app-notif-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #f8fafc;
+}
+.app-notif-title { font-size: 13px; font-weight: 700; color: #0f172a; }
+.app-notif-mark-all {
+  border: 0;
+  background: transparent;
+  color: #0284c7;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.app-notif-mark-all:hover { text-decoration: underline; }
+.app-notif-list { max-height: 360px; overflow-y: auto; }
+.app-notif-empty { padding: 28px 16px; text-align: center; color: #64748b; font-size: 12.5px; }
+.app-notif-item {
+  display: flex;
+  gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  text-align: left;
+}
+.app-notif-item:hover { background: #f8fafc; }
+.app-notif-item.unread { background: #eff6ff; }
+.app-notif-item.unread:hover { background: #e0f2fe; }
+.app-notif-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.app-notif-item.unread .app-notif-icon { background: #dbeafe; color: #1d4ed8; }
+.app-notif-icon .material-symbols-outlined { font-size: 18px; }
+.app-notif-body { flex: 1; min-width: 0; }
+.app-notif-item-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.app-notif-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2563eb;
+  flex-shrink: 0;
+}
+.app-notif-item-msg { font-size: 11.5px; color: #475569; line-height: 1.4; word-break: break-word; }
+.app-notif-item-time { font-size: 10.5px; color: #94a3b8; margin-top: 4px; }

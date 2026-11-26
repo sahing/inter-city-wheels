@@ -31,7 +31,10 @@ use Throwable;
  */
 class BiddingService
 {
-    public function __construct(private readonly BookingWorkflow $workflow) {}
+    public function __construct(
+        private readonly BookingWorkflow $workflow,
+        private readonly NotificationService $notifications,
+    ) {}
 
     /**
      * Automatically open a bidding session for a newly created booking so it stays
@@ -81,7 +84,7 @@ class BiddingService
         [$pickupCity, $dropCity] = $this->routeCities($booking);
         $distanceKm = $this->routeDistance($booking, $pickupCity, $dropCity);
 
-        return BiddingSession::create([
+        $session = BiddingSession::create([
             'booking_id' => $booking->id,
             'token' => BiddingSession::generateToken(),
             'pickup_city' => $pickupCity,
@@ -93,6 +96,10 @@ class BiddingService
             'closes_at' => null,
             'opened_by' => null,
         ]);
+
+        $this->notifications->biddingOpened($session);
+
+        return $session;
     }
 
     /**
@@ -206,7 +213,7 @@ class BiddingService
         [$pickupCity, $dropCity] = $this->routeCities($booking);
         $distanceKm = $this->routeDistance($booking, $pickupCity, $dropCity);
 
-        return DB::transaction(function () use (
+        $session = DB::transaction(function () use (
             $booking,
             $admin,
             $feePct,
@@ -258,6 +265,10 @@ class BiddingService
 
             return $session->refresh();
         });
+
+        $this->notifications->biddingOpened($session);
+
+        return $session;
     }
 
     /**
@@ -318,7 +329,7 @@ class BiddingService
             throw BiddingException::bidLimitReached(BiddingSession::MAX_BIDS_PER_DRIVER);
         }
 
-        return DB::transaction(function () use ($session, $driver, $amount, $ip, $minDriverPrice) {
+        [$bid, $instantWonBooking] = DB::transaction(function () use ($session, $driver, $amount, $ip, $minDriverPrice) {
             $locked = BiddingSession::whereKey($session->id)->lockForUpdate()->firstOrFail();
 
             // Re-check inside the lock: two simultaneous bids must not both win.
@@ -350,6 +361,8 @@ class BiddingService
                 'flag_reason' => $flagReason,
             ]);
 
+            $instantWonBooking = null;
+
             // Reaching the maximum service-charge floor immediately wins and stops bidding.
             if ($flagReason === null && $amount <= $minDriverPrice) {
                 $booking = Booking::whereKey($locked->booking_id)->lockForUpdate()->firstOrFail();
@@ -368,12 +381,22 @@ class BiddingService
                 $locked->awarded_at = now();
                 $locked->closed_at = $locked->closed_at ?? now();
                 $locked->save();
+
+                $instantWonBooking = $booking->fresh(['driver', 'customer']);
             } else {
                 $this->refreshProvisionalWinner($locked);
             }
 
-            return $bid->refresh();
+            return [$bid->refresh(), $instantWonBooking];
         });
+
+        $this->notifications->bidPlaced($session->fresh(), $driver, $amount, $instantWonBooking !== null);
+
+        if ($instantWonBooking) {
+            $this->notifications->driverAllotted($instantWonBooking, $driver, (float) $bid->bid_amount);
+        }
+
+        return $bid;
     }
 
     /**
@@ -428,7 +451,7 @@ class BiddingService
             throw BiddingException::noBids();
         }
 
-        return DB::transaction(function () use ($session, $bid) {
+        $awardedBooking = DB::transaction(function () use ($session, $bid) {
             $lockedSession = BiddingSession::whereKey($session->id)->lockForUpdate()->firstOrFail();
 
             if ($lockedSession->status === BiddingSession::STATUS_AWARDED) {
@@ -458,8 +481,12 @@ class BiddingService
             $lockedSession->closed_at = $lockedSession->closed_at ?? now();
             $lockedSession->save();
 
-            return $booking->fresh(['driver']);
+            return $booking->fresh(['driver', 'customer']);
         });
+
+        $this->notifications->driverAllotted($awardedBooking, $awardedBooking->driver, (float) $bid->bid_amount);
+
+        return $awardedBooking;
     }
 
     /**

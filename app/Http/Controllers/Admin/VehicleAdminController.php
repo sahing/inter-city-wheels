@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Driver;
 use App\Models\DriverVehicle;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 
 class VehicleAdminController extends Controller
 {
+    public function __construct(private readonly NotificationService $notifications) {}
     // Driver submits their car for approval
     public function driverStore(Request $request)
     {
@@ -47,6 +49,8 @@ class VehicleAdminController extends Controller
             'status' => 'Pending', // Pending admin approval!
             'is_active' => false,
         ]);
+
+        $this->notifications->vehicleSubmitted($vehicle);
 
         return response()->json([
             'success' => true,
@@ -141,6 +145,8 @@ class VehicleAdminController extends Controller
             Driver::where('id', $vehicle->driver_id)->update(['is_verified' => true]);
         }
 
+        $this->notifications->vehicleStatusChanged($vehicle, 'Approved');
+
         return response()->json([
             'success' => true,
             'message' => "Vehicle '{$vehicle->vehicle_model}' ({$vehicle->vehicle_plate}) has been APPROVED and activated!",
@@ -159,6 +165,8 @@ class VehicleAdminController extends Controller
             'is_active' => false,
             'admin_notes' => $notes,
         ]);
+
+        $this->notifications->vehicleStatusChanged($vehicle, 'Rejected');
 
         return response()->json([
             'success' => true,

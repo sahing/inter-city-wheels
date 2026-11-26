@@ -6,9 +6,11 @@ use App\Exceptions\InvalidBookingTransition;
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use App\Models\Driver;
+use App\Models\PlatformSetting;
 use App\Services\BiddingService;
 use App\Services\BookingReferenceGenerator;
 use App\Services\BookingWorkflow;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -18,6 +20,7 @@ class BookingAdminController extends Controller
         private readonly BookingWorkflow $workflow,
         private readonly BookingReferenceGenerator $references,
         private readonly BiddingService $bidding,
+        private readonly NotificationService $notifications,
     ) {}
 
     /**
@@ -133,6 +136,10 @@ class BookingAdminController extends Controller
         $this->bidding->openForNewBooking($booking);
 
         $booking->load('driver');
+        $this->notifications->bookingCreated($booking, 'admin');
+        if ($booking->driver) {
+            $this->notifications->driverAllotted($booking, $booking->driver);
+        }
 
         return response()->json([
             'success' => true,
@@ -201,6 +208,8 @@ class BookingAdminController extends Controller
             $validated['departure_time'] = date('Y-m-d H:i:s', strtotime($validated['departure_time']));
         }
 
+        $previousStatus = (string) $booking->status;
+        $previousDriverId = $booking->assigned_driver_id;
         $newStatus = $validated['status'] ?? null;
 
         if ($newStatus === null) {
@@ -245,6 +254,12 @@ class BookingAdminController extends Controller
 
         if ($booking->assigned_driver_id !== null || $booking->status === BookingWorkflow::DRIVER_ASSIGNED) {
             $this->bidding->syncWithDriverAllotment($booking, $booking->assigned_driver_id);
+        }
+
+        if ($booking->assigned_driver_id !== $previousDriverId) {
+            $this->notifications->driverAllotted($booking, $booking->driver);
+        } elseif ($newStatus !== null && $previousStatus !== (string) $booking->status) {
+            $this->notifications->bookingStatusChanged($booking, $previousStatus, (string) $booking->status);
         }
 
         return response()->json([
@@ -305,6 +320,7 @@ class BookingAdminController extends Controller
         $this->bidding->syncWithDriverAllotment($booking, $driverId);
 
         $booking->load('driver');
+        $this->notifications->driverAllotted($booking, $booking->driver);
 
         return response()->json([
             'success' => true,
@@ -338,27 +354,51 @@ class BookingAdminController extends Controller
     public function invoice($id)
     {
         $booking = Booking::with('driver')->findOrFail($id);
+        $tpl = PlatformSetting::invoiceSettings();
 
-        $invoiceNumber = 'INV-'.date('Y', strtotime($booking->created_at ?? now())).'-'.$booking->booking_reference;
+        $prefix = trim((string) ($tpl['invoice_prefix'] ?? 'INV')) ?: 'INV';
+        $invoiceNumber = $prefix.'-'.date('Y', strtotime($booking->created_at ?? now())).'-'.$booking->booking_reference;
         $invoiceDate = $booking->created_at ? $booking->created_at->format('d M Y, h:i A') : now()->format('d M Y, h:i A');
 
-        // Tax calculation: 5% GST (2.5% CGST + 2.5% SGST) for passenger transport
+        $cgstPct = max(0.0, (float) ($tpl['invoice_cgst_pct'] ?? 2.5));
+        $sgstPct = max(0.0, (float) ($tpl['invoice_sgst_pct'] ?? 2.5));
+
         $taxableBase = round($booking->base_fare + $booking->addon_fare - $booking->discount_fare, 2);
-        $cgst = round($taxableBase * 0.025, 2);
-        $sgst = round($taxableBase * 0.025, 2);
-        $tollCharge = round($booking->toll_fare, 2);
-        $grandTotal = round($taxableBase + $cgst + $sgst + $tollCharge, 2);
+        $cgst = round($taxableBase * ($cgstPct / 100), 2);
+        $sgst = round($taxableBase * ($sgstPct / 100), 2);
+
+        $termsLines = array_values(array_filter(
+            array_map('trim', preg_split('/\r\n|\r|\n/', (string) ($tpl['invoice_terms'] ?? '')) ?: []),
+            static fn ($line) => $line !== ''
+        ));
 
         $invoiceData = [
             'invoice_number' => $invoiceNumber,
             'invoice_date' => $invoiceDate,
+            'template' => [
+                'style' => $tpl['invoice_template_style'] ?? 'classic_gst',
+                'accent_color' => $tpl['invoice_accent_color'] ?? '#d49b4c',
+                'title' => $tpl['invoice_title'] ?? 'TAX INVOICE',
+                'prefix' => $prefix,
+                'brand_name' => $tpl['invoice_brand_name'] ?? 'INTERCITY WHEELS',
+                'place_of_supply' => $tpl['invoice_place_of_supply'] ?? 'Maharashtra (27)',
+                'cgst_pct' => $cgstPct,
+                'sgst_pct' => $sgstPct,
+                'show_stamp' => ($tpl['invoice_show_stamp'] ?? '1') === '1',
+                'show_otp' => ($tpl['invoice_show_otp'] ?? '1') === '1',
+                'terms' => $termsLines,
+                'signatory_name' => $tpl['invoice_signatory_name'] ?? 'IntercityWheels Mobility Services',
+                'signatory_label' => $tpl['invoice_signatory_label'] ?? 'Authorized Signatory',
+            ],
             'company' => [
-                'name' => 'IntercityWheels Mobility Services Pvt. Ltd.',
-                'gstin' => '27AAACI9912K1Z8',
-                'hsn_sac' => '996412 (Passenger Transport Service)',
-                'address' => 'Floor 4, Tech Vista Towers, Senapati Bapat Road, Pune - 411016, Maharashtra, India',
-                'support_phone' => '700 3434 088',
-                'support_email' => 'billing@intercitywheels.com',
+                'brand_name' => $tpl['invoice_brand_name'] ?? 'INTERCITY WHEELS',
+                'name' => $tpl['invoice_company_legal'] ?? 'Intercity Wheels Pvt. Ltd.',
+                'gstin' => $tpl['invoice_gstin'] ?? ' 19AAJCI2327Q1ZZ',
+                'hsn_sac' => $tpl['invoice_sac_code'] ?? '996412 (Passenger Transport Service)',
+                'place_of_supply' => $tpl['invoice_place_of_supply'] ?? 'Maharashtra (27)',
+                'address' => $tpl['invoice_company_address'] ?? 'Floor 4, Tech Vista Towers, Senapati Bapat Road, Pune - 411016, Maharashtra, India',
+                'support_phone' => $tpl['invoice_support_phone'] ?? '700 3434 088',
+                'support_email' => $tpl['invoice_support_email'] ?? 'intercitywheelscompany@gmail.com',
                 'website' => 'https://intercitywheels.com',
             ],
             'customer' => [
@@ -391,9 +431,22 @@ class BookingAdminController extends Controller
                 'total_amount' => $booking->total_amount,
             ],
             'payment' => [
-                'method' => 'Online Escrow (Prepaid UPI / Card)',
+                'method' => match ($booking->payment_mode) {
+                    'part_pay' => 'Part Pay ('.((float) $booking->advance_percentage).'% Advance Online + Balance to Driver)',
+                    'full_upi' => 'Full UPI Payment',
+                    'cash' => 'Pay Cash / UPI to Chauffeur',
+                    default => 'Online Escrow (Prepaid UPI / Card)',
+                },
+                'payment_mode' => $booking->payment_mode ?? 'full_online',
+                'advance_percentage' => $booking->advance_percentage ?? 100.0,
+                'advance_amount' => $booking->advance_amount ?? (float) $booking->total_amount,
+                'balance_amount' => $booking->balance_amount ?? 0.0,
                 'transaction_ref' => 'TXN-'.strtoupper(substr(md5($booking->booking_reference), 0, 10)),
-                'status' => 'PAID IN FULL',
+                'status' => match ($booking->payment_mode) {
+                    'part_pay' => 'PARTIAL ADVANCE ('.((float) $booking->advance_percentage).'%)',
+                    'cash' => 'PAY TO CHAUFFEUR',
+                    default => 'PAID IN FULL',
+                },
                 'start_otp' => $booking->start_otp,
             ],
         ];

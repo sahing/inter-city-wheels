@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\WalletTransaction;
 use App\Services\BookingReferenceGenerator;
 use App\Services\BookingWorkflow;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -22,6 +23,7 @@ class DriverBiddingController extends Controller
     public function __construct(
         private readonly BookingWorkflow $workflow,
         private readonly BookingReferenceGenerator $references,
+        private readonly NotificationService $notifications,
     ) {}
 
     public function getActiveBids()
@@ -147,6 +149,10 @@ class DriverBiddingController extends Controller
             ], 422);
         }
 
+        $booking->load('driver');
+        $this->notifications->bookingCreated($booking, 'bid_accept');
+        $this->notifications->driverAllotted($booking, $driver, (float) $validated['amount']);
+
         return response()->json([
             'success' => true,
             'message' => 'Driver assigned and ride locked!',
@@ -191,10 +197,13 @@ class DriverBiddingController extends Controller
             ], 422);
         }
 
+        $startedFresh = $started->fresh(['driver', 'customer']);
+        $this->notifications->tripStarted($startedFresh);
+
         return response()->json([
             'success' => true,
             'message' => 'OTP verified successfully! Trip has commenced.',
-            'booking' => $started->fresh(),
+            'booking' => $startedFresh,
         ]);
     }
 
@@ -252,12 +261,14 @@ class DriverBiddingController extends Controller
         }
 
         [$completed, $payout] = $result;
+        $completedFresh = $completed->fresh(['driver', 'customer']);
+        $this->notifications->tripCompleted($completedFresh, (float) $payout);
 
         return response()->json([
             'success' => true,
             'message' => 'Trip marked as completed! Payout credited to your driver wallet.',
             'payout' => $payout,
-            'booking' => $completed->fresh(),
+            'booking' => $completedFresh,
         ]);
     }
 
@@ -305,6 +316,8 @@ class DriverBiddingController extends Controller
                 'errors' => $e->errors(),
             ], 422);
         }
+
+        $this->notifications->walletWithdrawal($driver, $amount, (float) $transaction->balance_after);
 
         return response()->json([
             'success' => true,
