@@ -628,4 +628,44 @@ class DriverBiddingMarketplaceTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('booking.assigned_driver_id', $this->otherDriver->id);
     }
+
+    public function test_admin_can_fetch_one_click_whatsapp_bid_invitation_and_row_buttons_render(): void
+    {
+        $booking = $this->booking();
+
+        // Admin bookings table renders one-click copy & WhatsApp share actions
+        $page = $this->actingAs($this->admin)->get('/');
+        $page->assertOk();
+        $page->assertSee("copyBookingBidInvitation({$booking->id}", false);
+        $page->assertSee("shareBookingBidOnWhatsApp({$booking->id}", false);
+        $page->assertSee('Copy WhatsApp Text', false);
+
+        // One-click share endpoint opens an auction if none exists and returns WhatsApp-formatted invitation
+        $res = $this->actingAs($this->admin)
+            ->postJson("/api/admin/bookings/{$booking->id}/bidding/share")
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure(['session' => ['id', 'token'], 'share' => ['url', 'whatsapp_url', 'text']]);
+
+        $text = (string) $res->json('share.text');
+        $this->assertStringContainsString('*IntercityWheels — Driver Bid Invitation*', $text);
+        $this->assertStringContainsString($booking->booking_reference, $text);
+        $this->assertStringContainsString('Pune ➔ Goa', $text);
+        $this->assertStringContainsString('*Max Start Price:*', $text);
+        $this->assertStringContainsString($res->json('share.url'), $text);
+        $this->assertStringNotContainsString('Priya', $text);
+        $this->assertStringNotContainsString('98888', $text);
+        $this->assertStringContainsString('https://wa.me/?text=', (string) $res->json('share.whatsapp_url'));
+
+        // Calling again reuses the open session instead of creating duplicates
+        $second = $this->actingAs($this->admin)
+            ->postJson("/api/admin/bookings/{$booking->id}/bidding/share")
+            ->assertOk();
+        $this->assertSame($res->json('session.id'), $second->json('session.id'));
+
+        // Non-admin cannot access the share endpoint
+        $this->actingAs($this->driverUser)
+            ->postJson("/api/admin/bookings/{$booking->id}/bidding/share")
+            ->assertStatus(403);
+    }
 }

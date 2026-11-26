@@ -37,16 +37,40 @@ class NotificationService
             ['reference' => $booking->booking_reference]
         );
 
+        $isBeyondRegion = (bool) $booking->is_beyond_region;
+
+        $customerTitle = $isBeyondRegion
+            ? "Booking Request Recorded (Unconfirmed · Beyond Region): {$booking->booking_reference}"
+            : "Booking Confirmed: {$booking->booking_reference}";
+        $customerBody = $isBeyondRegion
+            ? "Your {$booking->service_type} request ({$booking->route_summary}) for {$fare} has been logged, but this route lies beyond our regional area. Ride confirmation and vehicle availability are NOT guaranteed."
+            : "Your {$booking->service_type} trip ({$booking->route_summary}) for {$fare} has been recorded.";
+        $customerLines = [
+            "Reference: {$booking->booking_reference}",
+            "Route: {$booking->route_summary}",
+            "Pickup: {$booking->pickup_location}",
+            "Drop: {$booking->drop_location}",
+            "Departure: {$departure}",
+            "Estimated Fare: {$fare}",
+            $paymentLine,
+            "Ride Start OTP: {$booking->start_otp}",
+        ];
+        if ($isBeyondRegion) {
+            $customerLines[] = 'Availability Status: NOT Confirmed / NOT Guaranteed (Beyond Regional Service Area)';
+        }
+
         $customerNotification = new PlatformAlertNotification(
             event: 'booking.created',
-            title: "Booking Confirmed: {$booking->booking_reference}",
-            message: "Your {$booking->service_type} trip ({$booking->route_summary}) for {$fare} has been recorded.",
+            title: $customerTitle,
+            message: $customerBody,
             category: 'booking',
             meta: [
                 'booking_id' => $booking->id,
                 'booking_reference' => $booking->booking_reference,
                 'route_summary' => $booking->route_summary,
                 'status' => $booking->status,
+                'is_beyond_region' => $isBeyondRegion,
+                'availability_status' => $booking->availability_status ?? ($isBeyondRegion ? 'unconfirmed' : 'guaranteed'),
                 'total_amount' => (float) $booking->total_amount,
                 'payment_mode' => $booking->payment_mode,
                 'advance_amount' => $booking->advance_amount,
@@ -54,16 +78,7 @@ class NotificationService
                 'start_otp' => $booking->start_otp,
                 'tab' => 'my-bookings',
             ],
-            lines: [
-                "Reference: {$booking->booking_reference}",
-                "Route: {$booking->route_summary}",
-                "Pickup: {$booking->pickup_location}",
-                "Drop: {$booking->drop_location}",
-                "Departure: {$departure}",
-                "Total Fare: {$fare}",
-                $paymentLine,
-                "Ride Start OTP: {$booking->start_otp}",
-            ],
+            lines: $customerLines,
             actionLabel: 'View Booking Details',
             actionUrl: url('/#my-bookings'),
             sendEmail: true,
@@ -71,10 +86,26 @@ class NotificationService
 
         $this->notifyBookingCustomer($booking, $customerNotification);
 
+        $adminLines = [
+            "Reference: {$booking->booking_reference}",
+            "Customer: {$booking->customer_name} ({$booking->customer_phone})",
+            "Route: {$booking->route_summary}",
+            "Departure: {$departure}",
+            "Total Fare: {$fare}",
+            "Current Status: {$booking->status}",
+        ];
+        if ($isBeyondRegion) {
+            $adminLines[] = 'Region Notice: Outside regional area — Ride NOT confirmed / availability unverified.';
+        }
+
         $adminNotification = new PlatformAlertNotification(
             event: 'booking.created',
-            title: "New Booking {$booking->booking_reference} ({$fare})",
-            message: "{$booking->customer_name} booked {$booking->route_summary} via {$source}.",
+            title: $isBeyondRegion
+                ? "Out-of-Region Request {$booking->booking_reference} ({$fare})"
+                : "New Booking {$booking->booking_reference} ({$fare})",
+            message: $isBeyondRegion
+                ? "{$booking->customer_name} requested an out-of-region route ({$booking->route_summary}) via {$source}. Ride is unconfirmed."
+                : "{$booking->customer_name} booked {$booking->route_summary} via {$source}.",
             category: 'booking',
             meta: [
                 'booking_id' => $booking->id,
@@ -82,17 +113,11 @@ class NotificationService
                 'customer_name' => $booking->customer_name,
                 'customer_phone' => $booking->customer_phone,
                 'status' => $booking->status,
+                'is_beyond_region' => $isBeyondRegion,
                 'tab' => 'admin',
                 'ticket_url' => $ticketUrl,
             ],
-            lines: [
-                "Reference: {$booking->booking_reference}",
-                "Customer: {$booking->customer_name} ({$booking->customer_phone})",
-                "Route: {$booking->route_summary}",
-                "Departure: {$departure}",
-                "Total Fare: {$fare}",
-                "Current Status: {$booking->status}",
-            ],
+            lines: $adminLines,
             actionLabel: 'Open Admin Dispatch',
             actionUrl: url('/#admin'),
             sendEmail: true,

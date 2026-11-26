@@ -22,6 +22,7 @@ class Booking extends Model
         'selected_units' => 'array',
         'dynamic_fields_data' => 'array',
         'departure_time' => 'datetime',
+        'is_beyond_region' => 'boolean',
         'base_fare' => 'float',
         'toll_fare' => 'float',
         'addon_fare' => 'float',

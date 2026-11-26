@@ -534,6 +534,16 @@
                     </button>
                 </div>
 
+                <div id="step2-beyond-region-banner" style="display:none; background:#fffbeb; border:1px solid #f59e0b; border-left:4px solid #d97706; border-radius:10px; padding:12px 14px; margin-bottom:14px; color:#92400e; font-size:12.5px; line-height:1.45;">
+                    <div style="display:flex; align-items:flex-start; gap:10px;">
+                        <span class="material-symbols-outlined" style="color:#d97706; font-size:20px; flex-shrink:0;">warning</span>
+                        <div>
+                            <div style="font-weight:800; color:#78350f; margin-bottom:2px;">Beyond Regional Service Area — Ride Not Confirmed or Guaranteed</div>
+                            <div id="step2-beyond-region-text">This route is outside our core service region. Distance and estimated fare are calculated via route API fallback. You can still submit a booking request, but chauffeur availability is not guaranteed.</div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Filters & Sorting Toolbar -->
                 <div class="rental-filter-bar">
                     <div class="rental-filter-pills" id="rental-filter-pills">
@@ -863,11 +873,16 @@
                             </label>
                         </div>
 
+                        <div id="step3-beyond-region-banner" style="display:none; margin-top:12px; background:#fffbeb; border:1px solid #f59e0b; border-left:4px solid #d97706; border-radius:8px; padding:10px 12px; font-size:11.5px; color:#92400e; line-height:1.45;">
+                            <strong style="display:block; color:#78350f; margin-bottom:2px;">⚠️ Beyond Service Region (Unconfirmed Request)</strong>
+                            <span id="step3-beyond-region-text">Your booking will be accepted as a request, not a confirmed/guaranteed ride. Availability depends on chauffeur acceptance.</span>
+                        </div>
+
                         <!-- Confirm & Book Button -->
                         <div style="margin-top:16px;">
                             <button type="button" id="book-cab-confirm-btn" class="btn-explore-cabs" onclick="handleConfirmCabBooking()" style="width:100%; justify-content:center; padding:14px 20px; font-size:15px;">
                                 <span class="material-symbols-outlined" style="font-size:20px;">verified_user</span>
-                                <span>CONFIRM & BOOK CAB</span>
+                                <span id="book-cab-confirm-btn-label">CONFIRM & BOOK CAB</span>
                             </button>
                         </div>
                     </div>
@@ -1251,6 +1266,9 @@
                                     <div class="trip-card-badges">
                                         <span class="trip-ref-badge">{{ $cb->booking_reference }}</span>
                                         <span class="trip-status-pill status-{{ strtolower(str_replace(' ', '-', $cb->status)) }}">{{ $cb->status }}</span>
+                                        @if($cb->is_beyond_region && in_array($cb->status, ['Requested', 'Bidding'], true))
+                                            <span class="trip-status-pill" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a;">Out of Region · Unconfirmed</span>
+                                        @endif
                                         <span class="trip-service-tag">{{ strtoupper($cb->service_type) }}</span>
                                         @if($isHighlighted)
                                             <span class="trip-new-flag">Just booked</span>
@@ -1283,6 +1301,9 @@
                                     @elseif($bucket === 'completed')
                                         <div class="trip-tile-line" style="color:#475569; font-weight:600;">Trip closed</div>
                                         <div class="trip-tile-sub">Completed journey</div>
+                                    @elseif($cb->is_beyond_region && in_array($cb->status, ['Requested', 'Bidding'], true))
+                                        <div class="trip-tile-line" style="color:#b45309; font-weight:700;">Availability Not Guaranteed</div>
+                                        <div class="trip-tile-sub">Beyond service region — ride not confirmed until chauffeur accepts</div>
                                     @else
                                         <div class="trip-tile-line" style="color:#92400e; font-weight:700;">Allotment in progress</div>
                                         <div class="trip-tile-sub">Verified chauffeur assigned prior to pickup</div>
@@ -1310,7 +1331,9 @@
 
                             <div class="trip-card-footer">
                                 <span class="trip-footer-meta">
-                                    @if($cb->payment_mode === 'part_pay' && $cb->balance_amount > 0)
+                                    @if($cb->is_beyond_region && in_array($cb->status, ['Requested', 'Bidding'], true))
+                                        Pending Availability Check (Beyond Region)
+                                    @elseif($cb->payment_mode === 'part_pay' && $cb->balance_amount > 0)
                                         Balance to driver: <strong>₹{{ number_format($cb->balance_amount) }}</strong>
                                     @elseif(is_array($cb->passengers) && count($cb->passengers) > 0)
                                         {{ count($cb->passengers) }} passenger(s)
@@ -2520,6 +2543,11 @@
                                                                 {{ $b->cab_type }}
                                                             </span>
                                                         @endif
+                                                        @if($b->is_beyond_region)
+                                                            <span class="admin-badge badge-warning" style="font-size:9px; padding:1px 5px;" title="Beyond service region — availability not guaranteed">
+                                                                OUT OF REGION
+                                                            </span>
+                                                        @endif
                                                         <span class="cell-primary-text">{{ $b->route_summary }}</span>
                                                     </div>
                                                     <div class="cell-subtext truncate-subtext" title="{{ $b->pickup_location }} → {{ $b->drop_location }}">
@@ -2531,8 +2559,8 @@
                                                         ₹{{ number_format($b->total_amount) }}
                                                     </div>
                                                     <div class="cell-subtext">
-                                                        <span class="status-indicator-dot {{ $b->status === 'Cancelled' ? 'bg-danger' : 'bg-success' }}"></span>
-                                                        <span>Prepaid (Escrow)</span>
+                                                        <span class="status-indicator-dot {{ $b->status === 'Cancelled' ? 'bg-danger' : ($b->payment_status === 'pending_availability' ? 'bg-warning' : 'bg-success') }}"></span>
+                                                        <span>{{ $b->payment_status === 'pending_availability' ? 'Unconfirmed / Out of Region' : ($b->payment_status === 'pay_on_pickup' ? 'Pay on Pickup' : 'Prepaid (Escrow)') }}</span>
                                                     </div>
                                                 </td>
                                                 <td id="booking-driver-cell-{{ $b->id }}">
@@ -2571,9 +2599,17 @@
                                                         <button type="button" class="btn-action-icon btn-action-invoice" onclick="openInvoiceModal({{ $b->id }})" title="Generate Tax Invoice">
                                                             <span class="material-symbols-outlined">receipt</span>
                                                         </button>
-                                                        <button type="button" class="btn-action-icon" style="background:#f0f7ff; color:#1d4ed8; border:1px solid #bfdbfe;" onclick="openBiddingForBooking({{ $b->id }})" title="Send to driver bidding (WhatsApp & Driver Console)">
+                                                        <button type="button" class="btn-action-icon" style="background:#f0f7ff; color:#1d4ed8; border:1px solid #bfdbfe;" onclick="openBiddingForBooking({{ $b->id }})" title="Send to driver bidding (Configure & Preview)">
                                                             <span class="material-symbols-outlined">gavel</span>
                                                         </button>
+                                                        @if($b->service_type === 'cab' && ! in_array($b->status, ['Completed', 'Cancelled'], true))
+                                                        <button type="button" class="btn-action-icon" style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0;" onclick="copyBookingBidInvitation({{ $b->id }}, this)" title="Copy Formatted WhatsApp Bid Invitation">
+                                                            <span class="material-symbols-outlined">content_copy</span>
+                                                        </button>
+                                                        <button type="button" class="btn-action-icon" style="background:#ecfdf5; color:#047857; border:1px solid #6ee7b7;" onclick="shareBookingBidOnWhatsApp({{ $b->id }}, this)" title="Share Bid Invitation on WhatsApp">
+                                                            <span class="material-symbols-outlined">share</span>
+                                                        </button>
+                                                        @endif
                                                     </div>
                                                 </td>
                                             </tr>
@@ -5409,13 +5445,19 @@
                 <label class="form-label" for="bidding-share-url">Driver bidding link</label>
                 <div style="display:flex; gap:8px; margin-bottom:12px;">
                     <input type="text" id="bidding-share-url" class="form-control" readonly style="font-family:monospace; font-size:12px;">
-                    <button type="button" class="btn btn-outline" onclick="copyBiddingShare()" style="white-space:nowrap;">Copy</button>
+                    <button type="button" class="btn btn-outline" onclick="copyBiddingShare()" style="white-space:nowrap;">Copy Link</button>
                 </div>
-                <a id="bidding-whatsapp-link" class="btn btn-primary btn-block" target="_blank" rel="noopener" style="text-decoration:none;">
-                    <span class="material-symbols-outlined" style="font-size:18px;">chat</span>
-                    Share on WhatsApp
-                </a>
-                <label class="form-label" style="margin-top:14px;">Message preview</label>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                    <button type="button" class="btn btn-outline" onclick="copyBiddingInvitationText()" style="display:inline-flex; align-items:center; justify-content:center; gap:6px; border-color:#bbf7d0; color:#15803d; background:#f0fdf4;">
+                        <span class="material-symbols-outlined" style="font-size:18px;">content_copy</span>
+                        <span>Copy WhatsApp Text</span>
+                    </button>
+                    <a id="bidding-whatsapp-link" class="btn btn-primary" target="_blank" rel="noopener" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:6px; background:#16a34a; border-color:#15803d;">
+                        <span class="material-symbols-outlined" style="font-size:18px;">chat</span>
+                        <span>Share on WhatsApp</span>
+                    </a>
+                </div>
+                <label class="form-label" style="margin-top:14px;">WhatsApp message preview</label>
                 <pre id="bidding-share-text" style="white-space:pre-wrap; background:#0f172a; color:#e2e8f0; border-radius:8px; padding:12px; font-size:11.5px; line-height:1.6;"></pre>
                 <button type="button" class="btn btn-outline btn-block" style="margin-top:10px;" onclick="closeModal('admin-bidding-open-modal'); switchAdminSection('bidding'); renderAdminBiddings();">
                     View the auction board

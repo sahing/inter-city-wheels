@@ -467,6 +467,7 @@ class BiddingService
                     // keeps the spread between fare and bid.
                     'assigned_bid_id' => $bid->id,
                     'driver_payout_amount' => (float) $bid->bid_amount,
+                    'availability_status' => 'confirmed',
                 ]);
             } catch (InvalidBookingTransition $e) {
                 throw new BiddingException($e->getMessage(), 422, 'booking_transition_blocked', $e->toArray());
@@ -558,26 +559,68 @@ class BiddingService
         return $closed;
     }
 
+    /**
+     * Find an active open bidding session for a booking, or open one using
+     * configured margin defaults so dispatch can copy/share in one click.
+     *
+     * @throws BiddingException
+     */
+    public function ensureShareableSession(Booking $booking, User $admin): BiddingSession
+    {
+        $existingOpen = $booking->biddingSessions()
+            ->where('status', BiddingSession::STATUS_OPEN)
+            ->latest('id')
+            ->first();
+
+        if ($existingOpen !== null) {
+            return $this->closeIfDue($existingOpen);
+        }
+
+        return $this->open($booking, [], $admin);
+    }
+
     public function shareUrl(BiddingSession $session): string
     {
         return route('bidding.page', ['token' => $session->token]);
     }
 
     /**
-     * The message an admin sends on WhatsApp. Contains no customer identity and
-     * no exact addresses — exactly what a bidding driver may see.
+     * WhatsApp-formatted invitation message sent by dispatch/admin.
+     * Contains no customer identity and no exact addresses — only what a bidding driver may see.
      */
     public function shareText(BiddingSession $session): string
     {
-        $distance = $session->distance_km !== null ? ' • '.$session->distance_km.' km' : '';
-        $closes = $session->closes_at ? ' • closes '.$session->closes_at->format('d M Y, h:i A') : '';
+        $booking = $session->booking;
+        $ref = $booking?->booking_reference ?? ('TRIP-'.$session->booking_id);
+        $cabType = $booking?->cab_type ? strtoupper((string) $booking->cab_type) : 'CAB';
+        $tripType = $booking?->trip_type ? ucfirst((string) $booking->trip_type) : 'Outstation';
+        $pickupDate = $booking?->departure_time
+            ? $booking->departure_time->format('d M Y, h:i A')
+            : 'Flexible / On-Demand';
+        $distance = $session->distance_km !== null ? $session->distance_km.' km' : 'Distance per route';
 
-        return "IntercityWheels bidding\n"
-            ."Booking {$session->booking->booking_reference}\n"
-            ."{$session->pickup_city} → {$session->drop_city}{$distance}{$closes}\n"
-            .'Start price ₹'.number_format((float) $session->start_amount, 0)."\n"
-            ."Bid your lowest price — every bid must undercut the current lowest.\n"
-            .$this->shareUrl($session);
+        $lines = [
+            '🚕 *IntercityWheels — Driver Bid Invitation*',
+            "📌 *Ref:* {$ref}",
+            "🚘 *Trip:* {$cabType} ({$tripType})",
+            "📍 *Route:* {$session->pickup_city} ➔ {$session->drop_city} ({$distance})",
+            "🗓️ *Pickup:* {$pickupDate}",
+            '💰 *Max Start Price:* ₹'.number_format((float) $session->start_amount, 0),
+        ];
+
+        if ($session->closes_at) {
+            $lines[] = '⏳ *Bid Closes:* '.$session->closes_at->format('d M Y, h:i A');
+        }
+
+        if (! empty($session->admin_notes)) {
+            $lines[] = '📝 *Note:* '.trim((string) $session->admin_notes);
+        }
+
+        $lines[] = '';
+        $lines[] = '⚡ _Bid your lowest price (each bid must undercut the current lowest):_';
+        $lines[] = $this->shareUrl($session);
+
+        return implode("\n", $lines);
     }
 
     public function whatsappUrl(BiddingSession $session): string

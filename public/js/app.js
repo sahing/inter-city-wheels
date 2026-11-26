@@ -1515,6 +1515,7 @@ async function refreshCabQuote() {
         state.cab.tollEstimate = data.route.base_toll;
         updateRouteRecapTexts();
       }
+      if (typeof syncBeyondRegionNoticeUi === 'function') syncBeyondRegionNoticeUi();
 
       // The coupon may have been rejected by the server: reflect that.
       if (state.cab.appliedCoupon && data.quote && data.quote.coupon && !data.quote.coupon.applied) {
@@ -2033,6 +2034,29 @@ function updateRouteRecapTexts() {
   if (recapFleet) recapFleet.textContent = `${fleetData.name} (${fleetData.models.split(',')[0]})`;
   const recapRouteMini = document.getElementById('recap-route-mini');
   if (recapRouteMini) recapRouteMini.textContent = `${fromName} → ${toName}`;
+  if (typeof syncBeyondRegionNoticeUi === 'function') syncBeyondRegionNoticeUi();
+}
+
+function syncBeyondRegionNoticeUi() {
+  const route = state.cab.serverQuote && state.cab.serverQuote.route;
+  const isBeyond = Boolean(route && route.beyond_region);
+  const note = (route && route.region_note)
+    || 'This route is outside our core regional service area. Distance and estimated fare were calculated via API fallback; ride confirmation and vehicle availability are not guaranteed.';
+
+  const b2 = document.getElementById('step2-beyond-region-banner');
+  const b2Text = document.getElementById('step2-beyond-region-text');
+  if (b2) b2.style.display = isBeyond ? 'block' : 'none';
+  if (b2Text && isBeyond) b2Text.textContent = note;
+
+  const b3 = document.getElementById('step3-beyond-region-banner');
+  const b3Text = document.getElementById('step3-beyond-region-text');
+  if (b3) b3.style.display = isBeyond ? 'block' : 'none';
+  if (b3Text && isBeyond) b3Text.textContent = note;
+
+  const btnLabel = document.getElementById('book-cab-confirm-btn-label');
+  if (btnLabel) {
+    btnLabel.textContent = isBeyond ? 'SUBMIT UNCONFIRMED REQUEST (OUT OF REGION)' : 'CONFIRM & BOOK CAB';
+  }
 }
 
 // ==========================================
@@ -2285,7 +2309,11 @@ function finalizeCabBookingUi(b, fromCityName, toCityName, customerName) {
   };
 
   state.bookings.unshift(localBooking);
-  showToast(`🎉 Booking confirmed! Reference: ${b.booking_reference}`, 'success');
+  if (b.is_beyond_region) {
+    showToast(`⚠️ Booking request saved (Beyond Service Region — NOT Confirmed / Availability Not Guaranteed). Ref: ${b.booking_reference}`, 'warning');
+  } else {
+    showToast(`🎉 Booking confirmed! Reference: ${b.booking_reference}`, 'success');
+  }
 
   const badge = document.querySelector('.nav-tab-badge.badge-primary');
   if (badge) {
@@ -5160,6 +5188,15 @@ function renderAdminBookingsTable(bookings) {
     const cabTypeBadge = cabType
       ? `<span class="admin-badge badge-secondary" style="font-size:9.5px; padding:1px 5px;" title="Cab Type">${cabType}</span>`
       : '';
+    const outOfRegionBadge = b.is_beyond_region
+      ? `<span class="admin-badge badge-warning" style="font-size:9px; padding:1px 5px;" title="Beyond service region — availability not guaranteed">OUT OF REGION</span>`
+      : '';
+    const payLabel = b.payment_status === 'pending_availability'
+      ? 'Unconfirmed / Out of Region'
+      : (b.payment_status === 'pay_on_pickup' ? 'Pay on Pickup' : 'Prepaid (Escrow)');
+    const payDotClass = b.status === 'Cancelled'
+      ? 'bg-danger'
+      : (b.payment_status === 'pending_availability' ? 'bg-warning' : 'bg-success');
     const searchStr = `${b.booking_reference} ${b.customer_name} ${b.customer_phone} ${b.route_summary} ${b.pickup_location} ${b.drop_location} ${cabType}`.toLowerCase();
 
     return `
@@ -5182,6 +5219,7 @@ function renderAdminBookingsTable(bookings) {
               ${(b.service_type || 'CAB').toUpperCase()}
             </span>
             ${cabTypeBadge}
+            ${outOfRegionBadge}
             <span class="cell-primary-text">${b.route_summary || ''}</span>
           </div>
           <div class="cell-subtext truncate-subtext" title="${b.pickup_location || ''} → ${b.drop_location || ''}">
@@ -5193,8 +5231,8 @@ function renderAdminBookingsTable(bookings) {
             ₹${Number(b.total_amount).toLocaleString('en-IN')}
           </div>
           <div class="cell-subtext">
-            <span class="status-indicator-dot ${b.status === 'Cancelled' ? 'bg-danger' : 'bg-success'}"></span>
-            <span>Prepaid (Escrow)</span>
+            <span class="status-indicator-dot ${payDotClass}"></span>
+            <span>${payLabel}</span>
           </div>
         </td>
         <td id="booking-driver-cell-${b.id}">
@@ -5222,9 +5260,16 @@ function renderAdminBookingsTable(bookings) {
             <button type="button" class="btn-action-icon btn-action-invoice" onclick="openInvoiceModal(${b.id})" title="Generate Tax Invoice">
               <span class="material-symbols-outlined">receipt</span>
             </button>
-            <button type="button" class="btn-action-icon" style="background:#f0f7ff; color:#1d4ed8; border:1px solid #bfdbfe;" onclick="openBiddingForBooking(${b.id})" title="Send to driver bidding (WhatsApp & Driver Console)">
+            <button type="button" class="btn-action-icon" style="background:#f0f7ff; color:#1d4ed8; border:1px solid #bfdbfe;" onclick="openBiddingForBooking(${b.id})" title="Send to driver bidding (Configure & Preview)">
               <span class="material-symbols-outlined">gavel</span>
             </button>
+            ${b.service_type === 'cab' && b.status !== 'Completed' && b.status !== 'Cancelled' ? `
+            <button type="button" class="btn-action-icon" style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0;" onclick="copyBookingBidInvitation(${b.id}, this)" title="Copy Formatted WhatsApp Bid Invitation">
+              <span class="material-symbols-outlined">content_copy</span>
+            </button>
+            <button type="button" class="btn-action-icon" style="background:#ecfdf5; color:#047857; border:1px solid #6ee7b7;" onclick="shareBookingBidOnWhatsApp(${b.id}, this)" title="Share Bid Invitation on WhatsApp">
+              <span class="material-symbols-outlined">share</span>
+            </button>` : ''}
           </div>
         </td>
       </tr>
@@ -9437,6 +9482,114 @@ window.copyBiddingShare = async function () {
   }
 };
 
+async function copyTextToClipboardSafe(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_) {
+      // Fall through to execCommand fallback
+    }
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch (_) {
+    ok = false;
+  }
+  document.body.removeChild(ta);
+  return ok;
+}
+
+async function fetchBookingSharePackage(bookingId) {
+  const res = await fetch(`/api/admin/bookings/${bookingId}/bidding/share`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'X-CSRF-TOKEN': getAdminCsrfToken(),
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success || !data.share) {
+    throw new Error(data.message || 'Could not generate bid invitation for this booking.');
+  }
+  return data;
+}
+
+window.copyBiddingInvitationText = async function () {
+  const preview = document.getElementById('bidding-share-text');
+  const text = preview ? preview.textContent.trim() : '';
+  if (!text) return;
+  const copied = await copyTextToClipboardSafe(text);
+  showToast(copied ? '✅ Formatted WhatsApp bid invitation copied!' : 'Select and copy the invitation message below.', copied ? 'success' : 'info');
+};
+
+window.copyBookingBidInvitation = async function (bookingId, btn) {
+  const origHtml = btn ? btn.innerHTML : '';
+  if (btn) btn.disabled = true;
+  try {
+    const data = await fetchBookingSharePackage(bookingId);
+    const copied = await copyTextToClipboardSafe(data.share.text);
+    if (copied) {
+      if (btn) {
+        btn.innerHTML = '<span class="material-symbols-outlined">check</span>';
+        window.setTimeout(() => { btn.innerHTML = origHtml; }, 1800);
+      }
+      showToast('✅ Bid invitation copied! Ready to paste into WhatsApp.', 'success');
+    } else {
+      // Fallback: open share modal with message ready
+      window.biddingState.bookingId = bookingId;
+      window.biddingState.session = data.session;
+      document.getElementById('bidding-share-url').value = data.share.url;
+      document.getElementById('bidding-share-text').textContent = data.share.text;
+      document.getElementById('bidding-whatsapp-link').href = data.share.whatsapp_url;
+      document.getElementById('bidding-open-form').style.display = 'none';
+      document.getElementById('bidding-share-panel').style.display = 'block';
+      document.getElementById('admin-bidding-open-modal')?.classList.add('active');
+      showToast('Invitation generated — copy from the preview box.', 'info');
+    }
+  } catch (err) {
+    showToast(err.message || 'Could not copy bid invitation.', 'warning');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+window.shareBookingBidOnWhatsApp = async function (bookingId, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const data = await fetchBookingSharePackage(bookingId);
+    await copyTextToClipboardSafe(data.share.text);
+    const opened = window.open(data.share.whatsapp_url, '_blank', 'noopener');
+    if (!opened) {
+      // Popup blocked fallback: open the share panel with direct WhatsApp button
+      window.biddingState.bookingId = bookingId;
+      window.biddingState.session = data.session;
+      document.getElementById('bidding-share-url').value = data.share.url;
+      document.getElementById('bidding-share-text').textContent = data.share.text;
+      document.getElementById('bidding-whatsapp-link').href = data.share.whatsapp_url;
+      document.getElementById('bidding-open-form').style.display = 'none';
+      document.getElementById('bidding-share-panel').style.display = 'block';
+      document.getElementById('admin-bidding-open-modal')?.classList.add('active');
+      showToast('Copied invitation! Click "Share on WhatsApp" in the modal.', 'info');
+    } else {
+      showToast('Opening WhatsApp with formatted bid invitation…', 'success');
+    }
+  } catch (err) {
+    showToast(err.message || 'Could not open WhatsApp share.', 'warning');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
 window.copyBiddingDetailLink = async function () {
   const detail = window.biddingState.detail;
   if (!detail) return;
@@ -9901,12 +10054,16 @@ function buildTripCardHtml(booking) {
   const payTag = booking.payment_mode === 'part_pay'
     ? `${Number(booking.advance_percentage || 20)}% Adv Paid`
     : (booking.payment_mode === 'cash' ? 'Pay Driver' : (booking.payment_mode === 'full_upi' ? 'Paid UPI' : 'Prepaid'));
+  const isBeyondUnconfirmed = Boolean(booking.is_beyond_region) && (status === 'Requested' || status === 'Bidding');
 
   const driverBlock = driver
     ? `<div class="trip-tile-line" style="font-weight:700; color:#0f172a;">${tripsEscape(driver.name)} (★${tripsEscape(driver.rating)})</div>
        <div class="trip-tile-sub">${tripsEscape(driver.vehicle_model)} · <strong>${tripsEscape(driver.vehicle_plate)}</strong></div>`
-    : `<div class="trip-tile-line" style="color:${bucket === 'completed' ? '#475569' : '#92400e'}; font-weight:700;">${bucket === 'completed' ? 'Trip closed' : 'Allotment in progress'}</div>
-       <div class="trip-tile-sub">${bucket === 'completed' ? 'Completed journey' : 'Verified chauffeur assigned prior to pickup'}</div>`;
+    : (isBeyondUnconfirmed
+      ? `<div class="trip-tile-line" style="color:#b45309; font-weight:700;">Availability Not Guaranteed</div>
+         <div class="trip-tile-sub">Beyond service region — ride not confirmed until chauffeur accepts</div>`
+      : `<div class="trip-tile-line" style="color:${bucket === 'completed' ? '#475569' : '#92400e'}; font-weight:700;">${bucket === 'completed' ? 'Trip closed' : 'Allotment in progress'}</div>
+         <div class="trip-tile-sub">${bucket === 'completed' ? 'Completed journey' : 'Verified chauffeur assigned prior to pickup'}</div>`);
 
   const finalBlock = bucket === 'active'
     ? `<div class="trip-otp-tile">
@@ -9925,6 +10082,7 @@ function buildTripCardHtml(booking) {
         <div class="trip-card-badges">
           <span class="trip-ref-badge">${tripsEscape(ref)}</span>
           <span class="trip-status-pill status-${tripsEscape(statusSlug)}">${tripsEscape(status)}</span>
+          ${isBeyondUnconfirmed ? '<span class="trip-status-pill" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a;">Out of Region · Unconfirmed</span>' : ''}
           <span class="trip-service-tag">${tripsEscape(String(booking.service_type || '').toUpperCase())}</span>
           <span class="trip-new-flag">Just booked</span>
         </div>
@@ -9954,7 +10112,7 @@ function buildTripCardHtml(booking) {
     </div>
 
     <div class="trip-card-footer">
-      <span class="trip-footer-meta">${passengers ? passengers + ' passenger(s)' : 'Escrow Verified'}</span>
+      <span class="trip-footer-meta">${isBeyondUnconfirmed ? 'Pending Availability Check (Beyond Region)' : (passengers ? passengers + ' passenger(s)' : 'Escrow Verified')}</span>
       <div class="trip-card-actions">
         <button type="button" class="btn btn-xs trip-btn-secondary" onclick="copyTripReference('${tripsEscape(ref)}')">
           <span class="material-symbols-outlined" style="font-size:14px;">content_copy</span>

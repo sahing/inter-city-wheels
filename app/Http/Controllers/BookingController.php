@@ -172,7 +172,10 @@ class BookingController extends Controller
                 : $enabledModes[0]
         );
         $configuredAdvancePct = max(1.0, min(99.0, (float) ($paymentConfig['payment_advance_pct'] ?? 20)));
-        $useRazorpay = $paymentMode !== 'cash' && $this->razorpay->isReady();
+        $isBeyondRegion = ! $isBus && (bool) ($trip['beyond_region'] ?? false);
+        // Never capture upfront online payment or pre-confirm a ride whose availability
+        // outside our regional area is not guaranteed.
+        $useRazorpay = $paymentMode !== 'cash' && ! $isBeyondRegion && $this->razorpay->isReady();
 
         try {
             [$booking, $quote] = DB::transaction(function () use (
@@ -184,6 +187,7 @@ class BookingController extends Controller
                 $fleet,
                 $options,
                 $isBus,
+                $isBeyondRegion,
                 $selectedUnits,
                 $paymentMode,
                 $configuredAdvancePct,
@@ -219,13 +223,18 @@ class BookingController extends Controller
 
                 $initialPaymentStatus = $paymentMode === 'cash'
                     ? 'pay_on_pickup'
-                    : ($useRazorpay ? 'pending' : ($paymentMode === 'part_pay' ? 'partial_paid' : 'paid'));
+                    : ($isBeyondRegion
+                        ? 'pending_availability'
+                        : ($useRazorpay ? 'pending' : ($paymentMode === 'part_pay' ? 'partial_paid' : 'paid')));
 
                 $booking = $this->workflow->create([
                     'booking_reference' => $this->references->generate(),
                     'customer_user_id' => auth()->id(),
                     'service_type' => $validated['service_type'],
                     'trip_type' => $tripType,
+                    'is_beyond_region' => $isBeyondRegion,
+                    'availability_status' => $isBeyondRegion ? 'unconfirmed' : 'guaranteed',
+                    'region_note' => $trip['region_note'] ?? null,
                     'route_summary' => "{$validated['from_city']} → {$toCity}",
                     'pickup_location' => $validated['pickup_location'],
                     'drop_location' => $dropLocation,
@@ -293,7 +302,12 @@ class BookingController extends Controller
             'success' => true,
             'message' => $useRazorpay
                 ? 'Complete Razorpay payment to confirm your trip.'
-                : 'Trip booked successfully!',
+                : ($isBeyondRegion
+                    ? 'Booking request recorded (Beyond Service Region). Ride is NOT confirmed and vehicle availability is NOT guaranteed until dispatch confirms.'
+                    : 'Trip booked successfully!'),
+            'is_beyond_region' => $isBeyondRegion,
+            'availability_guaranteed' => ! $isBeyondRegion,
+            'region_note' => $booking->region_note,
             'requires_razorpay' => $useRazorpay,
             'razorpay' => $razorpayOrder ? [
                 'key' => $razorpayOrder['key_id'],
@@ -425,7 +439,7 @@ class BookingController extends Controller
 
         $confirmedBooking = DB::transaction(function () use ($booking, $validated) {
             $locked = Booking::whereKey($booking->id)->lockForUpdate()->firstOrFail();
-            $targetStatus = $locked->status === BookingWorkflow::REQUESTED
+            $targetStatus = ($locked->status === BookingWorkflow::REQUESTED && ! $locked->is_beyond_region)
                 ? BookingWorkflow::CONFIRMED
                 : (string) $locked->status;
 

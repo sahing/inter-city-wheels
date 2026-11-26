@@ -472,6 +472,34 @@ class RegionalLocationService
     }
 
     /**
+     * Pick the nearest coordinate candidate within $maxKm using Haversine distance.
+     *
+     * @param  array<int, array{name: string, state: ?string, lat: float, lng: float}>  $candidates
+     * @return array{name: string, state: ?string, lat: float, lng: float, distance_km: float}|null
+     */
+    private static function closestCandidate(float $lat, float $lng, array $candidates, float $maxKm): ?array
+    {
+        $best = null;
+        $bestKm = $maxKm;
+
+        foreach ($candidates as $candidate) {
+            $dLat = deg2rad($candidate['lat'] - $lat);
+            $dLng = deg2rad($candidate['lng'] - $lng);
+            $a = sin($dLat / 2) * sin($dLat / 2)
+                + cos(deg2rad($lat)) * cos(deg2rad($candidate['lat']))
+                * sin($dLng / 2) * sin($dLng / 2);
+            $km = 6371.0 * 2.0 * atan2(sqrt($a), sqrt(1 - $a));
+
+            if ($km <= $bestKm) {
+                $bestKm = $km;
+                $best = $candidate + ['distance_km' => round($km, 1)];
+            }
+        }
+
+        return $best;
+    }
+
+    /**
      * Find the closest active ServiceLocation or curated regional city within $maxKm.
      *
      * @return array{name: string, state: ?string, lat: float, lng: float, distance_km: float}|null
@@ -500,23 +528,69 @@ class RegionalLocationService
             ];
         }
 
-        $best = null;
-        $bestKm = $maxKm;
+        return self::closestCandidate($lat, $lng, $candidates, $maxKm);
+    }
 
-        foreach ($candidates as $candidate) {
-            $dLat = deg2rad($candidate['lat'] - $lat);
-            $dLng = deg2rad($candidate['lng'] - $lng);
-            $a = sin($dLat / 2) * sin($dLat / 2)
-                + cos(deg2rad($lat)) * cos(deg2rad($candidate['lat']))
-                * sin($dLng / 2) * sin($dLng / 2);
-            $km = 6371.0 * 2.0 * atan2(sqrt($a), sqrt(1 - $a));
+    /**
+     * Find the closest active ServiceLocation hub within $maxKm.
+     *
+     * Falls back to the curated regional catalogue only when no active
+     * ServiceLocation records exist in the database.
+     *
+     * @return array{name: string, state: ?string, lat: float, lng: float, distance_km: float}|null
+     */
+    public static function nearestActiveHub(float $lat, float $lng, float $maxKm = 150.0): ?array
+    {
+        $activeHubs = ServiceLocation::where('is_active', true)
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->get();
 
-            if ($km <= $bestKm) {
-                $bestKm = $km;
-                $best = $candidate + ['distance_km' => round($km, 1)];
+        $candidates = [];
+        foreach ($activeHubs as $loc) {
+            $candidates[] = [
+                'name' => $loc->name,
+                'state' => $loc->state,
+                'lat' => (float) $loc->latitude,
+                'lng' => (float) $loc->longitude,
+            ];
+        }
+
+        if ($candidates === []) {
+            foreach (self::$regionalCatalog as $item) {
+                $candidates[] = [
+                    'name' => $item['name'],
+                    'state' => $item['state'],
+                    'lat' => (float) $item['lat'],
+                    'lng' => (float) $item['lng'],
+                ];
             }
         }
 
-        return $best;
+        return self::closestCandidate($lat, $lng, $candidates, $maxKm);
+    }
+
+    /**
+     * Determine whether an endpoint (by city name and/or coordinates) falls within
+     * the operational service region around active hubs.
+     */
+    public static function isWithinServiceRegion(
+        ?float $lat,
+        ?float $lng,
+        ?string $cityName = null,
+        float $maxKm = 150.0
+    ): bool {
+        if ($lat !== null && $lng !== null) {
+            return self::nearestActiveHub($lat, $lng, $maxKm) !== null;
+        }
+
+        if ($cityName !== null && trim($cityName) !== '') {
+            $resolved = self::resolveCoordinatesStrict($cityName);
+            if ($resolved !== null) {
+                return self::nearestActiveHub((float) $resolved['lat'], (float) $resolved['lng'], $maxKm) !== null;
+            }
+        }
+
+        return false;
     }
 }
