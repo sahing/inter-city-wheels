@@ -7,6 +7,7 @@ use App\Models\AirportHub;
 use App\Models\CarType;
 use App\Models\Coupon;
 use App\Models\LocalPackage;
+use App\Models\PlatformSetting;
 use App\Models\RouteFare;
 use App\Models\SeatLayout;
 use Illuminate\Support\Collection;
@@ -56,9 +57,6 @@ class FareCalculatorService
 
     /** Airport trips that cannot be measured fall back to this toll. */
     public const AIRPORT_TOLL = 120.0;
-
-    /** Reference rate used to scale local/airport package fares across fleets. */
-    private const SUV_REFERENCE_RATE = 18.0;
 
     /** OpenStreetMap access (Nominatim geocoding, OSRM distances). */
     private readonly OsmGeoService $osm;
@@ -223,13 +221,14 @@ class FareCalculatorService
                 }
         }
 
-        $addonFare = 0.0;
-        $appliedAddons = [];
-        foreach (self::ADDONS as $key => $amount) {
-            if (! empty($options[$key])) {
-                $addonFare += $amount;
-                $appliedAddons[$key] = $amount;
-                $lineItems[] = ['label' => $this->addonLabel($key), 'amount' => $amount];
+        [$addonFare, $appliedAddons] = $this->computeAddons($options, $lineItems);
+
+        if (in_array($trip['trip_type'], ['oneway', 'roundtrip'], true)) {
+            $driverAllowance = (float) ($this->pricingConditions()['driver_day_allowance'] ?? 0);
+            if ($driverAllowance > 0) {
+                $addonFare += $driverAllowance;
+                $appliedAddons['driver_day_allowance'] = $driverAllowance;
+                $lineItems[] = ['label' => 'Driver day allowance', 'amount' => $driverAllowance];
             }
         }
 
@@ -298,14 +297,8 @@ class FareCalculatorService
     {
         $baseFare = (float) $berths->sum('price');
 
-        $addonFare = 0.0;
-        $appliedAddons = [];
-        foreach (self::ADDONS as $key => $amount) {
-            if (! empty($options[$key])) {
-                $addonFare += $amount;
-                $appliedAddons[$key] = $amount;
-            }
-        }
+        $lineItems = [];
+        [$addonFare, $appliedAddons] = $this->computeAddons($options, $lineItems);
 
         $subtotal = $baseFare + $addonFare;
         $coupon = $this->resolveCoupon($options['coupon_code'] ?? null, $subtotal);
@@ -458,7 +451,7 @@ class FareCalculatorService
     public function fleetCatalogue(): Collection
     {
         $active = CarType::where('is_active', true)->orderBy('order_index')->get();
-        $configured = $active->pluck('category_key')
+        $configured = CarType::pluck('category_key')
             ->map(fn ($key) => strtolower((string) $key))
             ->all();
 
@@ -475,9 +468,8 @@ class FareCalculatorService
             })
             ->values();
 
-        // Always return the full set the storefront renders: a category that is
-        // missing from `car_types` must still be priced by the server (with the
-        // built-in rate) instead of being the one card the browser computes.
+        // Always return active categories plus any built-in defaults not yet
+        // configured in `car_types`, while keeping explicitly deactivated rows off.
         return $active->concat($defaults)->values();
     }
 
@@ -486,7 +478,60 @@ class FareCalculatorService
      */
     public function addonRates(): array
     {
-        return self::ADDONS;
+        $settings = PlatformSetting::pricingSettings();
+
+        return [
+            'pet_friendly' => (float) $settings['addon_pet_friendly_rate'],
+            'night_allowance' => (float) $settings['addon_night_allowance_rate'],
+            'luggage_carrier' => (float) $settings['addon_luggage_carrier_rate'],
+        ];
+    }
+
+    /**
+     * Pricing conditions (night stay hours, roundtrip min km/day, waiting & cancellation rules).
+     *
+     * @return array<string, mixed>
+     */
+    public function pricingConditions(): array
+    {
+        $settings = PlatformSetting::pricingSettings();
+
+        return [
+            'night_stay_rate' => (float) $settings['addon_night_allowance_rate'],
+            'night_stay_start_hour' => $settings['night_stay_start_hour'],
+            'night_stay_end_hour' => $settings['night_stay_end_hour'],
+            'pet_friendly_rate' => (float) $settings['addon_pet_friendly_rate'],
+            'luggage_carrier_rate' => (float) $settings['addon_luggage_carrier_rate'],
+            'roundtrip_min_km_per_day' => (int) $settings['roundtrip_min_km_per_day'],
+            'driver_day_allowance' => (float) $settings['driver_day_allowance'],
+            'free_waiting_minutes' => (int) $settings['free_waiting_minutes'],
+            'waiting_charge_per_hour' => (float) $settings['waiting_charge_per_hour'],
+            'free_cancellation_hours' => (int) $settings['free_cancellation_hours'],
+            'other_booking_conditions' => $settings['other_booking_conditions'],
+        ];
+    }
+
+    /**
+     * Compute active optional add-on charges using persisted rates.
+     *
+     * @param  array<string, mixed>  $options
+     * @param  array<int, array<string, mixed>>  $lineItems
+     * @return array{0: float, 1: array<string, float>}
+     */
+    private function computeAddons(array $options, array &$lineItems): array
+    {
+        $addonFare = 0.0;
+        $appliedAddons = [];
+
+        foreach ($this->addonRates() as $key => $amount) {
+            if (! empty($options[$key])) {
+                $addonFare += $amount;
+                $appliedAddons[$key] = $amount;
+                $lineItems[] = ['label' => $this->addonLabel($key), 'amount' => $amount];
+            }
+        }
+
+        return [$addonFare, $appliedAddons];
     }
 
     public function resolveRoute(string $from, string $to): ?RouteFare
@@ -641,9 +686,10 @@ class FareCalculatorService
         }
 
         // Scale the SUV package price by the fleet's relative per-km rate.
-        $scaled = $suv * ($rate / self::SUV_REFERENCE_RATE);
+        $suvRefRate = max(1.0, $this->rateForFleet('suv'));
+        $scaled = $suv * ($rate / $suvRefRate);
 
-        return round(max($scaled, $sedan));
+        return round(max(0.0, $scaled));
     }
 
     private function airportFare(array $trip, string $fleet, float $rate): float
@@ -659,14 +705,22 @@ class FareCalculatorService
                 ? (float) $hub->drop_surcharge
                 : (float) $hub->pickup_surcharge;
 
-            $base = match ($fleet) {
-                'sedan', 'prime' => (float) $hub->sedan_base_fare,
-                'suv' => (float) $hub->suv_base_fare,
-                default => (float) $hub->suv_base_fare * ($rate / self::SUV_REFERENCE_RATE),
-            };
+            $suvRefRate = max(1.0, $this->rateForFleet('suv'));
 
-            if ($fleet === 'prime') {
-                $base = $base * 1.15;
+            if ($fleet === 'sedan') {
+                $base = (float) $hub->sedan_base_fare;
+            } elseif ($fleet === 'suv') {
+                $base = (float) $hub->suv_base_fare;
+            } elseif ($fleet === 'prime') {
+                $primeRow = CarType::where('category_key', 'prime')->first();
+                if ($primeRow && (float) $primeRow->rate_per_km > 0) {
+                    $sedanRef = max(1.0, $this->rateForFleet('sedan'));
+                    $base = (float) $hub->sedan_base_fare * ((float) $primeRow->rate_per_km / $sedanRef);
+                } else {
+                    $base = (float) $hub->sedan_base_fare * 1.15;
+                }
+            } else {
+                $base = (float) $hub->suv_base_fare * ($rate / $suvRefRate);
             }
 
             return round($base + $surcharge);

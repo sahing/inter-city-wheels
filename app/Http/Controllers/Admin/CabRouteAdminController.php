@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\RouteFare;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class CabRouteAdminController extends Controller
 {
@@ -175,6 +176,97 @@ class CabRouteAdminController extends Controller
             'success' => true,
             'message' => 'Route status updated to '.($route->is_active ? 'Active' : 'Inactive'),
             'route' => $route,
+        ]);
+    }
+
+    /**
+     * Bulk update outstation cab route tolls, roundtrip discounts, or fixed car fare overrides.
+     */
+    public function bulkAdjust(Request $request)
+    {
+        $validated = $request->validate([
+            'action' => 'required|string|in:use_car_type_rates,set_roundtrip_discount,percent_adjust,inline_save',
+            'roundtrip_discount_pct' => 'nullable|numeric|min:0|max:100',
+            'percent' => 'nullable|numeric|min:-90|max:500',
+            'routes' => 'nullable|array',
+            'routes.*.id' => 'required_with:routes|integer|exists:route_fares,id',
+            'routes.*.base_toll' => 'nullable|numeric|min:0',
+            'routes.*.roundtrip_discount_pct' => 'nullable|numeric|min:0|max:100',
+            'routes.*.hatchback_fare' => 'nullable|numeric|min:0',
+            'routes.*.sedan_fare' => 'nullable|numeric|min:0',
+            'routes.*.suv_fare' => 'nullable|numeric|min:0',
+            'routes.*.innova_fare' => 'nullable|numeric|min:0',
+            'routes.*.tempo_fare' => 'nullable|numeric|min:0',
+            'routes.*.luxury_fare' => 'nullable|numeric|min:0',
+        ]);
+
+        $fareCols = ['hatchback_fare', 'sedan_fare', 'suv_fare', 'innova_fare', 'tempo_fare', 'luxury_fare'];
+        $action = $validated['action'];
+
+        $message = DB::transaction(function () use ($action, $validated, $fareCols) {
+            if ($action === 'use_car_type_rates') {
+                $nulls = array_fill_keys($fareCols, null);
+                $nulls['car_fares'] = null;
+                $affected = RouteFare::query()->update($nulls);
+
+                return "Cleared custom route fare overrides across {$affected} route(s); live Car Type per-km rates now apply.";
+            }
+
+            if ($action === 'set_roundtrip_discount') {
+                $pct = (float) ($validated['roundtrip_discount_pct'] ?? 0);
+                $affected = RouteFare::query()->update(['roundtrip_discount_pct' => $pct]);
+
+                return "Set round-trip return discount to {$pct}% across {$affected} route(s).";
+            }
+
+            if ($action === 'percent_adjust') {
+                $pct = (float) ($validated['percent'] ?? 0);
+                $multiplier = 1 + ($pct / 100);
+                $routes = RouteFare::all();
+                $updated = 0;
+
+                foreach ($routes as $route) {
+                    $dirty = false;
+                    foreach ($fareCols as $col) {
+                        if ($route->{$col} !== null && (float) $route->{$col} > 0) {
+                            $route->{$col} = round((float) $route->{$col} * $multiplier);
+                            $dirty = true;
+                        }
+                    }
+                    if ($dirty) {
+                        $route->save();
+                        $updated++;
+                    }
+                }
+
+                return "Adjusted custom fixed fares by {$pct}% on {$updated} route(s).";
+            }
+
+            // inline_save
+            $rows = $validated['routes'] ?? [];
+            foreach ($rows as $row) {
+                $route = RouteFare::findOrFail($row['id']);
+                if (array_key_exists('base_toll', $row) && $row['base_toll'] !== null) {
+                    $route->base_toll = (float) $row['base_toll'];
+                }
+                if (array_key_exists('roundtrip_discount_pct', $row) && $row['roundtrip_discount_pct'] !== null) {
+                    $route->roundtrip_discount_pct = (float) $row['roundtrip_discount_pct'];
+                }
+                foreach ($fareCols as $col) {
+                    if (array_key_exists($col, $row)) {
+                        $route->{$col} = ($row[$col] === null || $row[$col] === '') ? null : (float) $row[$col];
+                    }
+                }
+                $route->save();
+            }
+
+            return 'Saved inline changes for '.count($rows).' route(s).';
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'routes' => RouteFare::latest()->get(),
         ]);
     }
 

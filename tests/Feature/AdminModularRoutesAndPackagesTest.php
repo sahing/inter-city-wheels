@@ -37,10 +37,15 @@ class AdminModularRoutesAndPackagesTest extends TestCase
         $response->assertStatus(200);
 
         // Modular tabs
-        $response->assertSee('Outstation Highway Routes', false);
+        $response->assertSee('One-Way (Outstation Highway Routes)', false);
+        $response->assertSee('Round-Trip Outstation', false);
         $response->assertSee('Local Hourly Packages', false);
         $response->assertSee('Airport Transit Hubs', false);
         $response->assertSee('Fare Rules & Policy Matrix', false);
+        $response->assertSee('id="admin-bt-panel-oneway"', false);
+        $response->assertSee('id="admin-bt-panel-roundtrip"', false);
+        $response->assertDontSee('id="admin-bt-panel-car-types"', false);
+        $response->assertDontSee('data-tab="car-types"', false);
 
         // Modals
         $response->assertSee('id="admin-cab-route-modal"', false);

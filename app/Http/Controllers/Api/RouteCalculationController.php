@@ -97,6 +97,7 @@ class RouteCalculationController extends Controller
             'fleet_estimates' => $fleetEstimates,
             'itemized_breakdown' => $itemized,
             'addons' => $this->fares->addonRates(),
+            'conditions' => $this->fares->pricingConditions(),
         ];
 
         // Optional full itemisation for one fleet, including add-ons and coupon.

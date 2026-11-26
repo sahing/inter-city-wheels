@@ -8,6 +8,19 @@
         'driver' => 'bidding',
         default => 'cabs'
     };
+    $ps = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
+    $petRate = (float) ($ps['addon_pet_friendly_rate'] ?? 350);
+    $nightRate = (float) ($ps['addon_night_allowance_rate'] ?? 400);
+    $luggageRate = (float) ($ps['addon_luggage_carrier_rate'] ?? 200);
+    $nightStartRaw = $ps['night_stay_start_hour'] ?? '23:00';
+    $nightEndRaw = $ps['night_stay_end_hour'] ?? '06:00';
+    $nightWindowLabel = date('g:i A', strtotime($nightStartRaw)) . ' – ' . date('g:i A', strtotime($nightEndRaw));
+    $rtMinKm = (int) ($ps['roundtrip_min_km_per_day'] ?? 250);
+    $driverAllowanceRate = (float) ($ps['driver_day_allowance'] ?? 0);
+    $freeWaitMins = (int) ($ps['free_waiting_minutes'] ?? 45);
+    $waitHrRate = (float) ($ps['waiting_charge_per_hour'] ?? 150);
+    $freeCancelHrs = (int) ($ps['free_cancellation_hours'] ?? 1);
+    $otherCondText = $ps['other_booking_conditions'] ?? '';
 @endphp
 <main id="app-viewport" class="app-viewport" style="width:100%; max-width:100%; margin:0; padding:0;">
 
@@ -648,22 +661,31 @@
                                         <input type="checkbox" id="addon-pet" onchange="updateTotalCabFare()">
                                         <span>Pet Sanitized Cab</span>
                                     </div>
-                                    <span class="addon-price">+₹350</span>
+                                    <span class="addon-price" id="addon-price-pet">+₹{{ number_format($petRate) }}</span>
                                 </label>
                                 <label class="addon-item">
                                     <div class="addon-label">
                                         <input type="checkbox" id="addon-night" onchange="updateTotalCabFare()">
-                                        <span>Chauffeur Night Stay</span>
+                                        <span>Chauffeur Night Stay <small id="addon-night-hours-label" style="color:#64748b; font-weight:500;">({{ $nightWindowLabel }})</small></span>
                                     </div>
-                                    <span class="addon-price">+₹400</span>
+                                    <span class="addon-price" id="addon-price-night">+₹{{ number_format($nightRate) }}</span>
                                 </label>
                                 <label class="addon-item">
                                     <div class="addon-label">
                                         <input type="checkbox" id="addon-luggage" onchange="updateTotalCabFare()">
                                         <span>Rooftop Luggage Carrier</span>
                                     </div>
-                                    <span class="addon-price">+₹200</span>
+                                    <span class="addon-price" id="addon-price-luggage">+₹{{ number_format($luggageRate) }}</span>
                                 </label>
+                            </div>
+                            <div id="cab-fare-conditions-note" style="margin-top:10px; padding:8px 10px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0; font-size:11.5px; color:#475569; line-height:1.45;">
+                                <strong>Fare Conditions:</strong>
+                                <span>Round-trip min {{ $rtMinKm }} km/day</span> &bull;
+                                <span>{{ $freeWaitMins }} min free wait (₹{{ number_format($waitHrRate) }}/hr extra)</span> &bull;
+                                <span>Free cancel {{ $freeCancelHrs }}h prior</span>
+                                @if(!empty($otherCondText))
+                                    <div style="margin-top:2px; color:#64748b;">{{ $otherCondText }}</div>
+                                @endif
                             </div>
                         </div>
 
@@ -2338,97 +2360,303 @@
 
                         <!-- 4. FARES & SURCHARGES -->
                         <div class="admin-section" id="admin-sec-pricing">
-                            <div class="admin-card-grid-split">
-                                <div class="card">
-                                    <div class="card-header">
-                                        <div>
-                                            <h3 class="card-title">
-                                                <span class="material-symbols-outlined" style="color:var(--gold); font-size:18px;">currency_rupee</span>
-                                                <span>Fee & Surcharge Configuration</span>
-                                            </h3>
-                                            <p class="card-subtitle">Live addon rates added during checkout</p>
-                                        </div>
+                            <div class="card" style="margin-bottom:20px;">
+                                <div class="card-header" style="flex-wrap:wrap; gap:12px;">
+                                    <div>
+                                        <h3 class="card-title">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">tune</span>
+                                            <span>Bulk Rates, Night Stay & Fare Conditions Manager</span>
+                                        </h3>
+                                        <p class="card-subtitle">Set per-km car type rates, night stay rates & hours, local package hours, and fare conditions in one clean view</p>
                                     </div>
-
-                                    <div style="display:flex; flex-direction:column; gap:14px;">
-                                        <div class="form-group" style="margin:0;">
-                                            <label class="form-label" for="rule-pet-charge">Pet Sanitization & Carrier Fee (₹)</label>
-                                            <div class="input-with-icon">
-                                                <span class="material-symbols-outlined">pets</span>
-                                                <input type="number" id="rule-pet-charge" class="form-control" value="350">
-                                            </div>
-                                        </div>
-
-                                        <div class="form-group" style="margin:0;">
-                                            <label class="form-label" for="rule-night-charge">Night Halt Allowance (11 PM - 6 AM) (₹)</label>
-                                            <div class="input-with-icon">
-                                                <span class="material-symbols-outlined">bedtime</span>
-                                                <input type="number" id="rule-night-charge" class="form-control" value="400">
-                                            </div>
-                                        </div>
-
-                                        <div class="form-group" style="margin:0;">
-                                            <label class="form-label" for="rule-luggage-charge">Top Roof Luggage Carrier Fee (₹)</label>
-                                            <div class="input-with-icon">
-                                                <span class="material-symbols-outlined">luggage</span>
-                                                <input type="number" id="rule-luggage-charge" class="form-control" value="200">
-                                            </div>
-                                        </div>
-
-                                        <button type="button" id="save-pricing-rules-btn" class="btn btn-gold btn-block" style="margin-top:8px;">
-                                            <span class="material-symbols-outlined">save</span>
-                                            <span>Save Surcharge Rules</span>
-                                        </button>
+                                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                        <span class="admin-badge badge-primary" style="font-size:11px; padding:4px 8px;">{{ count($allCarTypes ?? []) }} Car Types</span>
+                                        <span class="admin-badge badge-gold" style="font-size:11px; padding:4px 8px;" id="pricing-night-summary-pill">Night: ₹{{ number_format($nightRate) }} ({{ $nightWindowLabel }})</span>
+                                        <span class="admin-badge badge-success" style="font-size:11px; padding:4px 8px;">{{ count($localPackages ?? []) }} Local Pkgs</span>
                                     </div>
                                 </div>
 
-                                <!-- Base Distance Rates -->
-                                <div class="card">
-                                    <div class="card-header">
-                                        <div>
-                                            <h3 class="card-title">
-                                                <span class="material-symbols-outlined" style="color:var(--primary); font-size:18px;">local_shipping</span>
-                                                <span>Fleet Base Distance Rates</span>
-                                            </h3>
-                                            <p class="card-subtitle">Per kilometer rate rules by fleet category</p>
+                                <!-- Sub-Nav Tabs -->
+                                <div class="admin-sub-tabs-bar">
+                                    <button type="button" class="admin-sub-tab-btn active admin-pricing-tab-btn" data-tab="car-rates" onclick="switchPricingSubTab('car-rates')">
+                                        <span class="material-symbols-outlined" style="font-size:16px;">directions_car</span>
+                                        <span>Car Type Per-KM Rates (Bulk)</span>
+                                    </button>
+                                    <button type="button" class="admin-sub-tab-btn admin-pricing-tab-btn" data-tab="conditions" onclick="switchPricingSubTab('conditions')">
+                                        <span class="material-symbols-outlined" style="font-size:16px;">bedtime</span>
+                                        <span>Night Stay, Hours & Conditions</span>
+                                    </button>
+                                    <button type="button" class="admin-sub-tab-btn admin-pricing-tab-btn" data-tab="local-rates" onclick="switchPricingSubTab('local-rates')">
+                                        <span class="material-symbols-outlined" style="font-size:16px;">schedule</span>
+                                        <span>Local Packages (Hours & Rates)</span>
+                                    </button>
+                                    <button type="button" class="admin-sub-tab-btn admin-pricing-tab-btn" data-tab="route-rates" onclick="switchPricingSubTab('route-rates')">
+                                        <span class="material-symbols-outlined" style="font-size:16px;">alt_route</span>
+                                        <span>Outstation Route Bulk Adjust</span>
+                                    </button>
+                                </div>
+
+                                <!-- PANEL 1: BULK CAR TYPE PER-KM RATES -->
+                                <div class="admin-pricing-tab-panel" id="admin-pricing-panel-car-rates" style="display:block;">
+                                    <div class="admin-bookings-toolbar" style="padding:12px 18px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:space-between;">
+                                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                            <span style="font-size:12px; font-weight:700; color:#334155;">Quick Adjust All:</span>
+                                            <button type="button" class="btn btn-xs btn-outline" onclick="applyCarTypeBulkPercent(5)" title="Increase all per-km rates by 5%">+5%</button>
+                                            <button type="button" class="btn btn-xs btn-outline" onclick="applyCarTypeBulkPercent(10)" title="Increase all per-km rates by 10%">+10%</button>
+                                            <button type="button" class="btn btn-xs btn-outline" onclick="applyCarTypeBulkPercent(-5)" title="Decrease all per-km rates by 5%">-5%</button>
+                                            <button type="button" class="btn btn-xs btn-outline" onclick="applyCarTypeFlatDelta(1)" title="Add ₹1/km to all">+₹1/km</button>
+                                            <button type="button" class="btn btn-xs btn-outline" onclick="syncCarTypeExtraKm()" title="Match Extra KM rate to Rate/KM">Sync Extra KM = Rate/KM</button>
+                                        </div>
+                                        <button type="button" id="bulk-save-car-rates-btn" class="btn btn-sm btn-primary" onclick="bulkSaveCarTypeRates()">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">save</span>
+                                            <span>Save All Car Type Rates</span>
+                                        </button>
+                                    </div>
+
+                                    <div class="table-responsive">
+                                        <table class="admin-table-compact" id="admin-bulk-car-rates-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Car Type & Key</th>
+                                                    <th>Rate / KM (₹)</th>
+                                                    <th>Extra KM Rate (₹)</th>
+                                                    <th>Min Base Fare (₹)</th>
+                                                    <th style="text-align:center;">Active</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="admin-bulk-car-rates-tbody">
+                                                @forelse($allCarTypes ?? [] as $ct)
+                                                <tr data-car-type-id="{{ $ct->id }}">
+                                                    <td>
+                                                        <div style="font-weight:700; color:#0f172a;">{{ $ct->name }}</div>
+                                                        <div style="font-size:11px; color:#64748b;">key: <code>{{ $ct->category_key }}</code> &bull; {{ $ct->seats }}</div>
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" step="0.5" min="1" class="form-control bulk-ct-rate-km" value="{{ $ct->rate_per_km }}" style="max-width:120px; height:34px; font-weight:700;">
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" step="0.5" min="0" class="form-control bulk-ct-extra-km" value="{{ $ct->extra_km_rate }}" style="max-width:120px; height:34px;">
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" step="50" min="0" class="form-control bulk-ct-min-fare" value="{{ $ct->base_fare_min }}" style="max-width:130px; height:34px;">
+                                                    </td>
+                                                    <td style="text-align:center;">
+                                                        <input type="checkbox" class="bulk-ct-active" {{ $ct->is_active ? 'checked' : '' }}>
+                                                    </td>
+                                                </tr>
+                                                @empty
+                                                <tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">No car types configured yet.</td></tr>
+                                                @endforelse
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <!-- PANEL 2: NIGHT STAY, HOURS & BOOKING CONDITIONS -->
+                                <div class="admin-pricing-tab-panel" id="admin-pricing-panel-conditions" style="display:none; padding:18px 20px;">
+                                    <div class="admin-card-grid-split">
+                                        <!-- Left: Night Stay & Surcharges -->
+                                        <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:18px;">
+                                            <h4 style="font-size:14.5px; font-weight:800; color:#0f172a; margin:0 0 4px; display:flex; align-items:center; gap:6px;">
+                                                <span class="material-symbols-outlined" style="color:var(--gold); font-size:18px;">bedtime</span>
+                                                <span>Night Stay Rate, Hours & Add-ons</span>
+                                            </h4>
+                                            <p style="font-size:12px; color:#64748b; margin:0 0 14px;">Saved directly to the server and applied to every live quote & booking.</p>
+
+                                            <div style="display:flex; flex-direction:column; gap:12px;">
+                                                <div class="form-group" style="margin:0;">
+                                                    <label class="form-label" for="rule-night-charge">Night Stay / Halt Allowance Rate (₹)</label>
+                                                    <div class="input-with-icon">
+                                                        <span class="material-symbols-outlined">bedtime</span>
+                                                        <input type="number" id="rule-night-charge" class="form-control" min="0" step="10" value="{{ $nightRate }}">
+                                                    </div>
+                                                </div>
+
+                                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                                    <div class="form-group" style="margin:0;">
+                                                        <label class="form-label" for="rule-night-start">Night Hours Start</label>
+                                                        <input type="time" id="rule-night-start" class="form-control" value="{{ $nightStartRaw }}">
+                                                    </div>
+                                                    <div class="form-group" style="margin:0;">
+                                                        <label class="form-label" for="rule-night-end">Night Hours End</label>
+                                                        <input type="time" id="rule-night-end" class="form-control" value="{{ $nightEndRaw }}">
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group" style="margin:0;">
+                                                    <label class="form-label" for="rule-pet-charge">Pet Sanitization & Carrier Fee (₹)</label>
+                                                    <div class="input-with-icon">
+                                                        <span class="material-symbols-outlined">pets</span>
+                                                        <input type="number" id="rule-pet-charge" class="form-control" min="0" step="10" value="{{ $petRate }}">
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group" style="margin:0;">
+                                                    <label class="form-label" for="rule-luggage-charge">Top Roof Luggage Carrier Fee (₹)</label>
+                                                    <div class="input-with-icon">
+                                                        <span class="material-symbols-outlined">luggage</span>
+                                                        <input type="number" id="rule-luggage-charge" class="form-control" min="0" step="10" value="{{ $luggageRate }}">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Right: Hours, Min KM & Other Conditions -->
+                                        <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:18px;">
+                                            <h4 style="font-size:14.5px; font-weight:800; color:#0f172a; margin:0 0 4px; display:flex; align-items:center; gap:6px;">
+                                                <span class="material-symbols-outlined" style="color:var(--primary); font-size:18px;">gavel</span>
+                                                <span>Hours, Minimum Billing & Other Conditions</span>
+                                            </h4>
+                                            <p style="font-size:12px; color:#64748b; margin:0 0 14px;">Standard rules shown on trip summary and policy matrix.</p>
+
+                                            <div style="display:flex; flex-direction:column; gap:12px;">
+                                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                                    <div class="form-group" style="margin:0;">
+                                                        <label class="form-label" for="rule-rt-min-km">Round-Trip Min KM / Day</label>
+                                                        <input type="number" id="rule-rt-min-km" class="form-control" min="0" max="2000" value="{{ $rtMinKm }}">
+                                                    </div>
+                                                    <div class="form-group" style="margin:0;">
+                                                        <label class="form-label" for="rule-driver-allowance">Driver Day Allowance (₹)</label>
+                                                        <input type="number" id="rule-driver-allowance" class="form-control" min="0" step="10" value="{{ $driverAllowanceRate }}" title="0 = Included in per-km rate">
+                                                    </div>
+                                                </div>
+
+                                                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+                                                    <div class="form-group" style="margin:0;">
+                                                        <label class="form-label" for="rule-waiting-grace">Free Wait (Mins)</label>
+                                                        <input type="number" id="rule-waiting-grace" class="form-control" min="0" max="480" value="{{ $freeWaitMins }}">
+                                                    </div>
+                                                    <div class="form-group" style="margin:0;">
+                                                        <label class="form-label" for="rule-waiting-hour-rate">Extra Hr Wait (₹)</label>
+                                                        <input type="number" id="rule-waiting-hour-rate" class="form-control" min="0" step="10" value="{{ $waitHrRate }}">
+                                                    </div>
+                                                    <div class="form-group" style="margin:0;">
+                                                        <label class="form-label" for="rule-free-cancel-hours">Free Cancel (Hrs)</label>
+                                                        <input type="number" id="rule-free-cancel-hours" class="form-control" min="0" max="168" value="{{ $freeCancelHrs }}">
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group" style="margin:0;">
+                                                    <label class="form-label" for="rule-other-conditions">Other Booking Conditions / Notes</label>
+                                                    <textarea id="rule-other-conditions" class="form-control" rows="2" placeholder="e.g. Tolls, state taxes & parking as applicable.">{{ $otherCondText }}</textarea>
+                                                </div>
+
+                                                <button type="button" id="save-pricing-rules-btn" class="btn btn-gold btn-block" onclick="savePricingConditions()" style="margin-top:4px;">
+                                                    <span class="material-symbols-outlined">save</span>
+                                                    <span>Save Night Stay, Hours & Conditions</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- PANEL 3: LOCAL PACKAGES BULK HOURS & RATES -->
+                                <div class="admin-pricing-tab-panel" id="admin-pricing-panel-local-rates" style="display:none;">
+                                    <div class="admin-bookings-toolbar" style="padding:12px 18px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:space-between;">
+                                        <span style="font-size:12px; color:#475569;">Edit local rental hours, included KMs, package fares, and extra hour/km overrun rates together.</span>
+                                        <button type="button" id="bulk-save-local-packages-btn" class="btn btn-sm btn-primary" onclick="bulkSaveLocalPackages()">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">save</span>
+                                            <span>Save All Local Packages</span>
+                                        </button>
+                                    </div>
+
+                                    <div class="table-responsive">
+                                        <table class="admin-table-compact" id="admin-bulk-local-packages-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Package</th>
+                                                    <th>Hours</th>
+                                                    <th>Included KM</th>
+                                                    <th>Sedan Fare (₹)</th>
+                                                    <th>SUV Fare (₹)</th>
+                                                    <th>Extra KM (₹/km)</th>
+                                                    <th>Extra Hour (₹/hr)</th>
+                                                    <th style="text-align:center;">Active</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="admin-bulk-local-packages-tbody">
+                                                @forelse($localPackages ?? [] as $lp)
+                                                <tr data-package-id="{{ $lp->id }}">
+                                                    <td>
+                                                        <div style="font-weight:700; color:#0f172a;">{{ $lp->name }}</div>
+                                                        <div style="font-size:11px; color:#64748b;"><code>{{ $lp->package_code }}</code> &bull; {{ $lp->city }}</div>
+                                                    </td>
+                                                    <td><input type="number" min="1" class="form-control bulk-lp-hours" value="{{ $lp->duration_hours }}" style="max-width:80px; height:34px;"></td>
+                                                    <td><input type="number" min="1" class="form-control bulk-lp-km" value="{{ $lp->included_km }}" style="max-width:90px; height:34px;"></td>
+                                                    <td><input type="number" min="0" step="50" class="form-control bulk-lp-sedan" value="{{ $lp->sedan_fare }}" style="max-width:105px; height:34px; font-weight:700;"></td>
+                                                    <td><input type="number" min="0" step="50" class="form-control bulk-lp-suv" value="{{ $lp->suv_fare }}" style="max-width:105px; height:34px; font-weight:700;"></td>
+                                                    <td><input type="number" min="0" step="0.5" class="form-control bulk-lp-extra-km" value="{{ $lp->extra_km_rate }}" style="max-width:95px; height:34px;"></td>
+                                                    <td><input type="number" min="0" step="10" class="form-control bulk-lp-extra-hr" value="{{ $lp->extra_hour_rate }}" style="max-width:95px; height:34px;"></td>
+                                                    <td style="text-align:center;"><input type="checkbox" class="bulk-lp-active" {{ $lp->is_active ? 'checked' : '' }}></td>
+                                                </tr>
+                                                @empty
+                                                <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">No local packages configured yet.</td></tr>
+                                                @endforelse
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <!-- PANEL 4: OUTSTATION ROUTE BULK ADJUST -->
+                                <div class="admin-pricing-tab-panel" id="admin-pricing-panel-route-rates" style="display:none; padding:18px 20px;">
+                                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin-bottom:16px;">
+                                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px;">
+                                            <div style="font-weight:700; font-size:13px; color:#0f172a; margin-bottom:4px;">1. Sync All Routes to Car Type Per-KM Rates</div>
+                                            <p style="font-size:11.5px; color:#64748b; margin:0 0 10px;">Clears custom fixed route overrides so every outstation route calculates dynamically from your Car Type ₹/km rates + route toll.</p>
+                                            <button type="button" class="btn btn-sm btn-outline" onclick="bulkAdjustCabRoutes('use_car_type_rates')">Use Car Type Rates Everywhere</button>
+                                        </div>
+
+                                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px;">
+                                            <div style="font-weight:700; font-size:13px; color:#0f172a; margin-bottom:4px;">2. Bulk Set Round-Trip Return Discount %</div>
+                                            <p style="font-size:11.5px; color:#64748b; margin:0 0 10px;">Apply a uniform return discount percentage across all outstation routes.</p>
+                                            <div style="display:flex; gap:8px; align-items:center;">
+                                                <input type="number" id="bulk-route-rt-discount" class="form-control" min="0" max="100" step="1" value="5" style="max-width:95px; height:34px;">
+                                                <button type="button" class="btn btn-sm btn-primary" onclick="bulkAdjustCabRoutes('set_roundtrip_discount')">Apply %</button>
+                                            </div>
+                                        </div>
+
+                                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px;">
+                                            <div style="font-weight:700; font-size:13px; color:#0f172a; margin-bottom:4px;">3. Bulk Adjust Custom Route Fares (%)</div>
+                                            <p style="font-size:11.5px; color:#64748b; margin:0 0 10px;">Scale any existing fixed route overrides by a percentage (e.g. 10 or -5).</p>
+                                            <div style="display:flex; gap:8px; align-items:center;">
+                                                <input type="number" id="bulk-route-percent" class="form-control" min="-90" max="500" step="1" value="10" style="max-width:95px; height:34px;">
+                                                <button type="button" class="btn btn-sm btn-gold" onclick="bulkAdjustCabRoutes('percent_adjust')">Scale Fares</button>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div class="admin-table-responsive">
-                                        <table class="admin-data-table">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                                        <span style="font-size:12px; font-weight:700; color:#334155;">Inline Route Tolls & Return Discount ({{ count($allCabRoutes ?? []) }} routes)</span>
+                                        <button type="button" class="btn btn-sm btn-primary" onclick="bulkAdjustCabRoutes('inline_save')">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">save</span>
+                                            <span>Save Inline Route Edits</span>
+                                        </button>
+                                    </div>
+                                    <div class="table-responsive" style="max-height:360px; overflow-y:auto;">
+                                        <table class="admin-table-compact" id="admin-bulk-routes-table">
                                             <thead>
                                                 <tr>
-                                                    <th>Fleet Tier</th>
-                                                    <th>Rate / Km</th>
-                                                    <th>Min Fare</th>
-                                                    <th>Toll Policy</th>
+                                                    <th>Route</th>
+                                                    <th>Distance</th>
+                                                    <th>Base Toll (₹)</th>
+                                                    <th>Return Disc (%)</th>
+                                                    <th>Sedan Override (₹)</th>
+                                                    <th>SUV Override (₹)</th>
                                                 </tr>
                                             </thead>
-                                            <tbody>
-                                                <tr>
-                                                    <td><strong>Sedan</strong> (Dzire / Etios)</td>
-                                                    <td style="font-weight:700; color:var(--primary);">₹12.50</td>
-                                                    <td>₹1,500</td>
-                                                    <td><span class="admin-badge badge-primary">Included</span></td>
+                                            <tbody id="admin-bulk-routes-tbody">
+                                                @forelse($allCabRoutes ?? [] as $cr)
+                                                <tr data-route-id="{{ $cr->id }}">
+                                                    <td style="font-weight:700; color:#0f172a;">{{ $cr->from_city }} → {{ $cr->to_city }}</td>
+                                                    <td>{{ $cr->distance_km }} km</td>
+                                                    <td><input type="number" min="0" class="form-control bulk-rt-toll" value="{{ $cr->base_toll }}" style="max-width:95px; height:32px;"></td>
+                                                    <td><input type="number" min="0" max="100" step="0.5" class="form-control bulk-rt-disc" value="{{ $cr->roundtrip_discount_pct ?? 0 }}" style="max-width:85px; height:32px;"></td>
+                                                    <td><input type="number" min="0" class="form-control bulk-rt-sedan" value="{{ $cr->sedan_fare }}" placeholder="Auto" style="max-width:100px; height:32px;"></td>
+                                                    <td><input type="number" min="0" class="form-control bulk-rt-suv" value="{{ $cr->suv_fare }}" placeholder="Auto" style="max-width:100px; height:32px;"></td>
                                                 </tr>
-                                                <tr>
-                                                    <td><strong>Prime</strong> (Honda City / Ciaz)</td>
-                                                    <td style="font-weight:700; color:var(--primary);">₹15.00</td>
-                                                    <td>₹2,000</td>
-                                                    <td><span class="admin-badge badge-primary">Included</span></td>
-                                                </tr>
-                                                <tr>
-                                                    <td><strong>Executive SUV</strong> (Innova / Ertiga)</td>
-                                                    <td style="font-weight:700; color:var(--primary);">₹18.00</td>
-                                                    <td>₹2,500</td>
-                                                    <td><span class="admin-badge badge-gold">Fastag Reconciled</span></td>
-                                                </tr>
-                                                <tr>
-                                                    <td><strong>Luxury Class</strong> (Fortuner / BMW)</td>
-                                                    <td style="font-weight:700; color:var(--primary);">₹32.00</td>
-                                                    <td>₹5,000</td>
-                                                    <td><span class="admin-badge badge-gold">VIP Escort</span></td>
-                                                </tr>
+                                                @empty
+                                                <tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">No routes configured yet.</td></tr>
+                                                @endforelse
                                             </tbody>
                                         </table>
                                     </div>
@@ -2439,6 +2667,12 @@
                         <!-- ======================================================== -->
                         <!-- 4B. BOOKING TYPES & PACKAGES MANAGEMENT (Admin Master)   -->
                         <!-- ======================================================== -->
+                        @php
+                            $activeRouteCarTypes = ($allCarTypes ?? collect())->where('is_active', true)->values();
+                            if ($activeRouteCarTypes->isEmpty()) {
+                                $activeRouteCarTypes = ($allCarTypes ?? collect())->values();
+                            }
+                        @endphp
                         <div class="admin-section" id="admin-sec-booking-types">
                             <div class="card" style="margin-bottom:20px;">
                                 <div class="card-header" style="flex-wrap:wrap; gap:12px;">
@@ -2449,25 +2683,25 @@
                                         </h3>
                                         <p class="card-subtitle">Uniform modular management for Outstation Highway Routes (One Way & Round Trip), Local Hourly Packages, Airport Transit Hubs, and City Fare Rules</p>
                                     </div>
-                                    <div style="display:flex; gap:8px; align-items:center;">
-                                        <span class="admin-badge badge-primary" style="font-size:11px; padding:4px 8px;" id="admin-bt-total-routes-pill">{{ count($allCabRoutes) }} Routes</span>
+                                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                        <span class="admin-badge badge-primary" style="font-size:11px; padding:4px 8px;" id="admin-bt-total-routes-pill">{{ count($allCabRoutes) }} One-Way</span>
+                                        <span class="admin-badge badge-success" style="font-size:11px; padding:4px 8px;" id="admin-bt-total-roundtrip-pill">{{ count($allCabRoutes) }} Round-Trip</span>
                                         <span class="admin-badge badge-warning" style="font-size:11px; padding:4px 8px;" id="admin-bt-total-packages-pill">{{ count($localPackages) }} Local Pkgs</span>
                                         <span class="admin-badge badge-gold" style="font-size:11px; padding:4px 8px;" id="admin-bt-total-airports-pill">{{ count($airportHubs) }} Airports</span>
-                                        <span class="admin-badge badge-info" style="font-size:11px; padding:4px 8px;" id="admin-bt-total-cars-pill">{{ count($allCarTypes ?? []) }} Car Types</span>
                                     </div>
                                 </div>
 
                                 <!-- Modular Sub-Nav Tabs -->
                                 <div class="admin-sub-tabs-bar">
-                                    <button type="button" class="admin-sub-tab-btn active admin-bt-tab-btn" data-tab="outstation" onclick="switchBookingTypeTab('outstation')">
-                                        <span class="material-symbols-outlined" style="font-size:16px;">alt_route</span>
-                                        <span>Outstation Highway Routes</span>
+                                    <button type="button" class="admin-sub-tab-btn active admin-bt-tab-btn" data-tab="oneway" onclick="switchBookingTypeTab('oneway')">
+                                        <span class="material-symbols-outlined" style="font-size:16px;">arrow_forward</span>
+                                        <span>One-Way (Outstation Highway Routes)</span>
                                         <span class="badge-pill" id="admin-tab-count-outstation">{{ count($allCabRoutes) }}</span>
                                     </button>
-                                    <button type="button" class="admin-sub-tab-btn admin-bt-tab-btn" data-tab="car-types" onclick="switchBookingTypeTab('car-types')">
-                                        <span class="material-symbols-outlined" style="font-size:16px;">directions_car</span>
-                                        <span>Car Types & Fleet</span>
-                                        <span class="badge-pill" id="admin-tab-count-car-types">{{ count($allCarTypes ?? []) }}</span>
+                                    <button type="button" class="admin-sub-tab-btn admin-bt-tab-btn" data-tab="roundtrip" onclick="switchBookingTypeTab('roundtrip')">
+                                        <span class="material-symbols-outlined" style="font-size:16px;">sync_alt</span>
+                                        <span>Round-Trip Outstation</span>
+                                        <span class="badge-pill" id="admin-tab-count-roundtrip">{{ count($allCabRoutes) }}</span>
                                     </button>
                                     <button type="button" class="admin-sub-tab-btn admin-bt-tab-btn" data-tab="local" onclick="switchBookingTypeTab('local')">
                                         <span class="material-symbols-outlined" style="font-size:16px;">schedule</span>
@@ -2485,11 +2719,11 @@
                                     </button>
                                 </div>
 
-                                <!-- SUB-PANEL 1: OUTSTATION CAB ROUTES (One Way & Round Trip) -->
-                                <div class="admin-bt-tab-panel" id="admin-bt-panel-outstation" style="display:block;">
+                                <!-- SUB-PANEL 1: ONE-WAY OUTSTATION HIGHWAY ROUTES -->
+                                <div class="admin-bt-tab-panel" id="admin-bt-panel-oneway" style="display:block;">
                                     <div class="admin-bookings-toolbar" style="padding:12px 18px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:space-between;">
-                                        <div style="display:flex; gap:12px; align-items:center; flex:1; max-width:550px;">
-                                            <div class="admin-search-box" style="flex:1;">
+                                        <div style="display:flex; gap:12px; align-items:center; flex:1; flex-wrap:wrap;">
+                                            <div class="admin-search-box" style="flex:1; min-width:190px; max-width:260px;">
                                                 <span class="material-symbols-outlined">search</span>
                                                 <input type="text" id="admin-bt-route-search-input" placeholder="Search from or to city..." oninput="handleCabRouteSearch(this.value)">
                                             </div>
@@ -2501,11 +2735,20 @@
                                                     <option value="inactive">Inactive</option>
                                                 </select>
                                             </div>
+                                            <div class="admin-filter-item">
+                                                <label>Car Type:</label>
+                                                <select id="bt-oneway-default-car-select" class="booking-type-car-select" onchange="saveBookingTypeCarTypeRule('oneway', this.value)" title="Optional default Car Type for One-Way bookings">
+                                                    <option value="">-- Any / All Car Types --</option>
+                                                    @foreach(($allCarTypes ?? collect())->where('is_active', true) as $ct)
+                                                        <option value="{{ strtolower($ct->category_key) }}" {{ ($platformSettings['default_car_type_oneway'] ?? '') === strtolower($ct->category_key) ? 'selected' : '' }}>{{ $ct->name }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
                                             <span class="admin-count-pill" id="admin-bt-routes-filter-count">{{ count($allCabRoutes) }} Routes</span>
                                         </div>
                                         <button type="button" class="btn btn-sm btn-primary" onclick="openAddCabRouteModal()">
                                             <span class="material-symbols-outlined" style="font-size:16px;">add</span>
-                                            <span>Add Outstation Route</span>
+                                            <span>Add One-Way / Highway Route</span>
                                         </button>
                                     </div>
 
@@ -2525,7 +2768,7 @@
                                             </thead>
                                             <tbody id="admin-bt-routes-tbody">
                                                 @forelse($allCabRoutes as $cr)
-                                                <tr id="admin-bt-cab-route-row-{{ $cr->id }}" data-status="{{ $cr->is_active ? 'active' : 'inactive' }}" data-search="{{ strtolower($cr->from_city . ' ' . $cr->to_city) }}">
+                                                <tr id="admin-bt-cab-route-row-{{ $cr->id }}" data-route-id="{{ $cr->id }}" data-status="{{ $cr->is_active ? 'active' : 'inactive' }}" data-search="{{ strtolower($cr->from_city . ' ' . $cr->to_city) }}">
                                                     <td>
                                                         <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
                                                             <span>{{ $cr->from_city }}</span>
@@ -2553,22 +2796,16 @@
                                                         <strong style="color:#0f172a;">₹{{ number_format($cr->base_toll) }}</strong>
                                                     </td>
                                                     <td>
-                                                        @php
-                                                            $hatch = $cr->hatchback_fare ?: round($cr->distance_km * 11.0 + $cr->base_toll);
-                                                            $sedan = $cr->sedan_fare ?: round($cr->distance_km * 12.5 + $cr->base_toll);
-                                                            $suv = $cr->suv_fare ?: round($cr->distance_km * 18.0 + $cr->base_toll);
-                                                            $innova = $cr->innova_fare ?: round($cr->distance_km * 22.0 + $cr->base_toll);
-                                                            $tempo = $cr->tempo_fare ?: round($cr->distance_km * 28.0 + $cr->base_toll);
-                                                            $luxury = $cr->luxury_fare ?: round($cr->distance_km * 32.0 + $cr->base_toll);
-                                                        @endphp
-                                                        <div style="font-size:11px; line-height:1.4; color:#334155;">
-                                                            <div>Hatch: <strong>₹{{ number_format($hatch) }}</strong> &bull; Sedan: <strong>₹{{ number_format($sedan) }}</strong> &bull; SUV: <strong>₹{{ number_format($suv) }}</strong></div>
-                                                            <div style="color:#64748b; font-size:10.5px;">Crysta: ₹{{ number_format($innova) }} &bull; Tempo: ₹{{ number_format($tempo) }} &bull; Lux: ₹{{ number_format($luxury) }}</div>
+                                                        <div class="admin-route-fare-schedule" data-route-id="{{ $cr->id }}" data-roundtrip="0" style="font-size:11px; line-height:1.5; color:#334155; display:flex; flex-wrap:wrap; gap:4px 10px;">
+                                                            @foreach($activeRouteCarTypes as $ct)
+                                                                @php $ctFare = round($cr->getFareForCarType($ct->category_key, (float) $ct->rate_per_km)); @endphp
+                                                                <span>{{ $ct->name }}: <strong>₹{{ number_format($ctFare) }}</strong></span>
+                                                            @endforeach
                                                         </div>
                                                     </td>
                                                     <td>
                                                         <span style="font-size:11px; color:#16a34a; font-weight:600;">
-                                                            {{ $cr->roundtrip_discount_pct > 0 ? $cr->roundtrip_discount_pct . '% Return Disc.' : '250 KM/Day Min' }}
+                                                            {{ $cr->roundtrip_discount_pct > 0 ? $cr->roundtrip_discount_pct . '% Return Disc.' : $rtMinKm . ' KM/Day Min' }}
                                                         </span>
                                                         @if(!empty($cr->default_car_type))
                                                             <div style="margin-top:3px;"><span class="admin-badge badge-secondary" style="font-size:9.5px; padding:1px 5px;" title="Specific Car Type">Car: {{ strtoupper($cr->default_car_type) }}</span></div>
@@ -2600,27 +2837,36 @@
                                     </div>
                                 </div>
 
-                                <!-- SUB-PANEL: CAR TYPES & FLEET SETUP -->
-                                <div class="admin-bt-tab-panel" id="admin-bt-panel-car-types" style="display:none;">
+                                <!-- SUB-PANEL 2: ROUND-TRIP OUTSTATION ROUTES & DISCOUNTS -->
+                                <div class="admin-bt-tab-panel" id="admin-bt-panel-roundtrip" style="display:none;">
                                     <div class="admin-bookings-toolbar" style="padding:12px 18px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:space-between;">
-                                        <div style="display:flex; gap:12px; align-items:center; flex:1; max-width:550px;">
-                                            <div class="admin-search-box" style="flex:1;">
+                                        <div style="display:flex; gap:12px; align-items:center; flex:1; flex-wrap:wrap;">
+                                            <div class="admin-search-box" style="flex:1; min-width:190px; max-width:260px;">
                                                 <span class="material-symbols-outlined">search</span>
-                                                <input type="text" id="admin-bt-car-type-search-input" placeholder="Search car type, key or models..." oninput="handleCarTypeSearch(this.value)">
+                                                <input type="text" id="admin-bt-rt-route-search-input" placeholder="Search round-trip corridor..." oninput="handleCabRouteSearch(this.value)">
                                             </div>
                                             <div class="admin-filter-item">
                                                 <label>Status:</label>
-                                                <select id="admin-bt-car-type-filter-status" onchange="handleCarTypeFilter()">
-                                                    <option value="all">All Fleet Types</option>
+                                                <select id="admin-bt-rt-route-filter-status" onchange="handleCabRouteFilter()">
+                                                    <option value="all">All Routes</option>
                                                     <option value="active">Active Only</option>
                                                     <option value="inactive">Inactive</option>
                                                 </select>
                                             </div>
-                                            <span class="admin-count-pill" id="admin-bt-car-types-filter-count">{{ count($allCarTypes ?? []) }} Car Types</span>
+                                            <div class="admin-filter-item">
+                                                <label>Car Type:</label>
+                                                <select id="bt-rt-default-car-select" class="booking-type-car-select" onchange="saveBookingTypeCarTypeRule('roundtrip', this.value)" title="Optional default Car Type for Round-Trip bookings">
+                                                    <option value="">-- Any / All Car Types --</option>
+                                                    @foreach(($allCarTypes ?? collect())->where('is_active', true) as $ct)
+                                                        <option value="{{ strtolower($ct->category_key) }}" {{ ($platformSettings['default_car_type_roundtrip'] ?? '') === strtolower($ct->category_key) ? 'selected' : '' }}>{{ $ct->name }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <span class="admin-count-pill" id="admin-bt-rt-routes-filter-count">{{ count($allCabRoutes) }} Routes</span>
                                         </div>
-                                        <button type="button" class="btn btn-sm btn-primary" onclick="openAddCarTypeModal()">
+                                        <button type="button" class="btn btn-sm btn-primary" onclick="openAddCabRouteModal()">
                                             <span class="material-symbols-outlined" style="font-size:16px;">add</span>
-                                            <span>Add Car Type</span>
+                                            <span>Add Round-Trip Route</span>
                                         </button>
                                     </div>
 
@@ -2628,66 +2874,78 @@
                                         <table class="admin-table-compact">
                                             <thead>
                                                 <tr>
-                                                    <th>Vehicle Type & Category</th>
-                                                    <th>Example Models</th>
-                                                    <th>Capacity Specs</th>
-                                                    <th>Rate / KM</th>
-                                                    <th>Extra KM Rate</th>
-                                                    <th>Min Base Fare</th>
+                                                    <th>Round-Trip Corridor</th>
+                                                    <th>Return Distance</th>
+                                                    <th>Return Discount & Policy</th>
+                                                    <th>Round-Trip Fare Schedule (2x - Disc.)</th>
+                                                    <th>Specific Car Type</th>
                                                     <th>Status</th>
                                                     <th style="text-align:right;">Actions</th>
                                                 </tr>
                                             </thead>
-                                            <tbody id="admin-bt-car-types-tbody">
-                                                @forelse($allCarTypes ?? [] as $ct)
-                                                <tr id="admin-bt-car-type-row-{{ $ct->id }}" data-status="{{ $ct->is_active ? 'active' : 'inactive' }}" data-search="{{ strtolower($ct->name . ' ' . $ct->category_key . ' ' . $ct->models) }}">
+                                            <tbody id="admin-bt-roundtrip-routes-tbody">
+                                                @forelse($allCabRoutes as $cr)
+                                                @php
+                                                    $discFactor = max(0, 1 - (($cr->roundtrip_discount_pct ?? 0) / 100));
+                                                @endphp
+                                                <tr id="admin-bt-rt-route-row-{{ $cr->id }}" data-route-id="{{ $cr->id }}" data-status="{{ $cr->is_active ? 'active' : 'inactive' }}" data-search="{{ strtolower($cr->from_city . ' ' . $cr->to_city) }}">
                                                     <td>
-                                                        <div style="display:flex; align-items:center; gap:10px;">
-                                                            <img src="{{ $ct->image_url }}" alt="{{ $ct->name }}" style="width:48px; height:32px; object-fit:cover; border-radius:4px; border:1px solid #e2e8f0;">
-                                                            <div>
-                                                                <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
-                                                                    <span>{{ $ct->name }}</span>
-                                                                    <span class="rental-category-badge" style="font-size:9.5px; padding:2px 6px;">{{ $ct->badge }}</span>
-                                                                </div>
-                                                                <span style="font-family:monospace; font-size:10.5px; color:var(--primary); font-weight:700;">key: {{ $ct->category_key }}</span>
-                                                            </div>
+                                                        <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
+                                                            <span>{{ $cr->from_city }}</span>
+                                                            <span style="color:#16a34a;">⇄</span>
+                                                            <span>{{ $cr->to_city }}</span>
                                                         </div>
+                                                        <div style="font-size:11px; color:#64748b;">Round-Trip &bull; Night Halt ₹{{ number_format($nightRate) }}/night</div>
                                                     </td>
                                                     <td>
-                                                        <span style="font-size:12px; color:#334155; font-weight:600;">{{ $ct->models }}</span>
-                                                    </td>
-                                                    <td>
-                                                        <div style="font-size:11.5px; color:#475569;">
-                                                            <span>💺 {{ $ct->seats }}</span> &bull; <span>🧳 {{ $ct->luggage }}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <strong style="color:#0f172a; font-size:13px;">₹{{ number_format($ct->rate_per_km, 2) }}</strong><span style="font-size:10.5px; color:#64748b;">/km</span>
-                                                    </td>
-                                                    <td>
-                                                        <span style="color:#334155; font-size:12px; font-weight:600;">₹{{ number_format($ct->extra_km_rate, 2) }}<span style="font-size:10.5px; color:#64748b;">/km</span></span>
-                                                    </td>
-                                                    <td>
-                                                        <span style="color:#0f172a; font-weight:700; font-size:12px;">₹{{ number_format($ct->base_fare_min) }}</span>
-                                                    </td>
-                                                    <td>
-                                                        <span class="admin-badge {{ $ct->is_active ? 'badge-success' : 'badge-danger' }}" style="cursor:pointer;" onclick="toggleCarTypeStatus({{ $ct->id }})" id="bt-car-type-status-badge-{{ $ct->id }}" title="Click to toggle status">
-                                                            {{ $ct->is_active ? 'Active' : 'Inactive' }}
+                                                        <span class="admin-badge badge-primary" style="font-family:monospace; font-size:11.5px;">
+                                                            🔁 {{ $cr->distance_km * 2 }} KM
                                                         </span>
+                                                        <div style="font-size:10.5px; color:#64748b; margin-top:2px;">{{ $rtMinKm }} KM/Day Min</div>
+                                                    </td>
+                                                    <td>
+                                                        <span style="font-size:11.5px; color:#16a34a; font-weight:700;">
+                                                            {{ $cr->roundtrip_discount_pct > 0 ? $cr->roundtrip_discount_pct . '% Return Disc.' : 'Standard (0% Disc.)' }}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <div class="admin-route-fare-schedule" data-route-id="{{ $cr->id }}" data-roundtrip="1" style="font-size:11px; line-height:1.5; color:#334155; display:flex; flex-wrap:wrap; gap:4px 10px;">
+                                                            @foreach($activeRouteCarTypes as $ct)
+                                                                @php
+                                                                    $ctOneWay = $cr->getFareForCarType($ct->category_key, (float) $ct->rate_per_km);
+                                                                    $ctRtFare = round(($ctOneWay * 2) * $discFactor);
+                                                                @endphp
+                                                                <span>{{ $ct->name }}: <strong>₹{{ number_format($ctRtFare) }}</strong></span>
+                                                            @endforeach
+                                                        </div>
+                                                    </td>
+                                                    <td>
+                                                        @if(!empty($cr->default_car_type))
+                                                            <span class="admin-badge badge-secondary" style="font-size:10px; padding:2px 6px;">Car: {{ strtoupper($cr->default_car_type) }}</span>
+                                                        @else
+                                                            <span style="font-size:11px; color:#94a3b8;">Any Car Type</span>
+                                                        @endif
+                                                    </td>
+                                                    <td>
+                                                        @if($cr->is_active)
+                                                            <span class="admin-badge badge-success" style="cursor:pointer;" onclick="toggleCabRouteStatus({{ $cr->id }})" id="bt-rt-route-status-badge-{{ $cr->id }}" title="Click to toggle status">Active</span>
+                                                        @else
+                                                            <span class="admin-badge badge-danger" style="cursor:pointer;" onclick="toggleCabRouteStatus({{ $cr->id }})" id="bt-rt-route-status-badge-{{ $cr->id }}" title="Click to toggle status">Inactive</span>
+                                                        @endif
                                                     </td>
                                                     <td style="text-align:right;">
                                                         <div class="admin-action-btn-group" style="justify-content:flex-end;">
-                                                            <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditCarTypeModal({{ $ct->id }})" title="Edit Car Type">
+                                                            <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditCabRouteModal({{ $cr->id }})" title="Edit Route & Return Discount">
                                                                 <span class="material-symbols-outlined">edit</span>
                                                             </button>
-                                                            <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteCarType({{ $ct->id }})" title="Delete Car Type">
+                                                            <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteCabRoute({{ $cr->id }})" title="Delete Route">
                                                                 <span class="material-symbols-outlined">delete</span>
                                                             </button>
                                                         </div>
                                                     </td>
                                                 </tr>
                                                 @empty
-                                                <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">No car types configured yet. Click "Add Car Type" to set one up.</td></tr>
+                                                <tr><td colspan="7" style="text-align:center; padding:20px; color:#94a3b8;">No round-trip routes configured yet.</td></tr>
                                                 @endforelse
                                             </tbody>
                                         </table>
@@ -2878,6 +3136,13 @@
 
                                 <!-- SUB-PANEL 4: FARE RULES & POLICY MATRIX -->
                                 <div class="admin-bt-tab-panel" id="admin-bt-panel-rules" style="display:none; padding:18px 20px;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                                        <span style="font-size:12px; color:#475569;">Live fare rules synced with <strong>Fares & Surcharges</strong>.</span>
+                                        <button type="button" class="btn btn-sm btn-primary" onclick="switchAdminSection('pricing'); switchPricingSubTab('conditions');">
+                                            <span class="material-symbols-outlined" style="font-size:15px;">tune</span>
+                                            <span>Edit All Rates, Night Hours & Conditions</span>
+                                        </button>
+                                    </div>
                                     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px;">
                                         <!-- 1. ONE WAY -->
                                         <div style="background:#ffffff; border:1px solid #cbd5e1; border-top:4px solid #0284c7; border-radius:8px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
@@ -2916,8 +3181,8 @@
                                             </div>
                                             <p style="font-size:11.5px; color:#64748b; margin:6px 0 10px;">Multi-day return trips with chauffeur dedicated for duration.</p>
                                             <div style="font-size:11.5px; display:flex; flex-direction:column; gap:6px; background:#f1f5f9; padding:8px 10px; border-radius:6px;">
-                                                <div><strong>Min Guarantee:</strong> 250 KM / Calendar Day</div>
-                                                <div><strong>Night Halt Fee:</strong> ₹400 / night (11 PM - 6 AM)</div>
+                                                <div><strong>Min Guarantee:</strong> {{ $rtMinKm }} KM / Calendar Day</div>
+                                                <div><strong>Night Halt Fee:</strong> ₹{{ number_format($nightRate) }} / night ({{ $nightWindowLabel }})</div>
                                                 <div><strong>Return Date:</strong> Enforced post-pickup</div>
                                             </div>
                                             <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #e2e8f0;">
@@ -3384,17 +3649,11 @@
                                                     @endif
                                                 </td>
                                                 <td>
-                                                    @php
-                                                        $hatch = $cr->hatchback_fare ?: round($cr->distance_km * 11.0 + $cr->base_toll);
-                                                        $sedan = $cr->sedan_fare ?: round($cr->distance_km * 12.5 + $cr->base_toll);
-                                                        $suv = $cr->suv_fare ?: round($cr->distance_km * 18.0 + $cr->base_toll);
-                                                        $innova = $cr->innova_fare ?: round($cr->distance_km * 22.0 + $cr->base_toll);
-                                                        $tempo = $cr->tempo_fare ?: round($cr->distance_km * 28.0 + $cr->base_toll);
-                                                        $luxury = $cr->luxury_fare ?: round($cr->distance_km * 32.0 + $cr->base_toll);
-                                                    @endphp
-                                                    <div style="font-size:11px; line-height:1.4; color:#334155;">
-                                                        <div>Hatch: <strong>₹{{ number_format($hatch) }}</strong> &bull; Sedan: <strong>₹{{ number_format($sedan) }}</strong> &bull; SUV: <strong>₹{{ number_format($suv) }}</strong></div>
-                                                        <div style="color:#64748b; font-size:10.5px;">Crysta: ₹{{ number_format($innova) }} &bull; Tempo: ₹{{ number_format($tempo) }} &bull; Lux: ₹{{ number_format($luxury) }}</div>
+                                                    <div class="admin-route-fare-schedule" data-route-id="{{ $cr->id }}" data-roundtrip="0" style="font-size:11px; line-height:1.5; color:#334155; display:flex; flex-wrap:wrap; gap:4px 10px;">
+                                                        @foreach($activeRouteCarTypes as $ct)
+                                                            @php $ctFare = round($cr->getFareForCarType($ct->category_key, (float) $ct->rate_per_km)); @endphp
+                                                            <span>{{ $ct->name }}: <strong>₹{{ number_format($ctFare) }}</strong></span>
+                                                        @endforeach
                                                     </div>
                                                 </td>
                                                 <td>
@@ -3640,9 +3899,13 @@
                                         </h3>
                                         <p class="card-subtitle">Add and configure vehicle classes, per-KM fares, extra KM rates, seating & luggage capacities, and bookability across all trip modules</p>
                                     </div>
-                                    <div style="display:flex; gap:8px; align-items:center;">
+                                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                                         <span class="admin-badge badge-primary" style="font-size:11px; padding:4px 8px;">{{ count($allCarTypes ?? []) }} Total Fleet Types</span>
                                         <span class="admin-badge badge-success" style="font-size:11px; padding:4px 8px;">{{ ($allCarTypes ?? collect())->where('is_active', true)->count() }} Active</span>
+                                        <button type="button" class="btn btn-sm btn-outline" onclick="switchAdminSection('pricing'); switchPricingSubTab('car-rates');">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">tune</span>
+                                            <span>Bulk Edit Rates</span>
+                                        </button>
                                         <button type="button" class="btn btn-sm btn-primary" onclick="openAddCarTypeModal()">
                                             <span class="material-symbols-outlined" style="font-size:16px;">add</span>
                                             <span>Add Car Type</span>

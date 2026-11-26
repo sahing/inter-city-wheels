@@ -12,15 +12,7 @@ class PlatformSettingAdminController extends Controller
     {
         return response()->json([
             'success' => true,
-            'settings' => [
-                'privacy_policy_url' => PlatformSetting::get('privacy_policy_url', '/privacy-policy'),
-                'terms_conditions_url' => PlatformSetting::get('terms_conditions_url', '/terms-conditions'),
-                'enable_schedules_and_berths' => PlatformSetting::get('enable_schedules_and_berths', '0'),
-                'default_car_type_oneway' => PlatformSetting::get('default_car_type_oneway', ''),
-                'default_car_type_roundtrip' => PlatformSetting::get('default_car_type_roundtrip', ''),
-                'default_car_type_local' => PlatformSetting::get('default_car_type_local', ''),
-                'default_car_type_airport' => PlatformSetting::get('default_car_type_airport', ''),
-            ],
+            'settings' => PlatformSetting::allAdminSettings(),
         ]);
     }
 
@@ -136,6 +128,47 @@ class PlatformSettingAdminController extends Controller
                 'default_car_type_local' => PlatformSetting::get('default_car_type_local', ''),
                 'default_car_type_airport' => PlatformSetting::get('default_car_type_airport', ''),
             ],
+        ]);
+    }
+
+    /**
+     * Persist night stay rate, night hours, surcharges, and booking fare conditions.
+     */
+    public function updatePricingConditions(Request $request)
+    {
+        if (! auth()->check() || auth()->user()->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Admin role required.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'addon_pet_friendly_rate' => 'required|numeric|min:0',
+            'addon_night_allowance_rate' => 'required|numeric|min:0',
+            'addon_luggage_carrier_rate' => 'required|numeric|min:0',
+            'night_stay_start_hour' => 'required|string|max:10',
+            'night_stay_end_hour' => 'required|string|max:10',
+            'roundtrip_min_km_per_day' => 'required|integer|min:0|max:2000',
+            'driver_day_allowance' => 'nullable|numeric|min:0',
+            'free_waiting_minutes' => 'nullable|integer|min:0|max:480',
+            'waiting_charge_per_hour' => 'nullable|numeric|min:0',
+            'free_cancellation_hours' => 'nullable|integer|min:0|max:168',
+            'other_booking_conditions' => 'nullable|string|max:1000',
+        ]);
+
+        $defaults = PlatformSetting::pricingDefaults();
+        foreach (array_keys($defaults) as $key) {
+            if (array_key_exists($key, $validated)) {
+                $val = $validated[$key];
+                PlatformSetting::set($key, $val === null ? '' : (string) $val);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Night stay rate, hours, and booking conditions saved!',
+            'settings' => PlatformSetting::allAdminSettings(),
         ]);
     }
 }

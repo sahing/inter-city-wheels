@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\LocalPackage;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class LocalPackageAdminController extends Controller
 {
@@ -166,6 +167,52 @@ class LocalPackageAdminController extends Controller
             'success' => true,
             'message' => 'Local Package status changed to '.($package->is_active ? 'Active' : 'Inactive'),
             'is_active' => $package->is_active,
+        ]);
+    }
+
+    /**
+     * Bulk update local rental package hours, included km, fares, and overrun rates.
+     */
+    public function bulkUpdateRates(Request $request)
+    {
+        $validated = $request->validate([
+            'packages' => 'required|array|min:1',
+            'packages.*.id' => 'required|integer|exists:local_packages,id',
+            'packages.*.duration_hours' => 'required|integer|min:1',
+            'packages.*.included_km' => 'required|integer|min:1',
+            'packages.*.sedan_fare' => 'required|numeric|min:0',
+            'packages.*.suv_fare' => 'required|numeric|min:0',
+            'packages.*.extra_km_rate' => 'nullable|numeric|min:0',
+            'packages.*.extra_hour_rate' => 'nullable|numeric|min:0',
+            'packages.*.is_active' => 'nullable|boolean',
+        ]);
+
+        DB::transaction(function () use ($validated) {
+            foreach ($validated['packages'] as $row) {
+                $package = LocalPackage::findOrFail($row['id']);
+                $package->duration_hours = (int) $row['duration_hours'];
+                $package->included_km = (int) $row['included_km'];
+                $package->sedan_fare = (float) $row['sedan_fare'];
+                $package->suv_fare = (float) $row['suv_fare'];
+                if (array_key_exists('extra_km_rate', $row) && $row['extra_km_rate'] !== null) {
+                    $package->extra_km_rate = (float) $row['extra_km_rate'];
+                }
+                if (array_key_exists('extra_hour_rate', $row) && $row['extra_hour_rate'] !== null) {
+                    $package->extra_hour_rate = (float) $row['extra_hour_rate'];
+                }
+                if (array_key_exists('is_active', $row)) {
+                    $package->is_active = (bool) $row['is_active'];
+                }
+                $package->save();
+            }
+        });
+
+        $updatedCount = count($validated['packages']);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Updated {$updatedCount} local package(s) successfully!",
+            'packages' => LocalPackage::orderBy('duration_hours')->get(),
         ]);
     }
 

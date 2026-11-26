@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\CarType;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class CarTypeAdminController extends Controller
 {
@@ -139,6 +140,47 @@ class CarTypeAdminController extends Controller
             'success' => true,
             'message' => "Car Type '{$carType->name}' is now ".($carType->is_active ? 'Active' : 'Inactive'),
             'car_type' => $carType,
+        ]);
+    }
+
+    /**
+     * Bulk update per-km rates, extra km rates, min base fares, and active flags.
+     */
+    public function bulkUpdateRates(Request $request)
+    {
+        $validated = $request->validate([
+            'rates' => 'required|array|min:1',
+            'rates.*.id' => 'required|integer|exists:car_types,id',
+            'rates.*.rate_per_km' => 'required|numeric|min:1',
+            'rates.*.extra_km_rate' => 'nullable|numeric|min:0',
+            'rates.*.base_fare_min' => 'nullable|numeric|min:0',
+            'rates.*.is_active' => 'nullable|boolean',
+        ]);
+
+        DB::transaction(function () use ($validated) {
+            foreach ($validated['rates'] as $row) {
+                $carType = CarType::findOrFail($row['id']);
+                $ratePerKm = (float) $row['rate_per_km'];
+                $carType->rate_per_km = $ratePerKm;
+                $carType->extra_km_rate = isset($row['extra_km_rate'])
+                    ? (float) $row['extra_km_rate']
+                    : $ratePerKm;
+                if (array_key_exists('base_fare_min', $row) && $row['base_fare_min'] !== null) {
+                    $carType->base_fare_min = (float) $row['base_fare_min'];
+                }
+                if (array_key_exists('is_active', $row)) {
+                    $carType->is_active = (bool) $row['is_active'];
+                }
+                $carType->save();
+            }
+        });
+
+        $updatedCount = count($validated['rates']);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Updated rates for {$updatedCount} car type(s) successfully!",
+            'car_types' => CarType::orderBy('order_index')->get(),
         ]);
     }
 

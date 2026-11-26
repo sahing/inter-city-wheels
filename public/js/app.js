@@ -208,9 +208,9 @@ const state = {
       sedanPerKm: 12.5,
       suvPerKm: 18.0,
       luxuryPerKm: 28.0,
-      petCharge: 350,
-      nightCharge: 400,
-      luggageCharge: 200
+      petCharge: Number(window.PLATFORM_SETTINGS?.addon_pet_friendly_rate ?? 350),
+      nightCharge: Number(window.PLATFORM_SETTINGS?.addon_night_allowance_rate ?? 400),
+      luggageCharge: Number(window.PLATFORM_SETTINGS?.addon_luggage_carrier_rate ?? 200)
     }
   },
 
@@ -1158,6 +1158,10 @@ window.syncAllCarTypes = async function (carTypesList) {
 
   if (typeof renderRentalVehicles === 'function' && document.getElementById('rental-vehicles-grid')) {
     renderRentalVehicles(activeRentalFilter, activeRentalSort);
+  }
+
+  if (typeof window.refreshAdminRouteFareDisplays === 'function') {
+    window.refreshAdminRouteFareDisplays();
   }
 };
 
@@ -2854,18 +2858,6 @@ function initAdminModule() {
 
   renderFormBuilderFields();
   renderWorkflowStages();
-
-  // Surcharges update
-  const savePricingBtn = document.getElementById('save-pricing-rules-btn');
-  if (savePricingBtn) {
-    savePricingBtn.addEventListener('click', () => {
-      state.admin.pricingRules.petCharge = parseInt(document.getElementById('rule-pet-charge').value, 10) || 350;
-      state.admin.pricingRules.nightCharge = parseInt(document.getElementById('rule-night-charge').value, 10) || 400;
-      state.admin.pricingRules.luggageCharge = parseInt(document.getElementById('rule-luggage-charge').value, 10) || 200;
-      updateTotalCabFare();
-      showToast('Pricing & Surcharge rule matrix saved!', 'success');
-    });
-  }
 }
 
 // AdminLTE 3 Responsive Side Panel Toggle (Mobile Drawer & Desktop Collapse)
@@ -6014,21 +6006,21 @@ window.saveCabRoute = async function (e) {
       closeModal('admin-cab-route-modal');
       const r = data.route;
       if (r) {
-        const hatch = r.hatchback_fare ? Number(r.hatchback_fare) : Math.round(r.distance_km * 11.0 + (r.base_toll || 0));
-        const sedanFare = r.sedan_fare ? Number(r.sedan_fare) : Math.round(r.distance_km * 12.5 + (r.base_toll || 0));
-        const suvFare = r.suv_fare ? Number(r.suv_fare) : Math.round(r.distance_km * 18.0 + (r.base_toll || 0));
-        const innova = r.innova_fare ? Number(r.innova_fare) : Math.round(r.distance_km * 22.0 + (r.base_toll || 0));
-        const tempo = r.tempo_fare ? Number(r.tempo_fare) : Math.round(r.distance_km * 28.0 + (r.base_toll || 0));
-        const luxury = r.luxury_fare ? Number(r.luxury_fare) : Math.round(r.distance_km * 32.0 + (r.base_toll || 0));
-        const rtDisc = r.roundtrip_discount_pct > 0 ? `${r.roundtrip_discount_pct}% Return Disc.` : '250 KM/Day Min';
+        if (Array.isArray(window.INITIAL_CAB_ROUTES)) {
+          const idx = window.INITIAL_CAB_ROUTES.findIndex(item => item.id === r.id);
+          if (idx >= 0) window.INITIAL_CAB_ROUTES[idx] = r;
+          else window.INITIAL_CAB_ROUTES.unshift(r);
+        }
+        const nightRate = Number(window.PLATFORM_SETTINGS?.addon_night_allowance_rate ?? 400);
+        const minKmPerDay = Number(window.PLATFORM_SETTINGS?.roundtrip_min_km_per_day ?? 250);
+        const rtDisc = r.roundtrip_discount_pct > 0 ? `${r.roundtrip_discount_pct}% Return Disc.` : `${minKmPerDay} KM/Day Min`;
         const routeCarBadge = r.default_car_type ? `<div style="margin-top:3px;"><span class="admin-badge badge-secondary" style="font-size:9.5px; padding:1px 5px;" title="Specific Car Type">Car: ${String(r.default_car_type).toUpperCase()}</span></div>` : '';
+        const rtCarCellHtml = r.default_car_type
+          ? `<span class="admin-badge badge-secondary" style="font-size:10px; padding:2px 6px;">Car: ${String(r.default_car_type).toUpperCase()}</span>`
+          : `<span style="font-size:11px; color:#94a3b8;">Any Car Type</span>`;
         const scheduleHtml = r.departure_schedule ? `<div style="font-size:11px; color:#0284c7; font-weight:600; margin-top:2px;">⏱️ ${r.departure_schedule} <span class="admin-badge badge-info" style="font-size:9px; padding:1px 5px;">${r.schedule_frequency || 'Daily Express'}</span></div>` : '<div style="font-size:11px; color:#64748b;">Daily Corridor &bull; On-Demand 24x7</div>';
-        const fareScheduleHtml = `
-            <div style="font-size:11px; line-height:1.4; color:#334155;">
-              <div>Hatch: <strong>₹${hatch.toLocaleString('en-IN')}</strong> &bull; Sedan: <strong>₹${sedanFare.toLocaleString('en-IN')}</strong> &bull; SUV: <strong>₹${suvFare.toLocaleString('en-IN')}</strong></div>
-              <div style="color:#64748b; font-size:10.5px;">Crysta: ₹${innova.toLocaleString('en-IN')} &bull; Tempo: ₹${tempo.toLocaleString('en-IN')} &bull; Lux: ₹${luxury.toLocaleString('en-IN')}</div>
-            </div>
-          `;
+        const fareScheduleHtml = window.buildRouteFareScheduleHtml(r, false);
+        const rtFareScheduleHtml = window.buildRouteFareScheduleHtml(r, true);
 
         // Update helper for route row
         const updateRow = (row, isBt = false) => {
@@ -6104,9 +6096,50 @@ window.saveCabRoute = async function (e) {
         if (isEdit) {
           updateRow(document.getElementById(`admin-cab-route-row-${r.id}`), false);
           updateRow(document.getElementById(`admin-bt-cab-route-row-${r.id}`), true);
+          const rtRow = document.getElementById(`admin-bt-rt-route-row-${r.id}`);
+          if (rtRow) {
+            rtRow.dataset.status = r.is_active ? 'active' : 'inactive';
+            rtRow.dataset.search = `${r.from_city} ${r.to_city}`.toLowerCase();
+            rtRow.cells[0].innerHTML = `<div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;"><span>${r.from_city}</span><span style="color:#16a34a;">⇄</span><span>${r.to_city}</span></div><div style="font-size:11px; color:#64748b;">Round-Trip &bull; Night Halt ₹${nightRate.toLocaleString('en-IN')}/night</div>`;
+            rtRow.cells[1].innerHTML = `<span class="admin-badge badge-primary" style="font-family:monospace; font-size:11.5px;">🔁 ${r.distance_km * 2} KM</span><div style="font-size:10.5px; color:#64748b; margin-top:2px;">${minKmPerDay} KM/Day Min</div>`;
+            rtRow.cells[2].innerHTML = `<span style="font-size:11.5px; color:#16a34a; font-weight:700;">${r.roundtrip_discount_pct > 0 ? `${r.roundtrip_discount_pct}% Return Disc.` : 'Standard (0% Disc.)'}</span>`;
+            rtRow.cells[3].innerHTML = rtFareScheduleHtml;
+            rtRow.cells[4].innerHTML = rtCarCellHtml;
+            rtRow.cells[5].innerHTML = `<span class="admin-badge ${r.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleCabRouteStatus(${r.id})" id="bt-rt-route-status-badge-${r.id}" title="Click to toggle status">${r.is_active ? 'Active' : 'Inactive'}</span>`;
+          }
         } else {
           createRow('admin-cab-routes-tbody', 'admin-cab-route-row', false);
           createRow('admin-bt-routes-tbody', 'admin-bt-cab-route-row', true);
+          const rtTbody = document.getElementById('admin-bt-roundtrip-routes-tbody');
+          if (rtTbody) {
+            const rtTr = document.createElement('tr');
+            rtTr.id = `admin-bt-rt-route-row-${r.id}`;
+            rtTr.dataset.routeId = r.id;
+            rtTr.dataset.status = r.is_active ? 'active' : 'inactive';
+            rtTr.dataset.search = `${r.from_city} ${r.to_city}`.toLowerCase();
+            rtTr.innerHTML = `
+              <td>
+                <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
+                  <span>${r.from_city}</span><span style="color:#16a34a;">⇄</span><span>${r.to_city}</span>
+                </div>
+                <div style="font-size:11px; color:#64748b;">Round-Trip &bull; Night Halt ₹${nightRate.toLocaleString('en-IN')}/night</div>
+              </td>
+              <td>
+                <span class="admin-badge badge-primary" style="font-family:monospace; font-size:11.5px;">🔁 ${r.distance_km * 2} KM</span>
+                <div style="font-size:10.5px; color:#64748b; margin-top:2px;">${minKmPerDay} KM/Day Min</div>
+              </td>
+              <td><span style="font-size:11.5px; color:#16a34a; font-weight:700;">${r.roundtrip_discount_pct > 0 ? `${r.roundtrip_discount_pct}% Return Disc.` : 'Standard (0% Disc.)'}</span></td>
+              <td>${rtFareScheduleHtml}</td>
+              <td>${rtCarCellHtml}</td>
+              <td><span class="admin-badge ${r.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleCabRouteStatus(${r.id})" id="bt-rt-route-status-badge-${r.id}" title="Click to toggle status">${r.is_active ? 'Active' : 'Inactive'}</span></td>
+              <td style="text-align:right;">
+                <div class="admin-action-btn-group" style="justify-content:flex-end;">
+                  <button type="button" class="admin-btn-action btn-action-edit" onclick="openEditCabRouteModal(${r.id})" title="Edit Route & Return Discount"><span class="material-symbols-outlined">edit</span></button>
+                  <button type="button" class="admin-btn-action btn-action-delete" onclick="deleteCabRoute(${r.id})" title="Delete Route"><span class="material-symbols-outlined">delete</span></button>
+                </div>
+              </td>`;
+            rtTbody.prepend(rtTr);
+          }
         }
 
         const totalRoutes = document.querySelectorAll('#admin-cab-routes-tbody tr[id^="admin-cab-route-row-"]').length || document.querySelectorAll('#admin-bt-routes-tbody tr[id^="admin-bt-cab-route-row-"]').length;
@@ -6114,20 +6147,21 @@ window.saveCabRoute = async function (e) {
         if (filterCountEl) filterCountEl.textContent = `${totalRoutes} Routes`;
         const btFilterCountEl = document.getElementById('admin-bt-routes-filter-count');
         if (btFilterCountEl) btFilterCountEl.textContent = `${totalRoutes} Routes`;
+        const rtFilterCountEl = document.getElementById('admin-bt-rt-routes-filter-count');
+        if (rtFilterCountEl) rtFilterCountEl.textContent = `${totalRoutes} Routes`;
         const navBadge = document.getElementById('admin-badge-cab-routes-count');
         if (navBadge) navBadge.textContent = totalRoutes;
         const tabBadge = document.getElementById('admin-tab-count-outstation');
         if (tabBadge) tabBadge.textContent = totalRoutes;
+        const rtTabBadge = document.getElementById('admin-tab-count-roundtrip');
+        if (rtTabBadge) rtTabBadge.textContent = totalRoutes;
         const topPill = document.getElementById('admin-bt-total-routes-pill');
-        if (topPill) topPill.textContent = `${totalRoutes} Routes`;
+        if (topPill) topPill.textContent = `${totalRoutes} One-Way`;
+        const rtTopPill = document.getElementById('admin-bt-total-roundtrip-pill');
+        if (rtTopPill) rtTopPill.textContent = `${totalRoutes} Round-Trip`;
 
-        // Update in-memory ROUTE_MATRIX and INITIAL_CAB_ROUTES for instant portal sync
+        // Update in-memory ROUTE_MATRIX for instant portal sync
         if (r && r.from_city && r.to_city) {
-          if (Array.isArray(window.INITIAL_CAB_ROUTES)) {
-            const idx = window.INITIAL_CAB_ROUTES.findIndex(item => item.id === r.id);
-            if (idx >= 0) window.INITIAL_CAB_ROUTES[idx] = r;
-            else window.INITIAL_CAB_ROUTES.unshift(r);
-          }
           const fKey = r.from_city.toLowerCase().trim();
           const tKey = r.to_city.toLowerCase().trim();
           ROUTE_MATRIX[`${fKey}-${tKey}`] = { dist: r.distance_km, time: r.estimated_time, toll: r.base_toll || 0 };
@@ -6314,19 +6348,13 @@ window.saveCarType = async function (e) {
 
         if (isEdit) {
           updateRow(document.getElementById(`admin-car-type-row-${ct.id}`), false);
-          updateRow(document.getElementById(`admin-bt-car-type-row-${ct.id}`), true);
         } else {
           createRow('admin-car-types-tbody', 'admin-car-type-row', false);
-          createRow('admin-bt-car-types-tbody', 'admin-bt-car-type-row', true);
         }
 
         const count = document.querySelectorAll('#admin-car-types-tbody tr[id^="admin-car-type-row-"]').length;
         const badge1 = document.getElementById('admin-badge-car-types-count');
         if (badge1) badge1.textContent = `${count} Types`;
-        const badge2 = document.getElementById('admin-tab-count-car-types');
-        if (badge2) badge2.textContent = count;
-        const badge3 = document.getElementById('admin-bt-total-cars-pill');
-        if (badge3) badge3.textContent = `${count} Car Types`;
         await window.syncAllCarTypes();
       }
     } else {
@@ -6384,12 +6412,9 @@ window.deleteCarType = async function (id) {
     if (data.success) {
       showToast(data.message, 'success');
       document.getElementById(`admin-car-type-row-${id}`)?.remove();
-      document.getElementById(`admin-bt-car-type-row-${id}`)?.remove();
       const count = document.querySelectorAll('#admin-car-types-tbody tr[id^="admin-car-type-row-"]').length;
       const badge1 = document.getElementById('admin-badge-car-types-count');
       if (badge1) badge1.textContent = `${count} Types`;
-      const badge2 = document.getElementById('admin-tab-count-car-types');
-      if (badge2) badge2.textContent = count;
       await window.syncAllCarTypes();
     }
   } catch (err) {
@@ -6407,21 +6432,17 @@ window.deleteCarTypeFromModal = function () {
 
 window.handleCarTypeSearch = function (q) {
   const s = (q || '').toLowerCase().trim();
-  ['#admin-car-types-tbody tr', '#admin-bt-car-types-tbody tr'].forEach(selector => {
-    document.querySelectorAll(selector).forEach(r => {
-      const text = r.dataset.search || '';
-      r.style.display = (!s || text.includes(s)) ? '' : 'none';
-    });
+  document.querySelectorAll('#admin-car-types-tbody tr').forEach(r => {
+    const text = r.dataset.search || '';
+    r.style.display = (!s || text.includes(s)) ? '' : 'none';
   });
 };
 
 window.handleCarTypeFilter = function () {
-  const status = document.getElementById('admin-car-type-filter-status')?.value || document.getElementById('admin-bt-car-type-filter-status')?.value || 'all';
-  ['#admin-car-types-tbody tr', '#admin-bt-car-types-tbody tr'].forEach(selector => {
-    document.querySelectorAll(selector).forEach(r => {
-      const rStatus = r.dataset.status;
-      r.style.display = (status === 'all' || rStatus === status) ? '' : 'none';
-    });
+  const status = document.getElementById('admin-car-type-filter-status')?.value || 'all';
+  document.querySelectorAll('#admin-car-types-tbody tr').forEach(r => {
+    const rStatus = r.dataset.status;
+    r.style.display = (status === 'all' || rStatus === status) ? '' : 'none';
   });
 };
 
@@ -6439,7 +6460,7 @@ window.toggleCabRouteStatus = async function (id) {
       showToast(data.message, 'info');
       const isActive = data.route.is_active;
 
-      ['cab-route-status-badge-', 'bt-cab-route-status-badge-'].forEach(prefix => {
+      ['cab-route-status-badge-', 'bt-cab-route-status-badge-', 'bt-rt-route-status-badge-'].forEach(prefix => {
         const badge = document.getElementById(`${prefix}${id}`);
         if (badge) {
           badge.className = `admin-badge ${isActive ? 'badge-success' : 'badge-danger'}`;
@@ -6447,7 +6468,7 @@ window.toggleCabRouteStatus = async function (id) {
         }
       });
 
-      ['admin-cab-route-row-', 'admin-bt-cab-route-row-'].forEach(prefix => {
+      ['admin-cab-route-row-', 'admin-bt-cab-route-row-', 'admin-bt-rt-route-row-'].forEach(prefix => {
         const row = document.getElementById(`${prefix}${id}`);
         if (row) row.dataset.status = isActive ? 'active' : 'inactive';
       });
@@ -6474,18 +6495,26 @@ window.deleteCabRoute = async function (id) {
       if (r1) r1.remove();
       const r2 = document.getElementById(`admin-bt-cab-route-row-${id}`);
       if (r2) r2.remove();
+      const r3 = document.getElementById(`admin-bt-rt-route-row-${id}`);
+      if (r3) r3.remove();
 
       const totalRoutes = document.querySelectorAll('#admin-cab-routes-tbody tr[id^="admin-cab-route-row-"]').length || document.querySelectorAll('#admin-bt-routes-tbody tr[id^="admin-bt-cab-route-row-"]').length;
       const filterCountEl = document.getElementById('admin-cab-routes-filter-count');
       if (filterCountEl) filterCountEl.textContent = `${totalRoutes} Routes`;
       const btFilterCountEl = document.getElementById('admin-bt-routes-filter-count');
       if (btFilterCountEl) btFilterCountEl.textContent = `${totalRoutes} Routes`;
+      const rtFilterCountEl = document.getElementById('admin-bt-rt-routes-filter-count');
+      if (rtFilterCountEl) rtFilterCountEl.textContent = `${totalRoutes} Routes`;
       const navBadge = document.getElementById('admin-badge-cab-routes-count');
       if (navBadge) navBadge.textContent = totalRoutes;
       const tabBadge = document.getElementById('admin-tab-count-outstation');
       if (tabBadge) tabBadge.textContent = totalRoutes;
+      const rtTabBadge = document.getElementById('admin-tab-count-roundtrip');
+      if (rtTabBadge) rtTabBadge.textContent = totalRoutes;
       const topPill = document.getElementById('admin-bt-total-routes-pill');
-      if (topPill) topPill.textContent = `${totalRoutes} Routes`;
+      if (topPill) topPill.textContent = `${totalRoutes} One-Way`;
+      const rtTopPill = document.getElementById('admin-bt-total-roundtrip-pill');
+      if (rtTopPill) rtTopPill.textContent = `${totalRoutes} Round-Trip`;
     }
   } catch (err) {
     showToast('Failed to delete cab route.', 'warning');
@@ -6502,12 +6531,17 @@ window.deleteCabRouteFromModal = function () {
 
 window.handleCabRouteSearch = function (q) {
   const query = (q || '').toLowerCase().trim();
-  ['#admin-cab-routes-tbody tr', '#admin-bt-routes-tbody tr'].forEach(selector => {
-    const rows = document.querySelectorAll(selector);
+  const configs = [
+    { selector: '#admin-cab-routes-tbody tr', statusId: 'admin-cab-route-filter-status', countId: 'admin-cab-routes-filter-count' },
+    { selector: '#admin-bt-routes-tbody tr', statusId: 'admin-bt-route-filter-status', countId: 'admin-bt-routes-filter-count' },
+    { selector: '#admin-bt-roundtrip-routes-tbody tr', statusId: 'admin-bt-rt-route-filter-status', countId: 'admin-bt-rt-routes-filter-count' },
+  ];
+  configs.forEach(cfg => {
+    const rows = document.querySelectorAll(cfg.selector);
+    const statusFilter = document.getElementById(cfg.statusId)?.value || 'all';
     let visibleCount = 0;
     rows.forEach(r => {
       const text = (r.dataset.search || '').toLowerCase();
-      const statusFilter = document.getElementById('admin-cab-route-filter-status')?.value || document.getElementById('admin-bt-route-filter-status')?.value || 'all';
       const status = r.dataset.status;
       const matchesSearch = !query || text.includes(query);
       const matchesStatus = statusFilter === 'all' || status === statusFilter;
@@ -6519,15 +6553,16 @@ window.handleCabRouteSearch = function (q) {
         r.style.display = 'none';
       }
     });
-    const countEl = document.getElementById('admin-cab-routes-filter-count');
+    const countEl = document.getElementById(cfg.countId);
     if (countEl) countEl.textContent = `${visibleCount} Routes`;
-    const btCountEl = document.getElementById('admin-bt-routes-filter-count');
-    if (btCountEl) btCountEl.textContent = `${visibleCount} Routes`;
   });
 };
 
 window.handleCabRouteFilter = function () {
-  const q = document.getElementById('admin-cab-route-search-input')?.value || document.getElementById('admin-bt-route-search-input')?.value || '';
+  const q = document.getElementById('admin-cab-route-search-input')?.value
+    || document.getElementById('admin-bt-route-search-input')?.value
+    || document.getElementById('admin-bt-rt-route-search-input')?.value
+    || '';
   handleCabRouteSearch(q);
 };
 
@@ -6535,11 +6570,12 @@ window.handleCabRouteFilter = function () {
 // 1B. MODULAR BOOKING TYPES SUB-NAV & MANAGERS
 // ========================================================
 window.switchBookingTypeTab = function (tabKey) {
+  const normalizedKey = tabKey === 'outstation' ? 'oneway' : tabKey;
   document.querySelectorAll('.admin-bt-tab-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tabKey);
+    btn.classList.toggle('active', btn.dataset.tab === normalizedKey);
   });
   document.querySelectorAll('.admin-bt-tab-panel').forEach(panel => {
-    panel.style.display = (panel.id === `admin-bt-panel-${tabKey}`) ? 'block' : 'none';
+    panel.style.display = (panel.id === `admin-bt-panel-${normalizedKey}`) ? 'block' : 'none';
   });
 };
 
@@ -7023,6 +7059,17 @@ window.saveBookingTypeCarTypeRule = async function (tripType, carType) {
     const data = await res.json();
     if (res.ok && data.success) {
       window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+      const val = (carType || '').toLowerCase();
+      const syncIds = {
+        oneway: ['rule-car-type-oneway', 'bt-oneway-default-car-select'],
+        roundtrip: ['rule-car-type-roundtrip', 'bt-rt-default-car-select'],
+        local: ['rule-car-type-local'],
+        airport: ['rule-car-type-airport'],
+      };
+      (syncIds[tripType] || []).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = val;
+      });
       showToast(data.message || 'Car type preference saved.', 'success');
     } else {
       showToast(data.message || 'Failed to save car type preference.', 'warning');
@@ -8860,4 +8907,345 @@ window.trackGuestBooking = async function () {
     console.error('trackGuestBooking', err);
     result.innerHTML = '<div style="font-size:12.5px; color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 12px;">Network error. Please try again.</div>';
   }
+};
+
+// ==========================================
+// BULK RATES, NIGHT STAY, HOURS & CONDITIONS
+// ==========================================
+window.switchPricingSubTab = function (tabId) {
+  document.querySelectorAll('.admin-pricing-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabId);
+  });
+  document.querySelectorAll('.admin-pricing-tab-panel').forEach(panel => {
+    panel.style.display = (panel.id === `admin-pricing-panel-${tabId}`) ? 'block' : 'none';
+  });
+};
+
+window.applyCarTypeBulkPercent = function (pct) {
+  const mult = 1 + (Number(pct) / 100);
+  document.querySelectorAll('#admin-bulk-car-rates-tbody tr[data-car-type-id]').forEach(row => {
+    const rateEl = row.querySelector('.bulk-ct-rate-km');
+    const extraEl = row.querySelector('.bulk-ct-extra-km');
+    if (rateEl) {
+      const val = Math.max(1, Math.round((parseFloat(rateEl.value || 0) * mult) * 2) / 2);
+      rateEl.value = val;
+    }
+    if (extraEl) {
+      const val = Math.max(0, Math.round((parseFloat(extraEl.value || 0) * mult) * 2) / 2);
+      extraEl.value = val;
+    }
+  });
+  showToast(`Preview adjusted by ${pct > 0 ? '+' : ''}${pct}%. Click "Save All Car Type Rates" to apply.`, 'info');
+};
+
+window.applyCarTypeFlatDelta = function (delta) {
+  document.querySelectorAll('#admin-bulk-car-rates-tbody tr[data-car-type-id]').forEach(row => {
+    const rateEl = row.querySelector('.bulk-ct-rate-km');
+    const extraEl = row.querySelector('.bulk-ct-extra-km');
+    if (rateEl) rateEl.value = Math.max(1, (parseFloat(rateEl.value || 0) + delta));
+    if (extraEl) extraEl.value = Math.max(0, (parseFloat(extraEl.value || 0) + delta));
+  });
+  showToast(`Adjusted preview by ${delta >= 0 ? '+' : ''}₹${delta}/km. Click "Save All Car Type Rates" to apply.`, 'info');
+};
+
+window.syncCarTypeExtraKm = function () {
+  document.querySelectorAll('#admin-bulk-car-rates-tbody tr[data-car-type-id]').forEach(row => {
+    const rateEl = row.querySelector('.bulk-ct-rate-km');
+    const extraEl = row.querySelector('.bulk-ct-extra-km');
+    if (rateEl && extraEl) extraEl.value = rateEl.value;
+  });
+  showToast('Matched Extra KM rate to Rate/KM in preview.', 'info');
+};
+
+window.bulkSaveCarTypeRates = async function () {
+  const rates = [];
+  document.querySelectorAll('#admin-bulk-car-rates-tbody tr[data-car-type-id]').forEach(row => {
+    const id = parseInt(row.dataset.carTypeId, 10);
+    const ratePerKm = parseFloat(row.querySelector('.bulk-ct-rate-km')?.value || 0);
+    const extraKmRate = parseFloat(row.querySelector('.bulk-ct-extra-km')?.value || ratePerKm);
+    const baseFareMin = parseFloat(row.querySelector('.bulk-ct-min-fare')?.value || 0);
+    const isActive = Boolean(row.querySelector('.bulk-ct-active')?.checked);
+    if (id && ratePerKm >= 1) {
+      rates.push({
+        id,
+        rate_per_km: ratePerKm,
+        extra_km_rate: isNaN(extraKmRate) ? ratePerKm : extraKmRate,
+        base_fare_min: isNaN(baseFareMin) ? 0 : baseFareMin,
+        is_active: isActive,
+      });
+    }
+  });
+
+  if (rates.length === 0) {
+    showToast('No valid car type rates found to save.', 'warning');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/car-types/bulk-rates', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify({ rates }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message || 'Car type rates updated!', 'success');
+      if (Array.isArray(data.car_types)) {
+        data.car_types.forEach(ct => {
+          const row = document.getElementById(`admin-car-type-row-${ct.id}`);
+          if (row) {
+            row.dataset.status = ct.is_active ? 'active' : 'inactive';
+            row.cells[3].innerHTML = `<strong style="color:#0f172a; font-size:13px;">₹${Number(ct.rate_per_km).toFixed(2)}</strong><span style="font-size:10.5px; color:#64748b;">/km</span>`;
+            row.cells[4].innerHTML = `<span style="color:#334155; font-size:12px; font-weight:600;">₹${Number(ct.extra_km_rate || ct.rate_per_km).toFixed(2)}<span style="font-size:10.5px; color:#64748b;">/km</span></span>`;
+            row.cells[5].innerHTML = `<span style="color:#0f172a; font-weight:700; font-size:12.5px;">₹${Number(ct.base_fare_min).toLocaleString('en-IN')}</span>`;
+            const badge = document.getElementById(`car-type-status-badge-${ct.id}`);
+            if (badge) {
+              badge.className = `admin-badge ${ct.is_active ? 'badge-success' : 'badge-danger'}`;
+              badge.textContent = ct.is_active ? 'Active' : 'Inactive';
+            }
+          }
+        });
+        await window.syncAllCarTypes(data.car_types);
+      }
+      if (typeof refreshCabQuote === 'function') refreshCabQuote();
+    } else {
+      showToast(data.message || 'Failed to save bulk car type rates.', 'warning');
+    }
+  } catch (err) {
+    console.error('bulkSaveCarTypeRates', err);
+    showToast('Network error while saving bulk car type rates.', 'danger');
+  }
+};
+
+function formatTime12Hour(hhmm) {
+  if (!hhmm || !hhmm.includes(':')) return hhmm || '';
+  const [hStr, mStr] = hhmm.split(':');
+  const h = parseInt(hStr, 10);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = (h % 12) || 12;
+  return `${h12}:${mStr || '00'} ${ampm}`;
+}
+
+window.savePricingConditions = async function () {
+  const payload = {
+    addon_night_allowance_rate: parseFloat(document.getElementById('rule-night-charge')?.value ?? 400) || 0,
+    night_stay_start_hour: document.getElementById('rule-night-start')?.value || '23:00',
+    night_stay_end_hour: document.getElementById('rule-night-end')?.value || '06:00',
+    addon_pet_friendly_rate: parseFloat(document.getElementById('rule-pet-charge')?.value ?? 350) || 0,
+    addon_luggage_carrier_rate: parseFloat(document.getElementById('rule-luggage-charge')?.value ?? 200) || 0,
+    roundtrip_min_km_per_day: parseInt(document.getElementById('rule-rt-min-km')?.value ?? 250, 10) || 0,
+    driver_day_allowance: parseFloat(document.getElementById('rule-driver-allowance')?.value ?? 0) || 0,
+    free_waiting_minutes: parseInt(document.getElementById('rule-waiting-grace')?.value ?? 45, 10) || 0,
+    waiting_charge_per_hour: parseFloat(document.getElementById('rule-waiting-hour-rate')?.value ?? 150) || 0,
+    free_cancellation_hours: parseInt(document.getElementById('rule-free-cancel-hours')?.value ?? 1, 10) || 0,
+    other_booking_conditions: document.getElementById('rule-other-conditions')?.value || '',
+  };
+
+  try {
+    const res = await fetch('/api/admin/settings/pricing-conditions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+      state.admin.pricingRules.petCharge = payload.addon_pet_friendly_rate;
+      state.admin.pricingRules.nightCharge = payload.addon_night_allowance_rate;
+      state.admin.pricingRules.luggageCharge = payload.addon_luggage_carrier_rate;
+
+      const windowLabel = `${formatTime12Hour(payload.night_stay_start_hour)} – ${formatTime12Hour(payload.night_stay_end_hour)}`;
+      const pill = document.getElementById('pricing-night-summary-pill');
+      if (pill) pill.textContent = `Night: ₹${payload.addon_night_allowance_rate.toLocaleString('en-IN')} (${windowLabel})`;
+
+      const petPriceEl = document.getElementById('addon-price-pet');
+      if (petPriceEl) petPriceEl.textContent = `+₹${payload.addon_pet_friendly_rate.toLocaleString('en-IN')}`;
+      const nightPriceEl = document.getElementById('addon-price-night');
+      if (nightPriceEl) nightPriceEl.textContent = `+₹${payload.addon_night_allowance_rate.toLocaleString('en-IN')}`;
+      const nightHoursEl = document.getElementById('addon-night-hours-label');
+      if (nightHoursEl) nightHoursEl.textContent = `(${windowLabel})`;
+      const lugPriceEl = document.getElementById('addon-price-luggage');
+      if (lugPriceEl) lugPriceEl.textContent = `+₹${payload.addon_luggage_carrier_rate.toLocaleString('en-IN')}`;
+
+      if (typeof refreshCabQuote === 'function') refreshCabQuote();
+      if (typeof updateTotalCabFare === 'function') updateTotalCabFare();
+      showToast(data.message || 'Night stay, hours & conditions saved!', 'success');
+    } else {
+      showToast(data.message || 'Failed to save pricing conditions.', 'warning');
+    }
+  } catch (err) {
+    console.error('savePricingConditions', err);
+    showToast('Network error while saving pricing conditions.', 'danger');
+  }
+};
+
+window.bulkSaveLocalPackages = async function () {
+  const packages = [];
+  document.querySelectorAll('#admin-bulk-local-packages-tbody tr[data-package-id]').forEach(row => {
+    const id = parseInt(row.dataset.packageId, 10);
+    const hours = parseInt(row.querySelector('.bulk-lp-hours')?.value || 0, 10);
+    const km = parseInt(row.querySelector('.bulk-lp-km')?.value || 0, 10);
+    const sedan = parseFloat(row.querySelector('.bulk-lp-sedan')?.value || 0);
+    const suv = parseFloat(row.querySelector('.bulk-lp-suv')?.value || 0);
+    const extraKm = parseFloat(row.querySelector('.bulk-lp-extra-km')?.value || 0);
+    const extraHr = parseFloat(row.querySelector('.bulk-lp-extra-hr')?.value || 0);
+    const isActive = Boolean(row.querySelector('.bulk-lp-active')?.checked);
+    if (id && hours >= 1 && km >= 1) {
+      packages.push({
+        id,
+        duration_hours: hours,
+        included_km: km,
+        sedan_fare: isNaN(sedan) ? 0 : sedan,
+        suv_fare: isNaN(suv) ? 0 : suv,
+        extra_km_rate: isNaN(extraKm) ? 0 : extraKm,
+        extra_hour_rate: isNaN(extraHr) ? 0 : extraHr,
+        is_active: isActive,
+      });
+    }
+  });
+
+  if (packages.length === 0) {
+    showToast('No local packages found to save.', 'warning');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/local-packages/bulk-rates', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify({ packages }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message || 'Local packages updated!', 'success');
+      if (Array.isArray(data.packages)) {
+        data.packages.forEach(lp => {
+          const row = document.getElementById(`admin-local-pkg-row-${lp.id}`);
+          if (row) {
+            row.dataset.status = lp.is_active ? 'active' : 'inactive';
+            row.cells[2].innerHTML = `<span style="font-size:11.5px; font-weight:600; color:#334155;">⏱️ ${lp.duration_hours} hrs &bull; 🛣️ ${lp.included_km} km</span>`;
+            row.cells[3].innerHTML = `<strong style="color:var(--primary); font-size:13px;">₹${Number(lp.sedan_fare).toLocaleString('en-IN')}</strong>`;
+            row.cells[4].innerHTML = `<strong style="color:var(--primary); font-size:13px;">₹${Number(lp.suv_fare).toLocaleString('en-IN')}</strong>`;
+            row.cells[5].innerHTML = `<span style="font-size:11px; color:#64748b;">+₹${Number(lp.extra_km_rate).toLocaleString('en-IN')}/km &bull; +₹${Number(lp.extra_hour_rate).toLocaleString('en-IN')}/hr</span>`;
+          }
+        });
+        if (typeof refreshLocalPackageOptions === 'function') refreshLocalPackageOptions(data.packages);
+      }
+      if (typeof refreshCabQuote === 'function') refreshCabQuote();
+    } else {
+      showToast(data.message || 'Failed to save local packages.', 'warning');
+    }
+  } catch (err) {
+    console.error('bulkSaveLocalPackages', err);
+    showToast('Network error while saving local packages.', 'danger');
+  }
+};
+
+window.bulkAdjustCabRoutes = async function (action) {
+  const payload = { action };
+
+  if (action === 'set_roundtrip_discount') {
+    payload.roundtrip_discount_pct = parseFloat(document.getElementById('bulk-route-rt-discount')?.value ?? 0) || 0;
+  } else if (action === 'percent_adjust') {
+    payload.percent = parseFloat(document.getElementById('bulk-route-percent')?.value ?? 0) || 0;
+  } else if (action === 'inline_save') {
+    const routes = [];
+    document.querySelectorAll('#admin-bulk-routes-tbody tr[data-route-id]').forEach(row => {
+      const id = parseInt(row.dataset.routeId, 10);
+      const sedanRaw = row.querySelector('.bulk-rt-sedan')?.value;
+      const suvRaw = row.querySelector('.bulk-rt-suv')?.value;
+      routes.push({
+        id,
+        base_toll: parseFloat(row.querySelector('.bulk-rt-toll')?.value ?? 0) || 0,
+        roundtrip_discount_pct: parseFloat(row.querySelector('.bulk-rt-disc')?.value ?? 0) || 0,
+        sedan_fare: sedanRaw !== '' && sedanRaw !== undefined ? parseFloat(sedanRaw) : null,
+        suv_fare: suvRaw !== '' && suvRaw !== undefined ? parseFloat(suvRaw) : null,
+      });
+    });
+    payload.routes = routes;
+  }
+
+  try {
+    const res = await fetch('/api/admin/cab-routes/bulk-adjust', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message || 'Routes updated!', 'success');
+      if (Array.isArray(data.routes)) {
+        window.INITIAL_CAB_ROUTES = data.routes;
+        data.routes.forEach(r => {
+          const bulkRow = document.querySelector(`#admin-bulk-routes-tbody tr[data-route-id="${r.id}"]`);
+          if (bulkRow) {
+            const tollEl = bulkRow.querySelector('.bulk-rt-toll');
+            const discEl = bulkRow.querySelector('.bulk-rt-disc');
+            const sedanEl = bulkRow.querySelector('.bulk-rt-sedan');
+            const suvEl = bulkRow.querySelector('.bulk-rt-suv');
+            if (tollEl) tollEl.value = r.base_toll ?? 0;
+            if (discEl) discEl.value = r.roundtrip_discount_pct ?? 0;
+            if (sedanEl) sedanEl.value = r.sedan_fare ?? '';
+            if (suvEl) suvEl.value = r.suv_fare ?? '';
+          }
+        });
+        if (typeof window.refreshAdminRouteFareDisplays === 'function') {
+          window.refreshAdminRouteFareDisplays();
+        }
+      }
+      if (typeof refreshCabQuote === 'function') refreshCabQuote();
+    } else {
+      showToast(data.message || 'Failed to bulk adjust routes.', 'warning');
+    }
+  } catch (err) {
+    console.error('bulkAdjustCabRoutes', err);
+    showToast('Network error while updating routes.', 'danger');
+  }
+};
+
+window.buildRouteFareScheduleHtml = function (route, isRoundTrip = false) {
+  const discFactor = Math.max(0, 1 - ((Number(route.roundtrip_discount_pct) || 0) / 100));
+  const entries = Object.entries(FLEET_TYPES || {});
+  if (entries.length === 0) return '<span style="color:#94a3b8;">No active car types</span>';
+
+  const items = entries.map(([key, fleet]) => {
+    const fixedCol = route[`${key}_fare`];
+    const customMap = route.car_fares && route.car_fares[key];
+    const baseOneWay = (fixedCol !== null && fixedCol !== undefined && Number(fixedCol) > 0)
+      ? Number(fixedCol)
+      : (customMap !== undefined && customMap !== null && Number(customMap) > 0
+        ? Number(customMap)
+        : Math.round(Number(route.distance_km || 0) * Number(fleet.ratePerKm || 12.5) + Number(route.base_toll || 0)));
+    const fare = isRoundTrip ? Math.round((baseOneWay * 2) * discFactor) : Math.round(baseOneWay);
+    return `<span>${fleet.name}: <strong>₹${fare.toLocaleString('en-IN')}</strong></span>`;
+  }).join('');
+
+  return `<div class="admin-route-fare-schedule" data-route-id="${route.id}" data-roundtrip="${isRoundTrip ? '1' : '0'}" style="font-size:11px; line-height:1.5; color:#334155; display:flex; flex-wrap:wrap; gap:4px 10px;">${items}</div>`;
+};
+
+window.refreshAdminRouteFareDisplays = function () {
+  if (!Array.isArray(window.INITIAL_CAB_ROUTES)) return;
+  const routeMap = new Map(window.INITIAL_CAB_ROUTES.map(r => [String(r.id), r]));
+  document.querySelectorAll('.admin-route-fare-schedule[data-route-id]').forEach(el => {
+    const route = routeMap.get(String(el.dataset.routeId));
+    if (!route) return;
+    const isRt = el.dataset.roundtrip === '1';
+    el.outerHTML = window.buildRouteFareScheduleHtml(route, isRt);
+  });
 };

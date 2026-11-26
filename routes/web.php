@@ -245,6 +245,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     // Outstation Cab Routes
     Route::get('/admin/cab-routes', [CabRouteAdminController::class, 'index'])->name('api.admin.cabRoutes.index');
     Route::post('/admin/cab-routes', [CabRouteAdminController::class, 'store'])->name('api.admin.cabRoutes.store');
+    Route::post('/admin/cab-routes/bulk-adjust', [CabRouteAdminController::class, 'bulkAdjust'])->name('api.admin.cabRoutes.bulkAdjust');
     Route::get('/admin/cab-routes/{id}', [CabRouteAdminController::class, 'show'])->name('api.admin.cabRoutes.show');
     Route::put('/admin/cab-routes/{id}', [CabRouteAdminController::class, 'update'])->name('api.admin.cabRoutes.update');
     Route::post('/admin/cab-routes/{id}/toggle', [CabRouteAdminController::class, 'toggleStatus'])->name('api.admin.cabRoutes.toggle');
@@ -253,6 +254,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     // Local Rental Packages
     Route::get('/admin/local-packages', [LocalPackageAdminController::class, 'index'])->name('api.admin.localPackages.index');
     Route::post('/admin/local-packages', [LocalPackageAdminController::class, 'store'])->name('api.admin.localPackages.store');
+    Route::post('/admin/local-packages/bulk-rates', [LocalPackageAdminController::class, 'bulkUpdateRates'])->name('api.admin.localPackages.bulkRates');
     Route::get('/admin/local-packages/{id}', [LocalPackageAdminController::class, 'show'])->name('api.admin.localPackages.show');
     Route::put('/admin/local-packages/{id}', [LocalPackageAdminController::class, 'update'])->name('api.admin.localPackages.update');
     Route::post('/admin/local-packages/{id}/toggle', [LocalPackageAdminController::class, 'toggleStatus'])->name('api.admin.localPackages.toggle');
@@ -269,6 +271,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     // Car Types & Fleet Categories
     Route::get('/admin/car-types', [CarTypeAdminController::class, 'index'])->name('api.admin.carTypes.index');
     Route::post('/admin/car-types', [CarTypeAdminController::class, 'store'])->name('api.admin.carTypes.store');
+    Route::post('/admin/car-types/bulk-rates', [CarTypeAdminController::class, 'bulkUpdateRates'])->name('api.admin.carTypes.bulkRates');
     Route::get('/admin/car-types/{id}', [CarTypeAdminController::class, 'show'])->name('api.admin.carTypes.show');
     Route::put('/admin/car-types/{id}', [CarTypeAdminController::class, 'update'])->name('api.admin.carTypes.update');
     Route::post('/admin/car-types/{id}/toggle', [CarTypeAdminController::class, 'toggleStatus'])->name('api.admin.carTypes.toggle');
@@ -310,6 +313,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::post('/admin/settings/policy-urls', [PlatformSettingAdminController::class, 'updatePolicyUrls'])->name('api.admin.settings.updatePolicyUrls');
     Route::post('/admin/settings/toggle-feature', [PlatformSettingAdminController::class, 'toggleFeature'])->name('api.admin.settings.toggleFeature');
     Route::post('/admin/settings/booking-type-car-types', [PlatformSettingAdminController::class, 'updateBookingTypeCarTypes'])->name('api.admin.settings.bookingTypeCarTypes');
+    Route::post('/admin/settings/pricing-conditions', [PlatformSettingAdminController::class, 'updatePricingConditions'])->name('api.admin.settings.pricingConditions');
 
     // Driver Bidding Marketplace
     Route::get('/admin/biddings', [BiddingAdminController::class, 'index'])->name('api.admin.biddings.index');
