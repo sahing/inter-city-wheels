@@ -1203,7 +1203,7 @@
                         <span class="material-symbols-outlined" style="color:var(--primary); font-size:21px;">hail</span>
                         <span>Available Outstation Trips for Driver Bidding</span>
                     </h3>
-                    <p style="font-size:11.5px; color:#64748b; margin:2px 0 0;">Review route, distance &amp; submit your bid.</p>
+                    <p style="font-size:11.5px; color:#64748b; margin:2px 0 0;">Review route, distance &amp; submit a lower bid directly below. Customer contact &amp; exact addresses unlock only if you win the auction.</p>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span class="admin-badge badge-success" style="font-size:11px;">🟢 Live</span>
@@ -1211,6 +1211,21 @@
                         <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
                         <span>Refresh</span>
                     </button>
+                </div>
+            </div>
+
+            <div class="driver-bidding-howto animate-load stagger-1" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap:8px; margin-bottom:14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px;">
+                <div style="display:flex; align-items:flex-start; gap:8px;">
+                    <span class="admin-badge badge-primary" style="font-size:10px; padding:2px 7px; flex-shrink:0;">1</span>
+                    <div style="font-size:11.5px; color:#334155; line-height:1.35;"><strong>Pick an Open Trip</strong><br><span style="color:#64748b;">Trips sent for bidding appear below &amp; via WhatsApp.</span></div>
+                </div>
+                <div style="display:flex; align-items:flex-start; gap:8px;">
+                    <span class="admin-badge badge-gold" style="font-size:10px; padding:2px 7px; flex-shrink:0;">2</span>
+                    <div style="font-size:11.5px; color:#334155; line-height:1.35;"><strong>Bid Lower to Lead</strong><br><span style="color:#64748b;">Enter a price below Start / Lowest &amp; click Place Bid.</span></div>
+                </div>
+                <div style="display:flex; align-items:flex-start; gap:8px;">
+                    <span class="admin-badge badge-success" style="font-size:10px; padding:2px 7px; flex-shrink:0;">3</span>
+                    <div style="font-size:11.5px; color:#334155; line-height:1.35;"><strong>Win &amp; Unlock</strong><br><span style="color:#64748b;">Approved lowest bid moves to My Assigned Trips.</span></div>
                 </div>
             </div>
 
@@ -4212,113 +4227,6 @@
         </div>
     </div>
 </div>
-
-@if($userRole === 'driver' || $userRole === 'admin')
-<!-- ======================================================== -->
-<!-- MODAL: CONCLUSIVE DRIVER BID & COMMITMENT POPUP          -->
-<!-- ======================================================== -->
-<div class="modal-overlay" id="driver-bid-modal">
-    <div class="modal-dialog" style="max-width: 580px;">
-        <div class="modal-header" style="background:#0b0f19; color:#f8fafc; border-bottom:1px solid #1e293b;">
-            <div style="display:flex; align-items:center; gap:10px;">
-                <div style="width:36px; height:36px; border-radius:8px; background:rgba(212,155,76,0.15); border:1px solid #d49b4c; display:flex; align-items:center; justify-content:center; color:#d49b4c;">
-                    <span class="material-symbols-outlined" style="font-size:22px;">gavel</span>
-                </div>
-                <div>
-                    <h3 class="modal-title" style="color:#ffffff; font-size:16px;">Chauffeur Ride Commitment & Bidding</h3>
-                    <p style="font-size:11px; color:#94a3b8; margin:0;">Conclusive trip agreement & binding fare proposal</p>
-                </div>
-            </div>
-            <button type="button" class="modal-close-btn" style="color:#cbd5e1;" onclick="closeModal('driver-bid-modal')">×</button>
-        </div>
-        <div class="modal-body" style="padding:18px 20px;">
-            <!-- Trip Route & Distance Details Box -->
-            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:16px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <span class="admin-badge badge-primary" id="driver-bid-trip-type" style="font-size:10.5px;">Outstation Trip</span>
-                    <span style="font-size:11.5px; color:#64748b; font-weight:600;" id="driver-bid-trip-schedule">Scheduled Departure</span>
-                </div>
-                
-                <!-- From & To Route Display -->
-                <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; margin-bottom:12px;">
-                    <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px;">
-                        <div style="font-size:10px; font-weight:700; color:#0284c7; text-transform:uppercase; letter-spacing:0.04em;">From (Pickup Location)</div>
-                        <div style="font-size:13px; font-weight:700; color:#0f172a; margin-top:2px;" id="driver-bid-from-loc">Pickup Location</div>
-                    </div>
-                    <div style="text-align:center; color:var(--primary); font-weight:800; font-size:20px;">➔</div>
-                    <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px;">
-                        <div style="font-size:10px; font-weight:700; color:#16a34a; text-transform:uppercase; letter-spacing:0.04em;">To (Drop Location)</div>
-                        <div style="font-size:13px; font-weight:700; color:#0f172a; margin-top:2px;" id="driver-bid-to-loc">Drop Location</div>
-                    </div>
-                </div>
-
-                <!-- Distance, Time & Passenger Budget Row -->
-                <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; border-top:1px dashed #cbd5e1; padding-top:10px;">
-                    <div>
-                        <span style="color:#64748b;">Distance:</span>
-                        <strong style="color:#0f172a; margin-left:4px; font-family:monospace; font-size:14px;" id="driver-bid-distance-km">450 km</strong>
-                        <span style="color:#94a3b8; margin:0 6px;">&bull;</span>
-                        <span style="color:#64748b;">Est. Time:</span>
-                        <strong style="color:#0f172a; margin-left:4px;" id="driver-bid-est-time">9h 15m</strong>
-                    </div>
-                    <div>
-                        <span style="color:#64748b;">Passenger Budget:</span>
-                        <strong style="color:#16a34a; margin-left:4px; font-size:14px;" id="driver-bid-customer-budget">₹4,800</strong>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Driver Fare Input -->
-            <div class="form-group" style="margin-bottom:14px;">
-                <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
-                    <span>Your Proposed Ride Price (₹)</span>
-                    <span style="font-size:11px; color:#64748b;">Enter final all-inclusive trip fare</span>
-                </label>
-                <div class="input-with-icon">
-                    <span class="material-symbols-outlined" style="color:var(--primary);">currency_rupee</span>
-                    <input type="number" id="driver-bid-amount-input" class="form-control" style="font-size:20px; font-weight:800; color:#0f172a; height:46px;" oninput="updateConclusiveWriteup()" min="100" step="50">
-                </div>
-                <!-- Quick Amount Adjusters -->
-                <div style="display:flex; gap:6px; margin-top:8px;">
-                    <button type="button" class="btn btn-xs btn-outline" onclick="adjustDriverBidPrice(-100)">- ₹100</button>
-                    <button type="button" class="btn btn-xs btn-outline-gold" onclick="resetDriverBidToTarget()">Match Budget</button>
-                    <button type="button" class="btn btn-xs btn-outline" onclick="adjustDriverBidPrice(200)">+ ₹200</button>
-                    <button type="button" class="btn btn-xs btn-outline" onclick="adjustDriverBidPrice(500)">+ ₹500</button>
-                </div>
-            </div>
-
-            <!-- Mandatory Conclusive Write-up & Acceptance Box -->
-            <div style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:8px; padding:14px; margin-top:14px;">
-                <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
-                    <span class="material-symbols-outlined" style="color:#d97706; font-size:18px;">verified</span>
-                    <span style="font-size:11px; text-transform:uppercase; font-weight:800; color:#92400e; letter-spacing:0.05em;">Conclusive Ride Commitment Statement</span>
-                </div>
-                <div id="driver-bid-conclusive-statement" style="font-size:13.5px; font-weight:600; color:#1e293b; line-height:1.55; padding:6px 0;">
-                    "I will take and do this ride from <span id="writeup-from" style="color:#0284c7;">Pickup</span> to <span id="writeup-to" style="color:#16a34a;">Drop</span> (<span id="writeup-km" style="font-family:monospace;">0 km</span>) at this price: <span id="writeup-price" style="color:#b45309; font-weight:800; font-size:15px;">₹0</span>. I accept this."
-                </div>
-                <div style="margin-top:10px; display:flex; align-items:flex-start; gap:8px; border-top:1px dashed #fcd34d; padding-top:8px;">
-                    <input type="checkbox" id="driver-bid-accept-checkbox" checked style="width:17px; height:17px; margin-top:2px; accent-color:#d97706; cursor:pointer;" onchange="toggleBidSubmitButton(this.checked)">
-                    <label for="driver-bid-accept-checkbox" style="font-size:11.5px; color:#475569; font-weight:600; cursor:pointer; line-height:1.4;">
-                        I accept this trip and agree to report on schedule with my verified vehicle at the agreed fare.
-                    </label>
-                </div>
-            </div>
-
-            <!-- Privacy Protection Notice -->
-            <div style="background:#f1f5f9; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; margin-top:10px; font-size:11px; color:#475569; display:flex; align-items:center; gap:6px;">
-                <span class="material-symbols-outlined" style="font-size:16px; color:#64748b;">lock</span>
-                <span><strong>Security & Privacy:</strong> Passenger phone number and exact doorstep pickup address remain masked until your bid is accepted and the ride is allotted to you.</span>
-            </div>
-        </div>
-        <div class="modal-footer" style="background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('driver-bid-modal')">Cancel</button>
-            <button type="button" class="btn btn-primary btn-sm" id="btn-submit-conclusive-bid" onclick="submitConclusiveDriverBid()">
-                <span>✓ I Accept & Confirm This Bid (<span id="btn-bid-amount-preview">₹0</span>)</span>
-            </button>
-        </div>
-    </div>
-</div>
-@endif
 
 <!-- ======================================================== -->
 <!-- MODAL: DRIVER COUNTER OFFER                              -->

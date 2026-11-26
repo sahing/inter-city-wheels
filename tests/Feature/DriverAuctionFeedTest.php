@@ -232,6 +232,9 @@ class DriverAuctionFeedTest extends TestCase
         $this->actingAs($this->driverUser)->get('/')
             ->assertStatus(200)
             ->assertSee('Available Outstation Trips for Driver Bidding')
+            ->assertSee('Pick an Open Trip')
+            ->assertSee('Bid Lower to Lead')
+            ->assertSee('Win &amp; Unlock', false)
             ->assertSee('refreshDriverAuctions()', false)
             ->assertSee('id="bidding-cards-stream"', false);
     }

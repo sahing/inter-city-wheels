@@ -2716,8 +2716,8 @@ async function renderBiddingList() {
       container.innerHTML = verificationBanner
         + '<div style="text-align:center; padding:32px 18px; color:#64748b; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;">'
         + '<span class="material-symbols-outlined" style="font-size:36px; color:#cbd5e1; display:block; margin-bottom:6px;">gavel</span>'
-        + '<div style="font-weight:700; font-size:14px; color:#334155;">No auctions are open right now</div>'
-        + '<p style="font-size:12px; margin:4px 0 14px; color:#64748b;">New bidding links are sent on WhatsApp when operations publishes a trip.</p>'
+        + '<div style="font-weight:700; font-size:14px; color:#334155;">No live outstation auctions are open right now</div>'
+        + '<p style="font-size:12px; margin:6px auto 14px; max-width:440px; color:#64748b; line-height:1.5;">When operations publishes a trip for bidding, it appears here (and via WhatsApp link) with an inline bid box so you can submit a price below the starting rate.</p>'
         + '<button type="button" class="btn btn-sm btn-outline" onclick="renderBiddingList()">'
         + '<span class="material-symbols-outlined" style="font-size:15px;">refresh</span>'
         + '<span>Refresh Auctions</span>'
@@ -2726,10 +2726,17 @@ async function renderBiddingList() {
       return;
     }
 
+    const viewerRole = window.CURRENT_USER ? window.CURRENT_USER.role : null;
+    const isDriverRole = viewerRole === 'driver';
+    const canBidNow = data.can_bid !== false && isDriverRole;
+
     container.innerHTML = verificationBanner + auctions.map(function (auction) {
-      const lowest = (auction.current_lowest === null || auction.current_lowest === undefined)
-        ? '—'
-        : auctionMoney(auction.current_lowest);
+      const auctionId = Number(auction.id || 0);
+      const hasLowest = auction.current_lowest !== null && auction.current_lowest !== undefined;
+      const lowest = hasLowest ? auctionMoney(auction.current_lowest) : '—';
+      const ceiling = hasLowest ? Number(auction.current_lowest) : Number(auction.start_amount || 0);
+      const maxAllowed = Math.max(1, Math.floor(ceiling - 1));
+      const suggestedBid = ceiling > 100 ? Math.floor(ceiling - 100) : maxAllowed;
 
       const badge = auction.you_are_lowest
         ? '<span class="admin-badge badge-success" style="font-size:10.5px;">✓ Lowest</span>'
@@ -2740,9 +2747,36 @@ async function renderBiddingList() {
         : '<span style="color:#94a3b8;">On request</span>';
 
       const departure = auction.departure_at ? auctionDateTime(auction.departure_at) : 'TBD';
-      const action = auction.my_bids > 0 ? 'Improve Bid' : 'Place Bid';
+      const myBids = Number(auction.my_bids || 0);
+      const remainingBids = Number(auction.remaining_bids ?? 0);
+      const action = myBids > 0 ? 'Improve Bid' : 'Place Bid';
+      const myBidMeta = myBids > 0
+        ? ' &bull; Your bids: <strong style="color:#0f172a;">' + myBids + '</strong> (' + remainingBids + ' left)'
+        : '';
 
-      return '<div class="bid-card" style="display:flex; flex-direction:column; gap:10px; padding:14px 16px; border:1px solid #e2e8f0; background:#ffffff; border-radius:12px; margin-bottom:12px; box-shadow:0 2px 8px rgba(15,23,42,0.04);">'
+      let bidPanelHtml = '';
+      if (canBidNow && remainingBids > 0 && auction.is_open !== false) {
+        bidPanelHtml = '<div style="width:100%; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; gap:6px;">'
+          + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; font-size:11.5px; color:#475569;">'
+          + '<span>Submit your bid (must be below <strong style="color:#0f172a;">' + auctionMoney(ceiling) + '</strong>, max ' + auctionMoney(maxAllowed) + ')</span>'
+          + '<span style="color:#64748b;">' + remainingBids + ' bid' + (remainingBids === 1 ? '' : 's') + ' left</span>'
+          + '</div>'
+          + '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">'
+          + '<input type="number" id="console-bid-input-' + auctionId + '" class="form-control" inputmode="numeric" min="1" max="' + maxAllowed + '" step="1" placeholder="e.g. ' + suggestedBid + '" style="flex:1; min-width:140px; height:36px; font-size:13.5px; font-weight:700;" onkeydown="if(event.key===\'Enter\'){event.preventDefault();submitConsoleAuctionBid(\'' + auctionEscape(auction.token) + '\',' + auctionId + ');}">'
+          + '<button type="button" id="console-bid-btn-' + auctionId + '" class="btn btn-sm btn-primary" onclick="submitConsoleAuctionBid(\'' + auctionEscape(auction.token) + '\',' + auctionId + ')">'
+          + '<span class="material-symbols-outlined" style="font-size:15px;">gavel</span>'
+          + '<span>' + action + '</span>'
+          + '</button>'
+          + '</div>'
+          + '<div id="console-bid-msg-' + auctionId + '" style="display:none; font-size:11.5px; border-radius:6px; padding:6px 9px;"></div>'
+          + '</div>';
+      } else if (isDriverRole && remainingBids === 0) {
+        bidPanelHtml = '<div style="width:100%; font-size:11.5px; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:8px 10px;">You have reached the bid limit for this auction.</div>';
+      } else if (!isDriverRole) {
+        bidPanelHtml = '<div style="width:100%; font-size:11.5px; color:#475569; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px;">Preview mode: verified driver accounts enter their bid amount here (below ' + auctionMoney(ceiling) + ').</div>';
+      }
+
+      return '<div class="bid-card" style="display:flex; flex-direction:column; align-items:stretch; gap:10px; padding:14px 16px; border:1px solid #e2e8f0; background:#ffffff; border-radius:12px; margin-bottom:12px; box-shadow:0 2px 8px rgba(15,23,42,0.04);">'
         + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">'
         + '<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">'
         + '<span class="admin-badge badge-primary" style="font-size:10.5px; font-family:monospace;">' + auctionEscape(auction.booking_reference) + '</span>'
@@ -2764,16 +2798,18 @@ async function renderBiddingList() {
         + '<div style="font-size:13.5px; font-weight:700; color:#0f172a; margin-top:1px;">' + auctionEscape(auction.drop_city) + '</div>'
         + '</div>'
         + '</div>'
+        + bidPanelHtml
         + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-top:1px solid #f1f5f9; padding-top:10px;">'
         + '<div style="font-size:12px; color:#475569;">'
         + 'Start <strong style="color:#0f172a;">' + auctionMoney(auction.start_amount) + '</strong>'
         + ' &bull; Lowest <strong style="color:#16a34a;">' + lowest + '</strong>'
+        + myBidMeta
         + '</div>'
         + '<div style="display:flex; align-items:center; gap:8px;">'
-        + '<button type="button" class="btn btn-sm btn-outline driver-item-details-btn" onclick="openDriverAuctionDetails(' + Number(auction.id || 0) + ')">Details</button>'
-        + '<a class="btn btn-sm btn-primary" style="text-decoration:none;" href="' + auctionEscape(auction.bid_url) + '">'
-        + '<span class="material-symbols-outlined" style="font-size:15px;">gavel</span>'
-        + '<span>' + action + '</span>'
+        + '<button type="button" class="btn btn-sm btn-outline driver-item-details-btn" onclick="openDriverAuctionDetails(' + auctionId + ')">Details</button>'
+        + '<a class="btn btn-sm btn-outline" style="text-decoration:none;" href="' + auctionEscape(auction.bid_url) + '">'
+        + '<span class="material-symbols-outlined" style="font-size:15px;">open_in_new</span>'
+        + '<span>Bid Page</span>'
         + '</a>'
         + '</div>'
         + '</div>'
@@ -2784,6 +2820,66 @@ async function renderBiddingList() {
     container.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">Could not load live auctions. Check your connection, then press Refresh.</div>';
   }
 }
+
+window.submitConsoleAuctionBid = async function (token, auctionId) {
+  const input = document.getElementById('console-bid-input-' + auctionId);
+  const btn = document.getElementById('console-bid-btn-' + auctionId);
+  const msg = document.getElementById('console-bid-msg-' + auctionId);
+
+  const showMsg = (text, ok) => {
+    if (!msg) return;
+    msg.style.display = 'block';
+    msg.textContent = text;
+    msg.style.background = ok ? '#ecfdf5' : '#fef2f2';
+    msg.style.color = ok ? '#065f46' : '#b91c1c';
+    msg.style.border = ok ? '1px solid #a7f3d0' : '1px solid #fecaca';
+  };
+
+  const amount = Number(input ? input.value : 0);
+  if (!amount || amount < 1) {
+    showMsg('Enter your bid amount in rupees.', false);
+    if (input) input.focus();
+    return;
+  }
+
+  const origHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+  }
+
+  try {
+    const res = await fetch('/api/bidding/' + encodeURIComponent(token) + '/bids', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ amount: amount })
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      const errText = data.message || 'Could not place bid. Check the amount and try again.';
+      showMsg(errText, false);
+      if (typeof showToast === 'function') showToast(errText, 'warning');
+      return;
+    }
+
+    if (typeof showToast === 'function') {
+      showToast(data.message || 'Bid placed! You are currently the lowest bidder.', 'success');
+    }
+    await renderBiddingList();
+  } catch (err) {
+    console.error('submitConsoleAuctionBid', err);
+    showMsg('Network error while placing bid. Please try again.', false);
+  } finally {
+    if (btn && document.body.contains(btn)) {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+  }
+};
 
 function showDriverDetailsScreen(title, icon, rows, note) {
   const modal = document.getElementById('driver-item-details-modal');
