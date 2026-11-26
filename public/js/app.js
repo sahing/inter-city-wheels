@@ -10190,6 +10190,15 @@ function collectInvoiceTemplateForm() {
   };
 }
 
+window.openAdminInvoiceTemplateEditor = function () {
+  if (typeof switchTab === 'function') switchTab('admin');
+  if (typeof switchAdminSection === 'function') switchAdminSection('system');
+  window.setTimeout(() => {
+    const card = document.getElementById('admin-invoice-template-card');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 60);
+};
+
 window.selectInvoiceTemplateStyle = function (style) {
   document.querySelectorAll('#inv-style-picker-grid .inv-style-card').forEach(card => {
     const isSel = card.dataset.styleOption === style;

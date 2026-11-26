@@ -2093,9 +2093,16 @@
                                 </a>
                             </li>
                             <li class="admin-nav-item">
+                                <a href="javascript:void(0)" class="admin-nav-link" data-section="system" onclick="openAdminInvoiceTemplateEditor()">
+                                    <span class="material-symbols-outlined admin-nav-icon">receipt_long</span>
+                                    <span class="admin-nav-text">Invoice Template &amp; Pay</span>
+                                    <span class="admin-nav-badge badge-gold">4 Styles</span>
+                                </a>
+                            </li>
+                            <li class="admin-nav-item">
                                 <a href="javascript:void(0)" class="admin-nav-link" data-section="system" onclick="switchAdminSection('system')">
                                     <span class="material-symbols-outlined admin-nav-icon">admin_panel_settings</span>
-                                    <span class="admin-nav-text">System & Health</span>
+                                    <span class="admin-nav-text">System Settings &amp; Health</span>
                                     <span class="admin-nav-badge badge-success">OK</span>
                                 </a>
                             </li>
@@ -2406,7 +2413,11 @@
                                         </h3>
                                         <p class="card-subtitle">Live passenger dispatch, chauffeur allotment, fare breakdown & GST tax invoices</p>
                                     </div>
-                                    <div style="display:flex; align-items:center; gap:8px;">
+                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                        <button type="button" class="btn btn-sm btn-outline-gold" onclick="openAdminInvoiceTemplateEditor()" title="Customize Tax Invoice Template & Styles">
+                                            <span class="material-symbols-outlined" style="font-size:15px;">receipt_long</span>
+                                            <span>Invoice Template</span>
+                                        </button>
                                         <button type="button" class="btn btn-sm btn-outline" onclick="reloadAdminBookings()" title="Reload Bookings">
                                             <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
                                             <span>Refresh</span>
@@ -5765,6 +5776,12 @@
                 <span>GST Tax Invoice Preview</span>
             </h3>
             <div style="display:flex; align-items:center; gap:8px;">
+                @if($userRole === 'admin')
+                <button type="button" class="btn btn-sm btn-outline" onclick="closeModal('admin-invoice-modal'); openAdminInvoiceTemplateEditor();" title="Customize Invoice Template">
+                    <span class="material-symbols-outlined" style="font-size:16px;">tune</span>
+                    <span>Edit Template</span>
+                </button>
+                @endif
                 <button type="button" class="btn btn-sm btn-primary" onclick="printAdminInvoice()">
                     <span class="material-symbols-outlined" style="font-size:16px;">print</span>
                     <span>Print / Save PDF</span>
