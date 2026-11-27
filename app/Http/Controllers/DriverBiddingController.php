@@ -27,6 +27,30 @@ class DriverBiddingController extends Controller
         private readonly NotificationService $notifications,
     ) {}
 
+    public function myTrips(Request $request)
+    {
+        $driver = $this->driverForUser($request->user());
+        if (! $driver) {
+            return response()->json([
+                'success' => true,
+                'driver_id' => null,
+                'trips' => [],
+            ]);
+        }
+
+        $trips = Booking::with('driver')
+            ->where('assigned_driver_id', $driver->id)
+            ->where('status', '!=', 'Cancelled')
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'driver_id' => $driver->id,
+            'trips' => $trips,
+        ]);
+    }
+
     public function getActiveBids()
     {
         $drivers = Driver::where('is_online', true)->get();
@@ -513,25 +537,9 @@ class DriverBiddingController extends Controller
             return null;
         }
 
-        $phone = trim((string) $user->phone);
-
-        if ($phone !== '') {
-            $driver = Driver::where('phone', $phone)->first();
-
-            if ($driver) {
-                return $driver;
-            }
-
-            $digits = preg_replace('/[^0-9]/', '', $phone) ?? '';
-            $lastTen = substr($digits, -10);
-
-            if (strlen($lastTen) === 10) {
-                $driver = Driver::where('phone', 'like', '%'.$lastTen.'%')->first();
-
-                if ($driver) {
-                    return $driver;
-                }
-            }
+        $driver = $user->driverProfile();
+        if ($driver) {
+            return $driver;
         }
 
         if ($user->isAdmin()) {

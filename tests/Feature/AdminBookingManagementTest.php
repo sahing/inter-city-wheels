@@ -438,4 +438,82 @@ class AdminBookingManagementTest extends TestCase
         $this->assertStringContainsString('id="view-booking-allocation-meta"', $html);
         $this->assertStringContainsString('id="view-booking-created-at"', $html);
     }
+
+    public function test_driver_and_customer_see_allocated_booking_and_contacts_even_with_formatted_phones_and_live_apis(): void
+    {
+        $admin = User::where('role', 'admin')->firstOrFail();
+
+        // Driver account phone lacks country code/spaces while Driver profile has '+91 97654 32100'
+        $driver = Driver::create([
+            'name' => 'Vikram Joshi',
+            'phone' => '+91 97654 32100',
+            'vehicle_model' => 'Toyota Innova Hycross',
+            'vehicle_plate' => 'MH 14 XY 9090',
+            'fleet_category' => 'suv',
+            'rating' => 4.9,
+            'wallet_balance' => 5000,
+            'is_verified' => true,
+            'is_online' => true,
+        ]);
+        $driverUser = User::factory()->create([
+            'role' => 'driver',
+            'name' => 'Vikram Joshi',
+            'phone' => '9765432100',
+        ]);
+
+        // Customer account phone lacks country code/spaces while Admin-created booking has '+91 91234 56789'
+        $customerUser = User::factory()->create([
+            'role' => 'customer',
+            'name' => 'Meera Deshmukh',
+            'phone' => '9123456789',
+        ]);
+
+        $createRes = $this->actingAs($admin)->postJson('/api/admin/bookings', [
+            'service_type' => 'cab',
+            'cab_type' => 'suv',
+            'trip_type' => 'oneway',
+            'from_city' => 'Pune',
+            'to_city' => 'Mumbai',
+            'pickup_location' => 'Viman Nagar, Pune',
+            'drop_location' => 'Bandra, Mumbai',
+            'customer_name' => 'Meera Deshmukh',
+            'customer_phone' => '+91 91234 56789',
+            'base_fare' => 3500,
+        ])->assertStatus(201);
+
+        $bookingId = (int) $createRes->json('booking.id');
+        $ref = (string) $createRes->json('booking.booking_reference');
+
+        // Admin allots driver
+        $this->actingAs($admin)->postJson("/api/admin/bookings/{$bookingId}/allot-driver", [
+            'driver_id' => $driver->id,
+            'status' => 'Driver Assigned',
+        ])->assertOk();
+
+        // Driver sees the allotted trip and customer details in BOTH HTML & live API
+        $driverHtml = $this->actingAs($driverUser)->get('/')->getContent();
+        $this->assertStringContainsString($ref, $driverHtml);
+        $this->assertStringContainsString('Meera Deshmukh', $driverHtml);
+        $this->assertStringContainsString('+91 91234 56789', $driverHtml);
+        $this->assertStringContainsString('Viman Nagar, Pune', $driverHtml);
+
+        $this->actingAs($driverUser)->getJson('/api/driver/trips')
+            ->assertOk()
+            ->assertJsonPath('driver_id', $driver->id)
+            ->assertJsonPath('trips.0.booking_reference', $ref)
+            ->assertJsonPath('trips.0.customer_name', 'Meera Deshmukh')
+            ->assertJsonPath('trips.0.customer_phone', '+91 91234 56789');
+
+        // Customer sees the allotted driver contact in BOTH HTML & live API
+        $customerHtml = $this->actingAs($customerUser)->get('/')->getContent();
+        $this->assertStringContainsString($ref, $customerHtml);
+        $this->assertStringContainsString('Vikram Joshi', $customerHtml);
+        $this->assertStringContainsString('+91 97654 32100', $customerHtml);
+
+        $this->actingAs($customerUser)->getJson('/api/customer/trips')
+            ->assertOk()
+            ->assertJsonPath('bookings.0.booking_reference', $ref)
+            ->assertJsonPath('bookings.0.driver.name', 'Vikram Joshi')
+            ->assertJsonPath('bookings.0.driver.phone', '+91 97654 32100');
+    }
 }

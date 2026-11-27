@@ -99,7 +99,15 @@ class User extends Authenticatable
             return null;
         }
 
-        return Driver::where('phone', 'like', '%'.$lastTen.'%')->first();
+        $byLike = Driver::where('phone', 'like', '%'.$lastTen.'%')->first();
+        if ($byLike) {
+            return $byLike;
+        }
+
+        return Driver::whereRaw(
+            "REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', ''), '(', '') LIKE ?",
+            ['%'.$lastTen]
+        )->first();
     }
 
     public static function findByFirebaseId(?string $firebaseId): ?self

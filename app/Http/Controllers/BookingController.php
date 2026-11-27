@@ -782,6 +782,45 @@ class BookingController extends Controller
     }
 
     /**
+     * List all bookings belonging to the signed-in customer (with allotted driver details).
+     */
+    public function myTrips(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['success' => false, 'bookings' => []], 401);
+        }
+
+        $digits = preg_replace('/[^0-9]/', '', (string) $user->phone) ?? '';
+        $last10 = strlen($digits) >= 10 ? substr($digits, -10) : $digits;
+        $email = strtolower(trim((string) $user->email));
+
+        $bookings = Booking::with('driver')
+            ->where(function ($query) use ($user, $last10, $email) {
+                $query->where('customer_user_id', $user->id);
+
+                if ($email !== '') {
+                    $query->orWhereRaw('LOWER(customer_email) = ?', [$email]);
+                }
+
+                if (strlen($last10) === 10) {
+                    $query->orWhere('customer_phone', 'like', '%'.$last10.'%')
+                        ->orWhereRaw(
+                            "REPLACE(REPLACE(REPLACE(REPLACE(customer_phone, ' ', ''), '-', ''), '+', ''), '(', '') LIKE ?",
+                            ['%'.$last10]
+                        );
+                }
+            })
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'bookings' => $bookings,
+        ]);
+    }
+
+    /**
      * Read a booking.
      *
      * P0-8: a reference alone is not proof of ownership. Access requires one

@@ -473,9 +473,13 @@ function switchTab(tabId) {
     }, 200);
   }
 
-  // Refresh live auctions whenever the driver switches to the bidding tab
+  // Refresh live auctions or assigned trips whenever the user switches tabs
   if (tabId === 'bidding' && typeof renderBiddingList === 'function') {
     renderBiddingList();
+  } else if (tabId === 'my-bookings' && typeof window.refreshMyBookingsList === 'function') {
+    window.refreshMyBookingsList();
+  } else if (tabId === 'driver-trips' && typeof window.refreshDriverTripsList === 'function') {
+    window.refreshDriverTripsList();
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -7437,8 +7441,8 @@ function renderDiscoveredCitiesTable(items) {
             <span>Approve &amp; Add</span>
           </button>
           ${status === 'pending'
-            ? `<button type="button" class="btn btn-sm btn-outline" onclick="dismissDiscoveredLocation(${disc.id}, this)" title="Dismiss out-of-region notification"><span>Dismiss</span></button>`
-            : ''}
+        ? `<button type="button" class="btn btn-sm btn-outline" onclick="dismissDiscoveredLocation(${disc.id}, this)" title="Dismiss out-of-region notification"><span>Dismiss</span></button>`
+        : ''}
         </div>`;
 
     return `
@@ -11363,10 +11367,10 @@ function buildTripCardHtml(booking) {
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
         <span style="font-weight:800; color:#92400e;">
           ${(booking.payment_status === 'driver_collect' || booking.payment_collection_by === 'driver')
-            ? `Driver will collect ${tripsMoney(booking.total_amount)} on trip completion`
-            : (booking.payment_status === 'pending_upi_verification'
-              ? `UPI UTR <code style="font-weight:800;">${tripsEscape(booking.upi_utr || '')}</code> — Waiting Admin Confirmation`
-              : `Pay ${tripsMoney(booking.total_amount)} to UPI ID: <code>${tripsEscape(upiId)}</code>`)}
+      ? `Driver will collect ${tripsMoney(booking.total_amount)} on trip completion`
+      : (booking.payment_status === 'pending_upi_verification'
+        ? `UPI UTR <code style="font-weight:800;">${tripsEscape(booking.upi_utr || '')}</code> — Waiting Admin Confirmation`
+        : `Pay ${tripsMoney(booking.total_amount)} to UPI ID: <code>${tripsEscape(upiId)}</code>`)}
         </span>
         <span style="font-size:11px; color:#78350f;">UPI ID: <strong>${tripsEscape(upiId)}</strong></span>
       </div>
@@ -11697,32 +11701,26 @@ window.bulkSaveCarTypeRates = async function () {
     });
     const data = await res.json();
     if (res.ok && data.success) {
-      showToast(data.message || 'Car type rates updated!', 'success');
-      if (Array.isArray(data.car_types)) {
-        data.car_types.forEach(ct => {
-          const row = document.getElementById(`admin-car-type-row-${ct.id}`);
-          if (row) {
-            row.dataset.status = ct.is_active ? 'active' : 'inactive';
-            row.cells[3].innerHTML = `<strong style="color:#0f172a; font-size:13px;">₹${Number(ct.rate_per_km).toFixed(2)}</strong><span style="font-size:10.5px; color:#64748b;">/km</span>`;
-            row.cells[4].innerHTML = `<span style="color:#334155; font-size:12px; font-weight:600;">₹${Number(ct.extra_km_rate || ct.rate_per_km).toFixed(2)}<span style="font-size:10.5px; color:#64748b;">/km</span></span>`;
-            row.cells[5].innerHTML = `<span style="color:#0f172a; font-weight:700; font-size:12.5px;">₹${Number(ct.base_fare_min).toLocaleString('en-IN')}</span>`;
-            const badge = document.getElementById(`car-type-status-badge-${ct.id}`);
-            if (badge) {
-              badge.className = `admin-badge ${ct.is_active ? 'badge-success' : 'badge-danger'}`;
-              badge.textContent = ct.is_active ? 'Active' : 'Inactive';
-            }
-          }
-        });
-        await window.syncAllCarTypes(data.car_types);
+      row.cells[3].innerHTML = `<strong style="color:#0f172a; font-size:13px;">₹${Number(ct.rate_per_km).toFixed(2)}</strong><span style="font-size:10.5px; color:#64748b;">/km</span>`;
+      row.cells[4].innerHTML = `<span style="color:#334155; font-size:12px; font-weight:600;">₹${Number(ct.extra_km_rate || ct.rate_per_km).toFixed(2)}<span style="font-size:10.5px; color:#64748b;">/km</span></span>`;
+      row.cells[5].innerHTML = `<span style="color:#0f172a; font-weight:700; font-size:12.5px;">₹${Number(ct.base_fare_min).toLocaleString('en-IN')}</span>`;
+      const badge = document.getElementById(`car-type-status-badge-${ct.id}`);
+      if (badge) {
+        badge.className = `admin-badge ${ct.is_active ? 'badge-success' : 'badge-danger'}`;
+        badge.textContent = ct.is_active ? 'Active' : 'Inactive';
       }
-      if (typeof refreshCabQuote === 'function') refreshCabQuote();
-    } else {
-      showToast(data.message || 'Failed to save bulk car type rates.', 'warning');
     }
+  });
+  await window.syncAllCarTypes(data.car_types);
+}
+if (typeof refreshCabQuote === 'function') refreshCabQuote();
+    } else {
+  showToast(data.message || 'Failed to save bulk car type rates.', 'warning');
+}
   } catch (err) {
-    console.error('bulkSaveCarTypeRates', err);
-    showToast('Network error while saving bulk car type rates.', 'danger');
-  }
+  console.error('bulkSaveCarTypeRates', err);
+  showToast('Network error while saving bulk car type rates.', 'danger');
+}
 };
 
 function formatTime12Hour(hhmm) {
@@ -12033,11 +12031,14 @@ window.refreshAdminRouteFareDisplays = function () {
       if (!data.success) return;
 
       const items = Array.isArray(data.notifications) ? data.notifications : [];
-      if (initialNotifLoadDone && showNewToasts && typeof showToast === 'function') {
-        const freshUnread = items.filter(i => !i.is_read && !latestNotifIds.has(i.id));
-        if (freshUnread.length > 0) {
-          showToast(freshUnread[0].title, 'info');
-        }
+      const freshUnread = items.filter(i => !i.is_read && !latestNotifIds.has(i.id));
+      if (initialNotifLoadDone && showNewToasts && freshUnread.length > 0 && typeof showToast === 'function') {
+        showToast(freshUnread[0].title, 'info');
+      }
+
+      if (initialNotifLoadDone && freshUnread.length > 0) {
+        if (typeof window.refreshMyBookingsList === 'function') window.refreshMyBookingsList();
+        if (typeof window.refreshDriverTripsList === 'function') window.refreshDriverTripsList();
       }
 
       latestNotifIds = new Set(items.map(i => i.id));
@@ -12046,6 +12047,123 @@ window.refreshAdminRouteFareDisplays = function () {
     } catch (_) {
       // Ignore transient network errors during background poll
     }
+  };
+
+  window.refreshMyBookingsList = async function () {
+    const list = document.getElementById('my-trips-list');
+    if (!list || !(window.INTERCITY_AUTH?.authenticated || window.CURRENT_USER)) return;
+    if (window.CURRENT_USER?.role && window.CURRENT_USER.role !== 'customer') return;
+
+    try {
+      const res = await fetch('/api/customer/trips', { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.success || !Array.isArray(data.bookings)) return;
+
+      const bookings = data.bookings;
+      const emptyEl = document.getElementById('trips-empty');
+      if (emptyEl) emptyEl.style.display = bookings.length === 0 ? 'block' : 'none';
+
+      list.innerHTML = bookings.map(b => {
+        const ref = b.booking_reference || 'new';
+        const bkt = typeof tripBucket === 'function' ? tripBucket(b.status) : 'active';
+        return `<div class="customer-trip-card" id="trip-card-${escapeHtml(ref)}" data-bucket="${escapeHtml(bkt)}" data-status="${escapeHtml(b.status || 'Requested')}">${buildTripCardHtml(b)}</div>`;
+      }).join('');
+
+      const activeCnt = bookings.filter(t => t.status !== 'Completed' && t.status !== 'Cancelled').length;
+      const compCnt = bookings.filter(t => t.status === 'Completed').length;
+      const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
+      setTxt('trips-count-active', activeCnt);
+      setTxt('trips-count-completed', compCnt);
+      setTxt('trips-count-all', bookings.length);
+
+      const navBadge = document.querySelector('.nav-tab-btn[data-target="my-bookings"] .nav-tab-badge');
+      if (navBadge) navBadge.textContent = String(bookings.length);
+
+      if (typeof window.filterMyTrips === 'function') {
+        const curFilter = document.querySelector('.trip-filter-pill.active')?.dataset?.filter || 'all';
+        window.filterMyTrips(curFilter);
+      }
+    } catch (_) { }
+  };
+
+  window.refreshDriverTripsList = async function () {
+    const tbody = document.getElementById('driver-trips-table-body');
+    const wrap = document.getElementById('driver-trips-view-wrap');
+    const emptyEl = document.getElementById('driver-trips-empty-state');
+    if (!tbody || !(window.INTERCITY_AUTH?.authenticated || window.CURRENT_USER)) return;
+    if (window.CURRENT_USER?.role && !['driver', 'admin'].includes(window.CURRENT_USER.role)) return;
+
+    try {
+      const res = await fetch('/api/driver/trips', { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.success || !Array.isArray(data.trips)) return;
+
+      const trips = data.trips;
+      if (emptyEl) emptyEl.style.display = trips.length === 0 ? 'block' : 'none';
+      if (wrap) wrap.style.display = trips.length === 0 ? 'none' : 'block';
+
+      const countBadge = document.getElementById('driver-trips-active-count-badge');
+      if (countBadge) countBadge.textContent = `${trips.length} Active Rides`;
+      document.querySelectorAll('.nav-tab-btn[data-target="driver-trips"] .nav-tab-badge, .driver-subnav-btn .nav-tab-badge.badge-success').forEach(b => {
+        b.textContent = String(trips.length);
+      });
+
+      const pendingCnt = trips.filter(t => t.status === 'Driver Assigned' || t.status === 'Confirmed').length;
+      const startedCnt = trips.filter(t => t.status === 'Started').length;
+      const compCnt = trips.filter(t => t.status === 'Completed').length;
+      const fAll = document.querySelector('#driver-trips-status-filters [data-trip-filter="all"]');
+      const fAss = document.querySelector('#driver-trips-status-filters [data-trip-filter="assigned"]');
+      const fSta = document.querySelector('#driver-trips-status-filters [data-trip-filter="started"]');
+      const fCom = document.querySelector('#driver-trips-status-filters [data-trip-filter="completed"]');
+      if (fAll) fAll.textContent = `All (${trips.length})`;
+      if (fAss) fAss.textContent = `Pending Start (${pendingCnt})`;
+      if (fSta) fSta.textContent = `In Progress (${startedCnt})`;
+      if (fCom) fCom.textContent = `Completed (${compCnt})`;
+
+      const rowsHtml = trips.map(dt => {
+        const bucket = dt.status === 'Started' ? 'started' : (dt.status === 'Completed' ? 'completed' : 'assigned');
+        const due = typeof computeDriverCollectDue === 'function' ? computeDriverCollectDue(dt) : 0;
+        const badgeCls = dt.status === 'Confirmed' ? 'badge-success' : (dt.status === 'Driver Assigned' ? 'badge-gold' : (dt.status === 'Started' ? 'badge-info' : (dt.status === 'Completed' ? 'badge-primary' : 'badge-secondary')));
+        const tel = String(dt.customer_phone || '').replace(/[^0-9+]/g, '') || String(dt.customer_phone || '');
+        const custHtml = (dt.assigned_driver_id && dt.status !== 'Cancelled')
+          ? `<div class="cell-subtext"><strong style="color:var(--text-main);">${escapeHtml(dt.customer_name)}</strong> &bull; <a href="tel:${escapeHtml(tel)}" style="color:var(--info); text-decoration:none; font-weight:700;">${escapeHtml(dt.customer_phone)}</a>${dt.driver_payout_amount != null ? ' &bull; <span class="admin-badge badge-success" style="font-size:9.5px; padding:1px 6px;">Won via driver bidding</span>' : ''}</div><div class="cell-subtext" style="font-size:11px; color:#64748b;">${escapeHtml(dt.pickup_location)} &rarr; ${escapeHtml(dt.drop_location)}</div>`
+          : `<div class="cell-subtext">Customer name &amp; contact unlock once allotted.</div>`;
+        const payoutHtml = dt.driver_payout_amount != null
+          ? `<div class="cell-primary-text text-tabular" style="color:var(--success);">₹${Number(dt.driver_payout_amount).toLocaleString('en-IN')}</div><div class="cell-subtext">Your winning bid payout</div>`
+          : `<div class="cell-primary-text text-tabular" style="color:var(--success);">₹${Number(dt.total_amount || 0).toLocaleString('en-IN')}</div><div class="cell-subtext">All-inclusive</div>`;
+        const collectSub = dt.driver_collected_at
+          ? `<div class="cell-subtext" style="color:#16a34a; font-weight:700;">Collected ₹${Number(dt.driver_collected_amount || 0).toLocaleString('en-IN')}</div>`
+          : (due > 0
+            ? `<div class="cell-subtext" style="color:#d97706; font-weight:700;">Collect ₹${Number(due).toLocaleString('en-IN')} on Completion</div>`
+            : `<div class="cell-subtext" style="color:#15803d; font-weight:700;">Prepaid (Confirmed)</div>`);
+        let actionHtml = '';
+        if (dt.status === 'Started') {
+          actionHtml = `<button type="button" class="btn btn-sm btn-accent" style="height:28px; padding:0 10px; font-size:11px;" onclick="completeDriverTrip(${dt.id}, ${due}, '${escapeHtml(dt.payment_status || '')}')"><span class="material-symbols-outlined" style="font-size:14px;">flag</span><span>${due > 0 ? `Collect ₹${Number(due).toLocaleString('en-IN')} & Complete` : 'Complete Trip & Settle'}</span></button>`;
+        } else if (dt.status === 'Completed') {
+          actionHtml = `<span style="color:var(--success); font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;"><span class="material-symbols-outlined" style="font-size:15px;">verified</span><span>Trip completed &amp; payout settled.</span></span>`;
+        } else {
+          actionHtml = `<div class="driver-otp-controls" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><label for="driver-otp-input-${dt.id}" style="font-size:11px; font-weight:700; color:var(--text-muted); white-space:nowrap;">OTP</label><input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" id="driver-otp-input-${dt.id}" placeholder="4-digit" maxlength="4" style="width:80px; padding:4px 6px; font-family:monospace; font-size:13px; font-weight:800; text-align:center; border:1px solid var(--outline); border-radius:6px; letter-spacing:2px;"><button type="button" class="btn btn-sm btn-primary" style="height:28px; padding:0 10px; font-size:11px;" onclick="verifyDriverStartOtp(${dt.id})"><span class="material-symbols-outlined" style="font-size:14px;">check_circle</span><span>Verify &amp; Start</span></button></div>`;
+        }
+        const dtJson = escapeHtml(JSON.stringify(dt));
+        return `<tr class="driver-trip-row" id="driver-trip-box-${dt.id}" data-trip-bucket="${bucket}">
+          <td><span class="booking-ref-link">${escapeHtml(dt.booking_reference)}</span><div class="cell-subtext">${escapeHtml(dt.trip_date || 'Scheduled')}</div></td>
+          <td><div class="cell-primary-text">${escapeHtml(dt.route_summary)}</div>${custHtml}</td>
+          <td><span class="admin-badge ${badgeCls}" id="driver-trip-status-badge-${dt.id}">${escapeHtml(dt.status)}</span></td>
+          <td>${payoutHtml}${collectSub}</td>
+          <td><div id="driver-trip-actions-${dt.id}" style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">${actionHtml}</div></td>
+          <td style="text-align:right; white-space:nowrap;"><button type="button" class="btn btn-sm btn-outline driver-item-details-btn" style="min-height:28px; padding:0 10px !important;" onclick='openDriverTripDetails(${dtJson})'><span class="material-symbols-outlined" style="font-size:14px;">visibility</span><span>Trip Details</span></button></td>
+        </tr>`;
+      }).join('');
+
+      tbody.innerHTML = rowsHtml + `<tr id="driver-trips-filter-empty" style="display:none;"><td colspan="6" style="text-align:center; padding:24px; color:var(--text-muted); font-size:12.5px;">No rides match this status filter.</td></tr>`;
+
+      if (typeof window.setDriverTripFilter === 'function') {
+        const curTripFilter = document.querySelector('#driver-trips-status-filters [data-trip-filter].active')?.dataset?.tripFilter || 'all';
+        window.setDriverTripFilter(curTripFilter);
+      }
+    } catch (_) { }
   };
 
   window.refreshAppNotifications = function () {

@@ -152,6 +152,7 @@ Route::prefix('api')->middleware(['auth'])->group(function () {
 
     // Confirming a booking requires a signed-in customer, so every trip is
     // owned by an account. Guests are sent to the one-tap login gate.
+    Route::get('/customer/trips', [BookingController::class, 'myTrips'])->name('api.customer.trips');
     Route::post('/bookings', [BookingController::class, 'store'])->name('api.bookings.store');
     Route::post('/bookings/{reference}/upi-utr', [BookingController::class, 'submitUpiUtr'])->name('api.bookings.upiUtr');
     Route::post('/bookings/{reference}/razorpay/order', [BookingController::class, 'createRazorpayOrder'])->name('api.bookings.razorpay.order');
@@ -210,6 +211,7 @@ Route::prefix('api')->middleware(['auth', 'role:driver,admin'])->group(function 
     Route::post('/bids/counter', [DriverBiddingController::class, 'counterOffer'])->name('api.bids.counter');
     Route::post('/bids/submit', [DriverBiddingController::class, 'submitDriverBid'])->name('api.bids.submit');
 
+    Route::get('/driver/trips', [DriverBiddingController::class, 'myTrips'])->name('api.driver.trips.index');
     Route::post('/driver/trips/{id}/verify-otp', [DriverBiddingController::class, 'verifyStartOtp'])->name('api.driver.trips.verifyOtp');
     Route::post('/driver/trips/{id}/complete', [DriverBiddingController::class, 'completeTrip'])->name('api.driver.trips.complete');
     Route::post('/driver/wallet/withdraw', [DriverBiddingController::class, 'withdrawPayout'])->name('api.driver.wallet.withdraw');

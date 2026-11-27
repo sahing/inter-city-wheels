@@ -70,13 +70,22 @@ class HomeController extends Controller
         if ($currentUser && $currentUser->role === 'customer') {
             $digits = preg_replace('/[^0-9]/', '', (string) $currentUser->phone) ?? '';
             $last10 = strlen($digits) >= 10 ? substr($digits, -10) : $digits;
+            $email = strtolower(trim((string) $currentUser->email));
 
             $customerBookings = Booking::with('driver')
-                ->where(function ($query) use ($currentUser, $last10) {
+                ->where(function ($query) use ($currentUser, $last10, $email) {
                     $query->where('customer_user_id', $currentUser->id);
 
+                    if ($email !== '') {
+                        $query->orWhereRaw('LOWER(customer_email) = ?', [$email]);
+                    }
+
                     if (strlen($last10) === 10) {
-                        $query->orWhere('customer_phone', 'like', '%'.$last10.'%');
+                        $query->orWhere('customer_phone', 'like', '%'.$last10.'%')
+                            ->orWhereRaw(
+                                "REPLACE(REPLACE(REPLACE(REPLACE(customer_phone, ' ', ''), '-', ''), '+', ''), '(', '') LIKE ?",
+                                ['%'.$last10]
+                            );
                     }
                 })
                 ->latest()
@@ -84,16 +93,7 @@ class HomeController extends Controller
         }
 
         if ($currentUser && $currentUser->role === 'driver') {
-            $driverProfile = Driver::where('phone', $currentUser->phone)->first();
-
-            if (! $driverProfile) {
-                $digits = preg_replace('/[^0-9]/', '', (string) $currentUser->phone) ?? '';
-                $last10 = substr($digits, -10);
-
-                if (strlen($last10) === 10) {
-                    $driverProfile = Driver::where('phone', 'like', '%'.$last10.'%')->first();
-                }
-            }
+            $driverProfile = $currentUser->driverProfile();
 
             if ($driverProfile) {
                 $driverMyVehicles = DriverVehicle::where('driver_id', $driverProfile->id)->latest()->get();
@@ -105,7 +105,7 @@ class HomeController extends Controller
 
                 $driverTrips = Booking::with('driver')
                     ->where('assigned_driver_id', $driverProfile->id)
-                    ->whereNotIn('status', ['Requested', 'Bidding', 'Cancelled'])
+                    ->where('status', '!=', 'Cancelled')
                     ->latest()
                     ->get();
             }
@@ -120,7 +120,7 @@ class HomeController extends Controller
                     ->get();
                 $driverTrips = Booking::with('driver')
                     ->where('assigned_driver_id', $driverProfile->id)
-                    ->whereNotIn('status', ['Requested', 'Bidding', 'Cancelled'])
+                    ->where('status', '!=', 'Cancelled')
                     ->latest()
                     ->get();
             }
