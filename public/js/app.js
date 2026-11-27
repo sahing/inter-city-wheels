@@ -5675,7 +5675,7 @@ function renderAdminBookingsTable(bookings) {
     const statusClass = b.status === 'Confirmed' ? 'badge-success' : (b.status === 'Driver Assigned' ? 'badge-gold' : (b.status === 'Started' ? 'badge-info' : (b.status === 'Completed' ? 'badge-primary' : 'badge-secondary')));
     const driverHtml = b.driver ? `
       <div class="driver-allotted-card">
-        <span class="cell-primary-text">${b.driver.name}</span>
+        <a href="javascript:void(0)" onclick="openAdminDriverProfileModal(${b.driver.id})" class="cell-primary-text" style="color:var(--primary); text-decoration:underline;" title="View driver profile & trips">${b.driver.name}</a>
         <span class="driver-plate-pill">${b.driver.vehicle_plate}</span>
         <button type="button" class="btn-link-action" onclick="openAllotDriverModal(${b.id})" title="Change Driver">Change</button>
       </div>
@@ -5731,7 +5731,9 @@ function renderAdminBookingsTable(bookings) {
           <div class="cell-subtext">${createdDate}</div>
         </td>
         <td>
-          <div class="cell-primary-text">${b.customer_name}</div>
+          <a href="javascript:void(0)" onclick="openAdminBookingCustomerProfile(${b.id})" class="cell-primary-text" style="color:#0f172a; text-decoration:underline; text-decoration-color:#cbd5e1;" title="View customer profile & bookings">
+            ${b.customer_name}
+          </a>
           <div class="cell-subtext">
             <a href="tel:${b.customer_phone}" style="color:#64748b; text-decoration:none;">${b.customer_phone}</a>
           </div>
@@ -7040,61 +7042,86 @@ window.deleteUserAccount = async function () {
 };
 
 // 3. VIEW USER PROFILE MODAL
+function renderAdminViewUserModalData(data) {
+  if (!data || !data.success || !data.user) return;
+  const u = data.user;
+  window.currentViewingUserId = u.id || null;
+
+  setAvatarContent(
+    document.getElementById('view-user-avatar'),
+    u.avatar,
+    u.role === 'admin' ? '🛡️' : (u.role === 'driver' ? '👨🏽‍✈️' : '👤'),
+    u.name || 'User'
+  );
+  document.getElementById('view-user-name').textContent = u.name || 'User';
+  const roleStr = String(u.role || 'customer');
+  document.getElementById('view-user-role-badge').textContent = roleStr.toUpperCase();
+  document.getElementById('view-user-role-badge').className = `admin-badge ${roleStr === 'admin' ? 'badge-gold' : (roleStr === 'driver' ? 'badge-success' : 'badge-primary')}`;
+  document.getElementById('view-user-email').textContent = u.email || '—';
+  document.getElementById('view-user-phone').textContent = u.phone || '—';
+  document.getElementById('view-user-phone').href = u.phone ? `tel:${u.phone}` : '#';
+
+  const driverCard = document.getElementById('view-user-driver-card');
+  if (data.driver) {
+    driverCard.style.display = 'block';
+    document.getElementById('view-user-driver-vehicle').textContent = data.driver.vehicle_model || '—';
+    document.getElementById('view-user-driver-plate').textContent = data.driver.vehicle_plate || '—';
+    document.getElementById('view-user-driver-wallet').textContent = `₹${Number(data.driver.wallet_balance || 0).toLocaleString('en-IN')}`;
+    document.getElementById('view-user-driver-rating').textContent = `★${data.driver.rating || '4.90'}`;
+  } else {
+    driverCard.style.display = 'none';
+  }
+
+  const activityBox = document.getElementById('view-user-activity-content');
+  if (Array.isArray(data.bookings) && data.bookings.length > 0) {
+    activityBox.innerHTML = data.bookings.map(b => `
+      <div onclick="closeModal('admin-view-user-modal'); openViewBookingModal(${b.id});" style="display:flex; justify-content:space-between; align-items:center; padding:7px 6px; border-bottom:1px solid #f1f5f9; cursor:pointer;" title="Click to manage booking ${b.booking_reference}">
+        <div>
+          <strong style="color:var(--primary); font-family:monospace; text-decoration:underline;">${b.booking_reference}</strong> &bull; ${b.route_summary}
+        </div>
+        <div>
+          <span class="admin-badge badge-secondary" style="font-size:9.5px;">${b.status}</span> &bull; <strong>₹${Number(b.total_amount).toLocaleString('en-IN')}</strong>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    activityBox.innerHTML = `<em>No recent trip bookings logged yet.</em>`;
+  }
+
+  const modal = document.getElementById('admin-view-user-modal');
+  if (modal) modal.classList.add('active');
+}
+
 window.openViewUserModal = async function (userId) {
-  window.currentViewingUserId = userId;
   try {
     const res = await fetch(`/api/admin/users/${userId}`);
     const data = await res.json();
-    if (!data.success || !data.user) return;
-
-    const u = data.user;
-    setAvatarContent(
-      document.getElementById('view-user-avatar'),
-      u.avatar,
-      u.role === 'admin' ? '🛡️' : (u.role === 'driver' ? '👨🏽‍✈️' : '👤'),
-      u.name || 'User'
-    );
-    document.getElementById('view-user-name').textContent = u.name;
-    document.getElementById('view-user-role-badge').textContent = u.role.toUpperCase();
-    document.getElementById('view-user-role-badge').className = `admin-badge ${u.role === 'admin' ? 'badge-gold' : (u.role === 'driver' ? 'badge-success' : 'badge-primary')}`;
-    document.getElementById('view-user-email').textContent = u.email;
-    document.getElementById('view-user-phone').textContent = u.phone;
-    document.getElementById('view-user-phone').href = `tel:${u.phone}`;
-
-    // Driver card
-    const driverCard = document.getElementById('view-user-driver-card');
-    if (data.driver) {
-      driverCard.style.display = 'block';
-      document.getElementById('view-user-driver-vehicle').textContent = data.driver.vehicle_model;
-      document.getElementById('view-user-driver-plate').textContent = data.driver.vehicle_plate;
-      document.getElementById('view-user-driver-wallet').textContent = `₹${Number(data.driver.wallet_balance || 0).toLocaleString('en-IN')}`;
-      document.getElementById('view-user-driver-rating').textContent = `★${data.driver.rating || '4.90'}`;
-    } else {
-      driverCard.style.display = 'none';
-    }
-
-    // Recent activity
-    const activityBox = document.getElementById('view-user-activity-content');
-    if (Array.isArray(data.bookings) && data.bookings.length > 0) {
-      activityBox.innerHTML = data.bookings.map(b => `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #f1f5f9;">
-          <div>
-            <strong style="color:var(--primary); font-family:monospace;">${b.booking_reference}</strong> &bull; ${b.route_summary}
-          </div>
-          <div>
-            <span class="admin-badge badge-secondary" style="font-size:9.5px;">${b.status}</span> &bull; <strong>₹${Number(b.total_amount).toLocaleString('en-IN')}</strong>
-          </div>
-        </div>
-      `).join('');
-    } else {
-      activityBox.innerHTML = `<em>No recent trip bookings logged yet.</em>`;
-    }
-
-    const modal = document.getElementById('admin-view-user-modal');
-    if (modal) modal.classList.add('active');
+    renderAdminViewUserModalData(data);
   } catch (err) {
     console.error('Failed to view user details:', err);
     showToast('Failed to load user profile.', 'warning');
+  }
+};
+
+window.openAdminBookingCustomerProfile = async function (bookingId) {
+  try {
+    const res = await fetch(`/api/admin/bookings/${bookingId}/customer-profile`);
+    const data = await res.json();
+    renderAdminViewUserModalData(data);
+  } catch (err) {
+    console.error('Failed to view customer profile:', err);
+    showToast('Failed to load customer profile.', 'warning');
+  }
+};
+
+window.openAdminDriverProfileModal = async function (driverId) {
+  try {
+    const res = await fetch(`/api/admin/drivers/${driverId}/profile`);
+    const data = await res.json();
+    renderAdminViewUserModalData(data);
+  } catch (err) {
+    console.error('Failed to view driver profile:', err);
+    showToast('Failed to load driver profile.', 'warning');
   }
 };
 

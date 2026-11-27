@@ -109,6 +109,81 @@ class UserAdminController extends Controller
     }
 
     /**
+     * Resolve customer profile and booking history from a booking ID.
+     */
+    public function customerProfileByBooking($bookingId)
+    {
+        $booking = Booking::findOrFail($bookingId);
+        $user = null;
+
+        if ($booking->customer_user_id) {
+            $user = User::find($booking->customer_user_id);
+        }
+        if (! $user && $booking->customer_phone) {
+            $user = User::where('phone', $booking->customer_phone)->first();
+        }
+        if (! $user && $booking->customer_email) {
+            $user = User::where('email', $booking->customer_email)->first();
+        }
+
+        $bookingsQuery = Booking::query();
+        if ($user) {
+            $bookingsQuery->where('customer_user_id', $user->id)
+                ->orWhere('customer_phone', $user->phone)
+                ->orWhere('customer_email', $user->email);
+        } else {
+            $bookingsQuery->where('customer_phone', $booking->customer_phone);
+        }
+
+        $bookings = $bookingsQuery->latest()->take(20)->get();
+
+        return response()->json([
+            'success' => true,
+            'user' => $user ? [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'role' => $user->role,
+                'avatar' => $user->avatar ?? $this->defaultAvatarForRole($user->role),
+            ] : [
+                'id' => null,
+                'name' => $booking->customer_name,
+                'email' => $booking->customer_email ?: '—',
+                'phone' => $booking->customer_phone,
+                'role' => 'customer',
+                'avatar' => '👤',
+            ],
+            'driver' => null,
+            'bookings' => $bookings,
+        ]);
+    }
+
+    /**
+     * Resolve driver profile, linked user account, and assigned trips by Driver ID.
+     */
+    public function driverProfile($driverId)
+    {
+        $driver = Driver::findOrFail($driverId);
+        $user = User::where('role', 'driver')->where('phone', $driver->phone)->first();
+        $bookings = Booking::where('assigned_driver_id', $driver->id)->latest()->take(20)->get();
+
+        return response()->json([
+            'success' => true,
+            'user' => [
+                'id' => $user?->id,
+                'name' => $user?->name ?? $driver->name,
+                'email' => $user?->email ?? '—',
+                'phone' => $driver->phone,
+                'role' => 'driver',
+                'avatar' => $user?->avatar ?? $driver->avatar ?? '👨🏽‍✈️',
+            ],
+            'driver' => $driver,
+            'bookings' => $bookings,
+        ]);
+    }
+
+    /**
      * Display the specified user.
      */
     public function show($id)

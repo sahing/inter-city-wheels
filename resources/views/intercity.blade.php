@@ -2734,7 +2734,9 @@
                                                     <div class="cell-subtext">{{ $b->created_at ? $b->created_at->format('d M, h:i A') : 'Recent' }}</div>
                                                 </td>
                                                 <td>
-                                                    <div class="cell-primary-text">{{ $b->customer_name }}</div>
+                                                    <a href="javascript:void(0)" onclick="openAdminBookingCustomerProfile({{ $b->id }})" class="cell-primary-text" style="color:#0f172a; text-decoration:underline; text-decoration-color:#cbd5e1;" title="View customer profile & bookings">
+                                                        {{ $b->customer_name }}
+                                                    </a>
                                                     <div class="cell-subtext">
                                                         <a href="tel:{{ $b->customer_phone }}" style="color:#64748b; text-decoration:none;">{{ $b->customer_phone }}</a>
                                                     </div>
@@ -2792,7 +2794,7 @@
                                                 <td id="booking-driver-cell-{{ $b->id }}">
                                                     @if($b->driver)
                                                     <div class="driver-allotted-card">
-                                                        <span class="cell-primary-text">{{ $b->driver->name }}</span>
+                                                        <a href="javascript:void(0)" onclick="openAdminDriverProfileModal({{ $b->driver->id }})" class="cell-primary-text" style="color:var(--primary); text-decoration:underline;" title="View driver profile & trips">{{ $b->driver->name }}</a>
                                                         <span class="driver-plate-pill">{{ $b->driver->vehicle_plate }}</span>
                                                         <button type="button" class="btn-link-action" onclick="openAllotDriverModal({{ $b->id }})" title="Change Driver">Change</button>
                                                     </div>

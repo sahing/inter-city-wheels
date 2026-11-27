@@ -388,4 +388,32 @@ class AdminBookingManagementTest extends TestCase
             @unlink($savedPath);
         }
     }
+
+    public function test_admin_can_view_customer_and_driver_profiles_from_bookings_table(): void
+    {
+        $admin = User::where('role', 'admin')->firstOrFail();
+        $driver = Driver::firstOrFail();
+        $booking = Booking::firstOrFail();
+        $booking->forceFill([
+            'assigned_driver_id' => $driver->id,
+            'status' => 'Driver Assigned',
+        ])->save();
+
+        $html = $this->actingAs($admin)->get('/')->getContent();
+        $this->assertStringContainsString("openAdminBookingCustomerProfile({$booking->id})", $html);
+        $this->assertStringContainsString("openAdminDriverProfileModal({$driver->id})", $html);
+
+        $this->actingAs($admin)->getJson("/api/admin/bookings/{$booking->id}/customer-profile")
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('user.phone', $booking->customer_phone)
+            ->assertJsonStructure(['user' => ['id', 'name', 'phone', 'email', 'role'], 'bookings']);
+
+        $this->actingAs($admin)->getJson("/api/admin/drivers/{$driver->id}/profile")
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('driver.id', $driver->id)
+            ->assertJsonPath('driver.vehicle_plate', $driver->vehicle_plate)
+            ->assertJsonStructure(['user', 'driver', 'bookings']);
+    }
 }

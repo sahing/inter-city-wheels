@@ -240,6 +240,8 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::get('/admin/users', [UserAdminController::class, 'index'])->name('api.admin.users.index');
     Route::post('/admin/users', [UserAdminController::class, 'store'])->name('api.admin.users.store');
     Route::get('/admin/users/{id}', [UserAdminController::class, 'show'])->name('api.admin.users.show');
+    Route::get('/admin/bookings/{id}/customer-profile', [UserAdminController::class, 'customerProfileByBooking'])->name('api.admin.bookings.customerProfile');
+    Route::get('/admin/drivers/{id}/profile', [UserAdminController::class, 'driverProfile'])->name('api.admin.drivers.profile');
     Route::put('/admin/users/{id}', [UserAdminController::class, 'update'])->name('api.admin.users.update');
     Route::patch('/admin/users/{id}/role', [UserAdminController::class, 'updateRole'])->name('api.admin.users.updateRole');
     Route::delete('/admin/users/{id}', [UserAdminController::class, 'destroy'])->name('api.admin.users.destroy');
