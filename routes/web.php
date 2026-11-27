@@ -304,6 +304,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::get('/admin/discovered-locations', [LocationAdminController::class, 'discovered'])->name('api.admin.discoveredLocations.index');
     Route::post('/admin/discovered-locations/{id}/approve', [LocationAdminController::class, 'approveDiscovered'])->name('api.admin.discoveredLocations.approve');
     Route::post('/admin/discovered-locations/{id}/dismiss', [LocationAdminController::class, 'dismissDiscovered'])->name('api.admin.discoveredLocations.dismiss');
+    Route::delete('/admin/discovered-locations/{id}', [LocationAdminController::class, 'dismissDiscovered'])->name('api.admin.discoveredLocations.destroy');
 
     // Berth Routes
     Route::get('/admin/berth-routes', [BerthRouteAdminController::class, 'index'])->name('api.admin.berthRoutes.index');

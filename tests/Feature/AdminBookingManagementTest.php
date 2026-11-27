@@ -322,7 +322,7 @@ class AdminBookingManagementTest extends TestCase
         $this->assertStringContainsString('id="car-type-crop-upload-btn"', $html);
 
         // Create a rich noisy 1200x800 PNG (> 30 KB raw) so server-side crop & compression must reduce it <= 30 KB
-        $tmpPng = tempnam(sys_get_temp_dir(), 'cartype_').'.png';
+        $tmpPng = sys_get_temp_dir().DIRECTORY_SEPARATOR.'cartype_'.uniqid().'.png';
         $im = imagecreatetruecolor(1200, 800);
         for ($y = 0; $y < 800; $y += 8) {
             for ($x = 0; $x < 1200; $x += 8) {

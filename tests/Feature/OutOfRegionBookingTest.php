@@ -332,12 +332,16 @@ class OutOfRegionBookingTest extends TestCase
         $approveRes->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('location.name', 'Munnar')
-            ->assertJsonPath('discovered.approval_status', 'approved');
+            ->assertJsonPath('discovered.approval_status', 'approved')
+            ->assertJsonPath('deleted_from_cache', true);
 
         $this->assertDatabaseHas('service_locations', [
             'name' => 'Munnar',
             'state' => 'Kerala',
             'is_active' => true,
+        ]);
+        $this->assertDatabaseMissing('geo_place_cache', [
+            'id' => $munnarCache->id,
         ]);
 
         // 6. Now Munnar appears as a Registered Hub in city search
@@ -348,14 +352,63 @@ class OutOfRegionBookingTest extends TestCase
             ->assertJsonPath('locations.0.is_registered', true)
             ->assertJsonPath('locations.0.badge', 'Registered Hub');
 
-        // 7. Admin can dismiss a pending cached city (e.g., Kochi)
+        // 7. Admin can dismiss/remove a cached city (e.g., Kochi) and it is deleted from geo_place_cache
         $kochiCache = GeoPlaceCache::where('name', 'Kochi')->firstOrFail();
         $this->actingAs($admin)
             ->postJson("/api/admin/discovered-locations/{$kochiCache->id}/dismiss")
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('discovered.approval_status', 'dismissed');
+            ->assertJsonPath('discovered.approval_status', 'dismissed')
+            ->assertJsonPath('deleted_from_cache', true);
 
         $this->assertNull(ServiceLocation::where('name', 'Kochi')->first());
+        $this->assertDatabaseMissing('geo_place_cache', [
+            'id' => $kochiCache->id,
+        ]);
+
+        // 8. Adding or deleting a ServiceLocation directly also deletes matching geo_place_cache rows
+        $wayanadCache = GeoPlaceCache::create([
+            'query_key' => 'wayanad',
+            'query' => 'Wayanad',
+            'name' => 'Wayanad',
+            'state' => 'Kerala',
+            'latitude' => 11.6854,
+            'longitude' => 76.1320,
+            'is_beyond_region' => true,
+            'approval_status' => 'pending',
+            'resolved_at' => now(),
+        ]);
+
+        $createLocRes = $this->actingAs($admin)->postJson('/api/admin/locations', [
+            'name' => 'Wayanad',
+            'state' => 'Kerala',
+            'latitude' => 11.6854,
+            'longitude' => 76.1320,
+            'is_active' => true,
+        ])->assertOk();
+
+        $this->assertDatabaseMissing('geo_place_cache', [
+            'id' => $wayanadCache->id,
+        ]);
+
+        // If a cache row exists again when removing the ServiceLocation, deleting the location removes it too
+        $reCachedWayanad = GeoPlaceCache::create([
+            'query_key' => 'wayanad',
+            'query' => 'Wayanad',
+            'name' => 'Wayanad',
+            'state' => 'Kerala',
+            'latitude' => 11.6854,
+            'longitude' => 76.1320,
+            'service_location_id' => $createLocRes->json('location.id'),
+            'resolved_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->deleteJson('/api/admin/locations/'.$createLocRes->json('location.id'))
+            ->assertOk();
+
+        $this->assertDatabaseMissing('geo_place_cache', [
+            'id' => $reCachedWayanad->id,
+        ]);
     }
 }

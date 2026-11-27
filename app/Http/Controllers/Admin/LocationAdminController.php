@@ -36,6 +36,7 @@ class LocationAdminController extends Controller
         $validated['is_active'] = $request->boolean('is_active', true);
 
         $location = ServiceLocation::create($validated);
+        $this->purgeGeoPlaceCacheForCity($location->name);
 
         return response()->json([
             'success' => true,
@@ -71,7 +72,12 @@ class LocationAdminController extends Controller
         $validated['has_airport_service'] = $request->boolean('has_airport_service', $location->has_airport_service);
         $validated['is_active'] = $request->boolean('is_active', $location->is_active);
 
+        $previousName = (string) $location->name;
         $location->update($validated);
+        $this->purgeGeoPlaceCacheForCity($location->name, $location->id);
+        if (strtolower($previousName) !== strtolower((string) $location->name)) {
+            $this->purgeGeoPlaceCacheForCity($previousName);
+        }
 
         return response()->json([
             'success' => true,
@@ -95,8 +101,11 @@ class LocationAdminController extends Controller
     public function destroy($id)
     {
         $location = ServiceLocation::findOrFail($id);
-        $name = $location->name;
+        $name = (string) $location->name;
+        $locationId = (int) $location->id;
         $location->delete();
+
+        $this->purgeGeoPlaceCacheForCity($name, $locationId);
 
         return response()->json([
             'success' => true,
@@ -163,47 +172,88 @@ class LocationAdminController extends Controller
             ]);
         }
 
-        $discovered->update([
+        $originalName = (string) $discovered->name;
+        $discoveredSnapshot = [
+            'id' => $discovered->id,
             'name' => $cityName,
             'state' => $stateName,
             'approval_status' => 'approved',
             'service_location_id' => $location->id,
-            'approved_at' => now(),
-            'approved_by_user_id' => Auth::id(),
-            'expires_at' => null,
-        ]);
+            'deleted' => true,
+        ];
 
-        // Also mark any duplicate cached rows with the same name as approved
-        GeoPlaceCache::where('id', '!=', $discovered->id)
-            ->whereRaw('LOWER(name) = ?', [strtolower($cityName)])
-            ->update([
-                'approval_status' => 'approved',
-                'service_location_id' => $location->id,
-                'approved_at' => now(),
-                'approved_by_user_id' => Auth::id(),
-                'expires_at' => null,
-            ]);
+        $discovered->delete();
+        $this->purgeGeoPlaceCacheForCity($cityName, $location->id);
+        if (strtolower($originalName) !== strtolower($cityName)) {
+            $this->purgeGeoPlaceCacheForCity($originalName);
+        }
 
         return response()->json([
             'success' => true,
             'message' => "'{$location->name}' approved and added to the active city list!",
             'location' => $location,
-            'discovered' => $discovered->fresh(),
+            'discovered' => $discoveredSnapshot,
+            'deleted_from_cache' => true,
         ]);
     }
 
     /**
-     * Dismiss a discovered city from the pending approval queue.
+     * Dismiss / remove a discovered city and delete it from the OSM cache table.
      */
     public function dismissDiscovered($id)
     {
         $discovered = GeoPlaceCache::findOrFail($id);
-        $discovered->update(['approval_status' => 'dismissed']);
+        $name = (string) $discovered->name;
+        $snapshot = [
+            'id' => $discovered->id,
+            'name' => $name,
+            'approval_status' => 'dismissed',
+            'deleted' => true,
+        ];
+
+        $discovered->delete();
+        $this->purgeGeoPlaceCacheForCity($name);
 
         return response()->json([
             'success' => true,
-            'message' => "Discovered location '{$discovered->name}' dismissed.",
-            'discovered' => $discovered->fresh(),
+            'message' => "Discovered location '{$name}' removed from OSM cache.",
+            'discovered' => $snapshot,
+            'deleted_from_cache' => true,
         ]);
+    }
+
+    /**
+     * Delete any GeoPlaceCache rows matching the given city name or ServiceLocation ID.
+     */
+    private function purgeGeoPlaceCacheForCity(string $cityName, ?int $serviceLocationId = null): int
+    {
+        $clean = strtolower(trim(explode(',', $cityName)[0]));
+        $fullLower = strtolower(trim($cityName));
+
+        if ($clean === '' && $serviceLocationId === null) {
+            return 0;
+        }
+
+        return GeoPlaceCache::query()
+            ->where(function ($query) use ($clean, $fullLower, $serviceLocationId) {
+                $hasCondition = false;
+
+                if ($serviceLocationId !== null) {
+                    $query->where('service_location_id', $serviceLocationId);
+                    $hasCondition = true;
+                }
+
+                foreach (array_unique(array_filter([$clean, $fullLower])) as $nameVariant) {
+                    if ($hasCondition) {
+                        $query->orWhereRaw('LOWER(name) = ?', [$nameVariant])
+                            ->orWhereRaw('LOWER(query) = ?', [$nameVariant]);
+                    } else {
+                        $query->whereRaw('LOWER(name) = ?', [$nameVariant])
+                            ->orWhereRaw('LOWER(query) = ?', [$nameVariant]);
+                        $hasCondition = true;
+                    }
+                }
+            })
+            ->delete();
     }
 }

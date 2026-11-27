@@ -97,12 +97,13 @@ class PaymentOptionsSettingsTest extends TestCase
             ->assertJsonPath('settings.payment_show_cash', '0')
             ->assertJsonPath('settings.payment_default_option', 'part_pay');
 
-        // Customer checkout renders only enabled options and updated 35% copy
+        // Customer checkout first screen renders only the simple Full/Partial options enabled, and next screen offers Manual UPI
         $home = $this->actingAs($customer)->get('/');
         $home->assertOk();
-        $home->assertSee('Part Pay (35% Advance, Balance to Driver)', false);
-        $home->assertSee('Full UPI (Instant Zero-Fee UPI)', false);
+        $home->assertSee('Partial Payment (35% Advance, Balance to Driver)', false);
+        $home->assertSee('Manual UPI Mode (QR &amp; UPI ID)', false);
         $home->assertDontSee('data-mode="full_online"', false);
+        $home->assertDontSee('data-mode="full_upi"', false);
         $home->assertDontSee('data-mode="cash"', false);
     }
 

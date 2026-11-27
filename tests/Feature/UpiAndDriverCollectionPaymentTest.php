@@ -608,4 +608,86 @@ class UpiAndDriverCollectionPaymentTest extends TestCase
         $adminHtml = $this->actingAs($this->admin)->get('/')->getContent();
         $this->assertStringContainsString('id="view-booking-attempts-box"', $adminHtml);
     }
+
+    public function test_two_screen_payment_flow_exposes_only_full_and_partial_first_then_gateway_or_manual_upi(): void
+    {
+        PlatformSetting::set('payment_advance_pct', '20');
+        PlatformSetting::set('payment_show_full_online', '1');
+        PlatformSetting::set('payment_show_part_pay', '1');
+        PlatformSetting::set('payment_show_full_upi', '1');
+        PlatformSetting::set('payment_show_cash', '1');
+        PlatformSetting::set('payment_gateway', 'razorpay');
+        PlatformSetting::set('razorpay_key_id', 'rzp_test_flow');
+        PlatformSetting::set('razorpay_key_secret', 'rzp_secret_flow');
+        PlatformSetting::set('upi_id', 'flow.desk@okaxis');
+
+        $html = $this->actingAs($this->customer)->get('/')->getContent();
+
+        // First screen shows only Full Payment and Partial Payment; hidden mirror stays display:none
+        $this->assertStringContainsString('data-mode="full_online"', $html);
+        $this->assertStringContainsString('Full Payment (100% Trip Fare)', $html);
+        $this->assertStringContainsString('data-mode="part_pay"', $html);
+        $this->assertStringContainsString('Partial Payment (20% Advance, Balance to Driver)', $html);
+        $this->assertStringNotContainsString('data-mode="full_upi"', $html);
+        $this->assertStringNotContainsString('data-mode="cash"', $html);
+        $this->assertStringContainsString('id="checkout-upi-details-box" style="display:none;"', $html);
+
+        // Next screen exposes Payment Gateway (Razorpay) and Manual UPI Mode + QR / UPI ID / Open UPI App / UTR
+        $this->assertStringContainsString('id="step-method-razorpay-card" style="display:flex;', $html);
+        $this->assertStringContainsString('id="step-method-manual-upi-card"', $html);
+        $this->assertStringContainsString('id="step-upi-qr-container"', $html);
+        $this->assertStringContainsString('id="step-utr-upi-id"', $html);
+        $this->assertStringContainsString('id="step-utr-upi-link"', $html);
+        $this->assertStringContainsString('Touch &amp; Open UPI App', $html);
+        $this->assertStringContainsString('id="step-modal-upi-utr"', $html);
+
+        // Full Payment via Manual UPI -> UTR -> Admin confirmation -> Paid & Confirmed
+        $manualFull = $this->actingAs($this->customer)->postJson('/api/bookings', $this->baseBookingPayload([
+            'payment_mode' => 'full_online',
+            'payment_channel' => 'manual_upi',
+            'upi_utr' => 'FLOWFULL12345',
+            'payment_collection_by' => 'platform',
+        ]));
+        $manualFull->assertOk()
+            ->assertJsonPath('requires_razorpay', false)
+            ->assertJsonPath('booking.payment_mode', 'full_online')
+            ->assertJsonPath('booking.payment_gateway', 'upi_manual')
+            ->assertJsonPath('booking.payment_status', 'pending_upi_verification')
+            ->assertJsonPath('booking.upi_utr', 'FLOWFULL12345');
+
+        $this->actingAs($this->admin)->postJson('/api/admin/bookings/'.$manualFull->json('booking.id').'/verify-payment', [
+            'action' => 'confirm_utr',
+        ])->assertOk()
+            ->assertJsonPath('booking.payment_status', 'paid')
+            ->assertJsonPath('booking.status', 'Confirmed');
+
+        // Full Payment via Payment Gateway -> automatic order + automatic signature verification -> Paid & Confirmed
+        \Illuminate\Support\Facades\Http::fake([
+            'https://api.razorpay.com/v1/orders' => \Illuminate\Support\Facades\Http::response([
+                'id' => 'order_AutoFlow001',
+                'amount' => 425000,
+                'currency' => 'INR',
+            ], 200),
+        ]);
+
+        $gwFull = $this->actingAs($this->customer)->postJson('/api/bookings', $this->baseBookingPayload([
+            'payment_mode' => 'full_online',
+            'payment_channel' => 'razorpay',
+        ]));
+        $gwFull->assertOk()
+            ->assertJsonPath('requires_razorpay', true)
+            ->assertJsonPath('booking.payment_mode', 'full_online')
+            ->assertJsonPath('booking.payment_gateway', 'razorpay')
+            ->assertJsonPath('booking.payment_status', 'pending');
+
+        $gwRef = (string) $gwFull->json('booking.booking_reference');
+        $gwSig = hash_hmac('sha256', 'order_AutoFlow001|pay_AutoFlow001', 'rzp_secret_flow');
+        $this->actingAs($this->customer)->postJson("/api/bookings/{$gwRef}/razorpay/verify", [
+            'razorpay_order_id' => 'order_AutoFlow001',
+            'razorpay_payment_id' => 'pay_AutoFlow001',
+            'razorpay_signature' => $gwSig,
+        ])->assertOk()
+            ->assertJsonPath('booking.payment_status', 'paid')
+            ->assertJsonPath('booking.status', 'Confirmed');
+    }
 }

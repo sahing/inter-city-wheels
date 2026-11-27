@@ -17,14 +17,22 @@ class NotificationController extends Controller
             ->get()
             ->map(function (DatabaseNotification $item) {
                 $data = is_array($item->data) ? $item->data : [];
+                $event = (string) ($data['event'] ?? 'alert');
+                $meta = is_array($data['meta'] ?? null) ? $data['meta'] : [];
+                $focus = (string) ($meta['focus'] ?? $this->inferFocus($event, $meta));
+
+                if ($focus !== '' && empty($meta['focus'])) {
+                    $meta['focus'] = $focus;
+                }
 
                 return [
                     'id' => $item->id,
-                    'event' => $data['event'] ?? 'alert',
+                    'event' => $event,
                     'category' => $data['category'] ?? 'booking',
                     'title' => $data['title'] ?? 'Notification',
                     'message' => $data['message'] ?? '',
-                    'meta' => $data['meta'] ?? [],
+                    'meta' => $meta,
+                    'focus' => $focus,
                     'action_url' => $data['action_url'] ?? null,
                     'action_label' => $data['action_label'] ?? null,
                     'read_at' => $item->read_at?->toIso8601String(),
@@ -75,5 +83,25 @@ class NotificationController extends Controller
             'success' => true,
             'unread_count' => 0,
         ]);
+    }
+
+    /**
+     * Derive which booking or console portion a notification points to when
+     * older notifications were stored without an explicit `meta.focus`.
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    private function inferFocus(string $event, array $meta): string
+    {
+        return match ($event) {
+            'booking.driver_assigned', 'booking.driver_unassigned' => ($meta['tab'] ?? '') === 'driver-trips' ? 'trip' : 'driver',
+            'booking.payment_verified', 'booking.payment_driver_collect', 'booking.upi_utr_submitted', 'trip.collect_required', 'trip.payment_verified' => 'payment',
+            'trip.completed' => ($meta['tab'] ?? '') === 'driver-wallet' ? 'wallet' : 'receipt',
+            'booking.created' => ! empty($meta['is_beyond_region']) ? 'status' : 'otp',
+            'booking.status_updated', 'booking.cancelled', 'trip.started' => 'status',
+            'wallet.withdrawal' => 'wallet',
+            'bidding.opened', 'bidding.bid_placed' => 'bidding',
+            default => str_starts_with($event, 'vehicle.') ? 'fleet' : 'summary',
+        };
     }
 }

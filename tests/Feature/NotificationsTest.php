@@ -305,4 +305,112 @@ class NotificationsTest extends TestCase
         $res->assertOk()->assertJsonPath('success', true);
         $this->assertGreaterThanOrEqual(1, $customer->fresh()->notifications()->count());
     }
+
+    public function test_customer_notifications_include_booking_portion_focus_and_deep_links(): void
+    {
+        $customer = User::factory()->create([
+            'role' => 'customer',
+            'email' => 'focus.rider@example.com',
+            'phone' => '9876500111',
+        ]);
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'email' => 'focus.admin@example.com',
+            'phone' => '9800000111',
+        ]);
+        $driverUser = User::factory()->create([
+            'role' => 'driver',
+            'email' => 'focus.driver@example.com',
+            'phone' => '9833300111',
+        ]);
+        $driver = Driver::create([
+            'name' => 'Ramesh Chauffeur',
+            'phone' => '9833300111',
+            'vehicle_model' => 'Innova Crysta',
+            'vehicle_plate' => 'WB06XY1234',
+            'fleet_category' => 'suv',
+            'is_verified' => true,
+            'is_online' => true,
+            'wallet_balance' => 0,
+        ]);
+
+        // 1. Booking created -> focus 'otp'
+        $bookRes = $this->actingAs($customer)->postJson('/api/bookings', [
+            'service_type' => 'cab',
+            'trip_type' => 'oneway',
+            'from_city' => 'Kolkata',
+            'to_city' => 'Digha',
+            'pickup_location' => 'Park Street',
+            'drop_location' => 'Digha Beach',
+            'customer_name' => 'Focus Rider',
+            'customer_phone' => '9876500111',
+            'customer_email' => 'focus.rider@example.com',
+            'fleet_category' => 'suv',
+        ])->assertOk();
+
+        $bookingId = $bookRes->json('booking.id');
+        $bookingRef = $bookRes->json('booking.booking_reference');
+        $otp = (string) $bookRes->json('booking.start_otp');
+
+        // 2. Driver allotted -> focus 'driver'
+        $this->actingAs($admin)->postJson("/api/admin/bookings/{$bookingId}/allot-driver", [
+            'driver_id' => $driver->id,
+        ])->assertOk();
+
+        // 3. Trip started -> focus 'status'
+        $this->actingAs($driverUser)->postJson("/api/driver/trips/{$bookingId}/verify-otp", [
+            'otp' => $otp,
+        ])->assertOk();
+
+        // 4. Trip completed -> focus 'receipt'
+        $this->actingAs($driverUser)->postJson("/api/driver/trips/{$bookingId}/complete")
+            ->assertOk();
+
+        $listRes = $this->actingAs($customer)->getJson('/api/notifications')->assertOk();
+        $items = collect($listRes->json('notifications'));
+
+        $byEvent = $items->keyBy('event');
+
+        $this->assertSame('otp', $byEvent['booking.created']['focus'] ?? null);
+        $this->assertSame($bookingRef, $byEvent['booking.created']['meta']['booking_reference'] ?? null);
+        $this->assertStringContainsString("booking={$bookingRef}&focus=otp", (string) ($byEvent['booking.created']['action_url'] ?? ''));
+
+        $this->assertSame('driver', $byEvent['booking.driver_assigned']['focus'] ?? null);
+        $this->assertStringContainsString("booking={$bookingRef}&focus=driver", (string) ($byEvent['booking.driver_assigned']['action_url'] ?? ''));
+
+        $this->assertSame('status', $byEvent['trip.started']['focus'] ?? null);
+        $this->assertStringContainsString("booking={$bookingRef}&focus=status", (string) ($byEvent['trip.started']['action_url'] ?? ''));
+
+        $this->assertSame('receipt', $byEvent['trip.completed']['focus'] ?? null);
+        $this->assertStringContainsString("booking={$bookingRef}&focus=receipt", (string) ($byEvent['trip.completed']['action_url'] ?? ''));
+
+        // Legacy notification without meta.focus should still expose inferred focus
+        $customer->notify(new PlatformAlertNotification(
+            event: 'booking.payment_verified',
+            title: "Payment Verified: {$bookingRef}",
+            message: 'Paid.',
+            meta: ['booking_reference' => $bookingRef, 'tab' => 'my-bookings'],
+            sendEmail: false,
+        ));
+
+        $refreshed = collect($this->actingAs($customer)->getJson('/api/notifications')->json('notifications'))
+            ->firstWhere('event', 'booking.payment_verified');
+        $this->assertSame('payment', $refreshed['focus'] ?? null);
+        $this->assertSame('payment', $refreshed['meta']['focus'] ?? null);
+
+        // Deep-link URL opens My Trips with booking portion markers rendered
+        $page = $this->actingAs($customer)->get("/?tab=my-bookings&booking={$bookingRef}&focus=driver");
+        $page->assertOk();
+        $html = $page->getContent();
+        $this->assertMatchesRegularExpression('/<section id="tab-my-bookings" class="tab-pane active"/', $html);
+        $this->assertStringContainsString("id=\"trip-card-{$bookingRef}\"", $html);
+        $this->assertStringContainsString("data-booking-ref=\"{$bookingRef}\"", $html);
+        $this->assertStringContainsString('data-booking-part="driver"', $html);
+        $this->assertStringContainsString('data-booking-part="payment receipt"', $html);
+
+        // Malformed booking query parameter is ignored safely
+        $badPage = $this->actingAs($customer)->get('/?booking="><script>alert(1)</script>');
+        $badPage->assertOk();
+        $this->assertDoesNotMatchRegularExpression('/<section id="tab-my-bookings" class="tab-pane active"/', $badPage->getContent());
+    }
 }

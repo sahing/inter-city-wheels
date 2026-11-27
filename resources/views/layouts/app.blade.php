@@ -28,7 +28,9 @@
         : (\App\Models\PlatformSetting::get('enable_schedules_and_berths', '0') === '1');
     $requestedTab = (string) request()->query('tab', '');
     $bookedParam = trim((string) request()->query('booked', ''));
+    $bookingParam = trim((string) request()->query('booking', ''));
     $hasValidBookedParam = $bookedParam !== '' && preg_match('/^ICW-[A-Z0-9-]{3,24}$/i', $bookedParam) === 1;
+    $hasValidBookingParam = $bookingParam !== '' && preg_match('/^ICW-[A-Z0-9-]{3,24}$/i', $bookingParam) === 1;
 
     $allowedTabsForRole = match($userRole) {
         'admin' => ['admin', 'cabs', 'schedules', 'bidding'],
@@ -44,7 +46,7 @@
 
     if (in_array($requestedTab, $allowedTabsForRole, true)) {
         $defaultTab = $requestedTab;
-    } elseif ($hasValidBookedParam && in_array('my-bookings', $allowedTabsForRole, true)) {
+    } elseif (($hasValidBookedParam || $hasValidBookingParam) && in_array('my-bookings', $allowedTabsForRole, true)) {
         $defaultTab = 'my-bookings';
     }
 @endphp

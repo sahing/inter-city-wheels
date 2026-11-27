@@ -24,15 +24,22 @@ class NotificationService
         $departure = $booking->departure_time
             ? $booking->departure_time->format('d M Y, h:i A')
             : 'Scheduled Departure';
+        $isManualUpi = $booking->payment_gateway === 'upi_manual' || $booking->payment_mode === 'full_upi';
         $paymentLine = match ($booking->payment_mode) {
-            'part_pay' => 'Payment: '.((float) $booking->advance_percentage).'% Advance (₹'.number_format((float) $booking->advance_amount).') • Balance ₹'.number_format((float) $booking->balance_amount).' to Driver',
+            'part_pay' => 'Payment: '.((float) $booking->advance_percentage).'% Advance (₹'.number_format((float) $booking->advance_amount).')'
+                .($isManualUpi && $booking->upi_utr ? " via Manual UPI (UTR {$booking->upi_utr} • Pending Verification)" : '')
+                .' • Balance ₹'.number_format((float) $booking->balance_amount).' to Driver',
             'full_upi' => $booking->payment_collection_by === 'driver'
                 ? "Payment: Full UPI ({$fare}) — Driver to collect on completion"
                 : ($booking->upi_utr
                     ? "Payment: Full UPI ({$fare}) — UTR {$booking->upi_utr} (Pending Admin Confirmation)"
                     : "Payment: Full UPI ({$fare}) — Awaiting UTR / Admin Confirmation"),
             'cash' => "Payment: Pay Cash / UPI to Chauffeur ({$fare})",
-            default => "Payment: Full Online ({$fare})",
+            default => $isManualUpi
+                ? ($booking->upi_utr
+                    ? "Payment: Full Payment via Manual UPI ({$fare}) — UTR {$booking->upi_utr} (Pending Admin Confirmation)"
+                    : "Payment: Full Payment via Manual UPI ({$fare}) — Awaiting UTR / Admin Confirmation")
+                : "Payment: Full Online ({$fare})",
         };
 
         $ticketUrl = URL::temporarySignedRoute(
@@ -42,6 +49,12 @@ class NotificationService
         );
 
         $isBeyondRegion = (bool) $booking->is_beyond_region;
+        $customerFocus = $isBeyondRegion
+            ? 'status'
+            : ($isManualUpi && ! $booking->upi_utr && $booking->payment_collection_by !== 'driver'
+                ? 'payment'
+                : 'otp');
+        $customerBookingUrl = url('/?tab=my-bookings&booking='.urlencode((string) $booking->booking_reference).'&focus='.$customerFocus);
 
         $customerTitle = $isBeyondRegion
             ? "Booking Request Recorded (Unconfirmed · Beyond Region): {$booking->booking_reference}"
@@ -81,10 +94,11 @@ class NotificationService
                 'balance_amount' => $booking->balance_amount,
                 'start_otp' => $booking->start_otp,
                 'tab' => 'my-bookings',
+                'focus' => $customerFocus,
             ],
             lines: $customerLines,
             actionLabel: 'View Booking Details',
-            actionUrl: url('/#my-bookings'),
+            actionUrl: $customerBookingUrl,
             sendEmail: true,
         );
 
@@ -126,11 +140,14 @@ class NotificationService
                 'beyond_region_cities' => $beyondCities,
                 'tab' => 'admin',
                 'section' => $isBeyondRegion ? 'locations' : 'bookings',
+                'focus' => $isBeyondRegion ? 'locations' : 'summary',
                 'ticket_url' => $ticketUrl,
             ],
             lines: $adminLines,
             actionLabel: $isBeyondRegion ? 'Review & Approve City' : 'Open Admin Dispatch',
-            actionUrl: $isBeyondRegion ? url('/?tab=admin&section=locations#admin-discovered-cities-card') : url('/#admin'),
+            actionUrl: $isBeyondRegion
+                ? url('/?tab=admin&section=locations#admin-discovered-cities-card')
+                : url('/?tab=admin&section=bookings&booking='.urlencode((string) $booking->booking_reference)),
             sendEmail: true,
         );
 
@@ -191,15 +208,18 @@ class NotificationService
             category: 'bidding',
             meta: [
                 'session_id' => $session->id,
+                'booking_id' => $session->booking_id,
                 'booking_reference' => $ref,
                 'driver_id' => $driver->id,
                 'driver_name' => $driver->name,
                 'bid_amount' => $amount,
                 'instant_win' => $instantWin,
                 'tab' => 'admin',
+                'section' => 'bidding',
+                'focus' => 'bidding',
             ],
             actionLabel: 'Review Bids',
-            actionUrl: url('/#admin'),
+            actionUrl: url('/?tab=admin&section=bidding'),
             sendEmail: false,
         );
 
@@ -225,6 +245,7 @@ class NotificationService
                     'vehicle_plate' => $driver->vehicle_plate,
                     'start_otp' => $booking->start_otp,
                     'tab' => 'my-bookings',
+                    'focus' => 'driver',
                 ],
                 lines: [
                     "Booking Reference: {$booking->booking_reference}",
@@ -234,8 +255,8 @@ class NotificationService
                     "Pickup: {$booking->pickup_location}",
                     "Ride Start OTP: {$booking->start_otp}",
                 ],
-                actionLabel: 'View Trip Pass',
-                actionUrl: url('/#my-bookings'),
+                actionLabel: 'View Chauffeur & OTP',
+                actionUrl: url('/?tab=my-bookings&booking='.urlencode((string) $booking->booking_reference).'&focus=driver'),
                 sendEmail: true,
             );
 
@@ -260,6 +281,7 @@ class NotificationService
                         'customer_phone' => $booking->customer_phone,
                         'payout' => $payout ?? $booking->driver_payout_amount,
                         'tab' => 'driver-trips',
+                        'focus' => 'trip',
                     ],
                     lines: [
                         "Reference: {$booking->booking_reference}",
@@ -270,7 +292,7 @@ class NotificationService
                         "Estimated Payout: {$payoutText}",
                     ],
                     actionLabel: 'Open Assigned Trips',
-                    actionUrl: url('/#driver-trips'),
+                    actionUrl: url('/?tab=driver-trips&booking='.urlencode((string) $booking->booking_reference)),
                     sendEmail: true,
                 );
 
@@ -287,7 +309,11 @@ class NotificationService
                     'booking_reference' => $booking->booking_reference,
                     'driver_id' => $driver->id,
                     'tab' => 'admin',
+                    'section' => 'bookings',
+                    'focus' => 'driver',
                 ],
+                actionLabel: 'View Booking',
+                actionUrl: url('/?tab=admin&section=bookings&booking='.urlencode((string) $booking->booking_reference)),
                 sendEmail: false,
             );
 
@@ -306,9 +332,10 @@ class NotificationService
                 'booking_reference' => $booking->booking_reference,
                 'status' => $booking->status,
                 'tab' => 'my-bookings',
+                'focus' => 'driver',
             ],
             actionLabel: 'Check Trip Status',
-            actionUrl: url('/#my-bookings'),
+            actionUrl: url('/?tab=my-bookings&booking='.urlencode((string) $booking->booking_reference).'&focus=driver'),
             sendEmail: true,
         );
 
@@ -340,6 +367,7 @@ class NotificationService
                 'from_status' => $fromStatus,
                 'status' => $toStatus,
                 'tab' => 'my-bookings',
+                'focus' => 'status',
             ],
             lines: [
                 "Reference: {$booking->booking_reference}",
@@ -348,7 +376,7 @@ class NotificationService
                 "Current Status: {$toStatus}",
             ],
             actionLabel: 'View Booking',
-            actionUrl: url('/#my-bookings'),
+            actionUrl: url('/?tab=my-bookings&booking='.urlencode((string) $booking->booking_reference).'&focus=status'),
             sendEmail: true,
         );
 
@@ -367,7 +395,10 @@ class NotificationService
                         'booking_reference' => $booking->booking_reference,
                         'status' => $toStatus,
                         'tab' => 'driver-trips',
+                        'focus' => 'status',
                     ],
+                    actionLabel: 'View Assigned Trips',
+                    actionUrl: url('/?tab=driver-trips&booking='.urlencode((string) $booking->booking_reference)),
                     sendEmail: true,
                 ));
             }
@@ -391,6 +422,7 @@ class NotificationService
                 'booking_reference' => $booking->booking_reference,
                 'status' => $booking->status,
                 'tab' => 'my-bookings',
+                'focus' => 'status',
             ],
             lines: [
                 "Reference: {$booking->booking_reference}",
@@ -398,7 +430,7 @@ class NotificationService
                 "Chauffeur: {$driverLabel}",
             ],
             actionLabel: 'Track My Trip',
-            actionUrl: url('/#my-bookings'),
+            actionUrl: url('/?tab=my-bookings&booking='.urlencode((string) $booking->booking_reference).'&focus=status'),
             sendEmail: true,
         );
 
@@ -413,7 +445,10 @@ class NotificationService
                 'booking_id' => $booking->id,
                 'booking_reference' => $booking->booking_reference,
                 'tab' => 'admin',
+                'section' => 'bookings',
+                'focus' => 'status',
             ],
+            actionUrl: url('/?tab=admin&section=bookings&booking='.urlencode((string) $booking->booking_reference)),
             sendEmail: false,
         ));
     }
@@ -434,7 +469,9 @@ class NotificationService
                     'booking_reference' => $booking->booking_reference,
                     'tab' => 'admin',
                     'section' => 'bookings',
+                    'focus' => 'payment',
                 ],
+                actionUrl: url('/?tab=admin&section=bookings&booking='.urlencode((string) $booking->booking_reference)),
                 sendEmail: false,
             ));
 
@@ -452,6 +489,7 @@ class NotificationService
                 'upi_utr' => $booking->upi_utr,
                 'tab' => 'admin',
                 'section' => 'bookings',
+                'focus' => 'payment',
             ],
             lines: [
                 "Reference: {$booking->booking_reference}",
@@ -459,7 +497,7 @@ class NotificationService
                 "UTR: {$booking->upi_utr}",
             ],
             actionLabel: 'Verify UPI UTR',
-            actionUrl: url('/?tab=admin&section=bookings'),
+            actionUrl: url('/?tab=admin&section=bookings&booking='.urlencode((string) $booking->booking_reference).'&focus=payment'),
             sendEmail: true,
         ));
     }
@@ -489,9 +527,10 @@ class NotificationService
                 'payment_collection_by' => $booking->payment_collection_by,
                 'upi_utr' => $booking->upi_utr,
                 'tab' => 'my-bookings',
+                'focus' => 'payment',
             ],
-            actionLabel: 'View My Trip',
-            actionUrl: url('/#my-bookings'),
+            actionLabel: 'View Payment Status',
+            actionUrl: url('/?tab=my-bookings&booking='.urlencode((string) $booking->booking_reference).'&focus=payment'),
             sendEmail: true,
         ));
 
@@ -513,7 +552,9 @@ class NotificationService
                         'payment_status' => $booking->payment_status,
                         'payment_collection_by' => $booking->payment_collection_by,
                         'tab' => 'driver-trips',
+                        'focus' => 'payment',
                     ],
+                    actionUrl: url('/?tab=driver-trips&booking='.urlencode((string) $booking->booking_reference).'&focus=payment'),
                     sendEmail: false,
                 ));
             }
@@ -535,6 +576,7 @@ class NotificationService
                 'booking_reference' => $booking->booking_reference,
                 'total_amount' => (float) $booking->total_amount,
                 'tab' => 'my-bookings',
+                'focus' => 'receipt',
             ],
             lines: [
                 "Reference: {$booking->booking_reference}",
@@ -542,7 +584,7 @@ class NotificationService
                 "Total Paid: {$fare}",
             ],
             actionLabel: 'View Trip Receipt',
-            actionUrl: url('/#my-bookings'),
+            actionUrl: url('/?tab=my-bookings&booking='.urlencode((string) $booking->booking_reference).'&focus=receipt'),
             sendEmail: true,
         );
 
@@ -562,6 +604,7 @@ class NotificationService
                         'booking_reference' => $booking->booking_reference,
                         'payout' => $payout,
                         'tab' => 'driver-wallet',
+                        'focus' => 'wallet',
                     ],
                     lines: [
                         "Reference: {$booking->booking_reference}",
@@ -569,7 +612,7 @@ class NotificationService
                         "Wallet Credit: {$payoutText}",
                     ],
                     actionLabel: 'View Driver Wallet',
-                    actionUrl: url('/#driver-wallet'),
+                    actionUrl: url('/?tab=driver-wallet&booking='.urlencode((string) $booking->booking_reference)),
                     sendEmail: true,
                 ));
             }
@@ -584,7 +627,10 @@ class NotificationService
                 'booking_id' => $booking->id,
                 'booking_reference' => $booking->booking_reference,
                 'tab' => 'admin',
+                'section' => 'bookings',
+                'focus' => 'status',
             ],
+            actionUrl: url('/?tab=admin&section=bookings&booking='.urlencode((string) $booking->booking_reference)),
             sendEmail: false,
         ));
     }
@@ -605,13 +651,14 @@ class NotificationService
                     'amount' => $amount,
                     'balance_after' => $balanceAfter,
                     'tab' => 'driver-wallet',
+                    'focus' => 'wallet',
                 ],
                 lines: [
                     "Withdrawal Amount: {$amountText}",
                     "Remaining Wallet Balance: {$balanceText}",
                 ],
                 actionLabel: 'View Wallet Ledger',
-                actionUrl: url('/#driver-wallet'),
+                actionUrl: url('/?tab=driver-wallet'),
                 sendEmail: true,
             ));
         }
@@ -626,7 +673,10 @@ class NotificationService
                 'amount' => $amount,
                 'balance_after' => $balanceAfter,
                 'tab' => 'admin',
+                'section' => 'fleet',
+                'focus' => 'wallet',
             ],
+            actionUrl: url('/?tab=admin&section=fleet'),
             sendEmail: true,
         ));
     }
@@ -642,7 +692,10 @@ class NotificationService
                 'vehicle_id' => $vehicle->id,
                 'vehicle_plate' => $vehicle->vehicle_plate,
                 'tab' => 'admin',
+                'section' => 'vehicles',
+                'focus' => 'fleet',
             ],
+            actionUrl: url('/?tab=admin&section=vehicles'),
             sendEmail: false,
         ));
     }
@@ -669,6 +722,7 @@ class NotificationService
                 'vehicle_plate' => $vehicle->vehicle_plate,
                 'status' => $status,
                 'tab' => 'driver-profile',
+                'focus' => 'fleet',
             ],
             lines: [
                 "Vehicle: {$vehicle->vehicle_model} ({$vehicle->vehicle_plate})",
@@ -676,7 +730,7 @@ class NotificationService
                 ! empty($vehicle->admin_notes) ? "Notes: {$vehicle->admin_notes}" : '',
             ],
             actionLabel: 'View Driver Fleet',
-            actionUrl: url('/#driver-profile'),
+            actionUrl: url('/?tab=driver-profile'),
             sendEmail: true,
         ));
     }
