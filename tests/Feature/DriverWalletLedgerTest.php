@@ -176,4 +176,175 @@ class DriverWalletLedgerTest extends TestCase
 
         $this->actingAs($stranger)->getJson('/api/driver/profile')->assertStatus(404);
     }
+
+    public function test_driver_payment_history_shows_collected_parts_bidding_amount_and_clarification(): void
+    {
+        $driver = $this->driver();
+        $driverUser = $this->driverUser();
+        $before = (float) $driver->wallet_balance;
+
+        // 1. Part-pay trip won via driver bidding: customer paid ₹1,000 online (20% of ₹5,000),
+        //    driver's winning bid is ₹4,300, driver collects ₹4,000 balance -> +₹300 wallet credit.
+        $booking = $this->assignedStartedBooking($driver, 5000.0);
+        $bid = DriverBid::create([
+            'booking_id' => $booking->id,
+            'driver_id' => $driver->id,
+            'bid_amount' => 4300.0,
+            'status' => 'accepted',
+            'is_winning' => true,
+        ]);
+        $booking->forceFill([
+            'payment_mode' => 'part_pay',
+            'advance_percentage' => 20,
+            'advance_amount' => 1000.0,
+            'balance_amount' => 4000.0,
+            'payment_status' => 'partial_paid',
+            'payment_collection_by' => 'driver',
+            'assigned_bid_id' => $bid->id,
+            'driver_payout_amount' => 4300.0,
+        ])->save();
+
+        $completeRes = $this->actingAs($driverUser)
+            ->postJson("/api/driver/trips/{$booking->id}/complete", [
+                'collected_by_driver' => true,
+                'collected_amount' => 4000.0,
+            ]);
+
+        $completeRes->assertOk()
+            ->assertJsonPath('driver_collected_amount', 4000)
+            ->assertJsonPath('net_wallet_delta', 300)
+            ->assertJsonPath('trip_breakdown.bidding_amount', 4300)
+            ->assertJsonPath('trip_breakdown.platform_received_amount', 1000)
+            ->assertJsonPath('trip_breakdown.driver_collected_amount', 4000)
+            ->assertJsonPath('trip_breakdown.wallet_credited_part', 300);
+
+        // 2. Full customer collection where collected ₹4,000 > winning bid ₹3,200 -> -₹800 wallet debit
+        $cashBooking = Booking::create([
+            'booking_reference' => 'ICW-CASH-9901',
+            'service_type' => 'cab',
+            'trip_type' => 'oneway',
+            'route_summary' => 'Kolkata → Siliguri',
+            'pickup_location' => 'Esplanade',
+            'drop_location' => 'Siliguri Junction',
+            'customer_name' => 'Ria Sen',
+            'customer_phone' => '9876500001',
+            'passengers' => [['name' => 'Ria Sen']],
+            'selected_units' => ['suv'],
+            'base_fare' => 3800,
+            'toll_fare' => 200,
+            'addon_fare' => 0,
+            'discount_fare' => 0,
+            'total_amount' => 4000,
+            'payment_mode' => 'cash',
+            'advance_percentage' => 0,
+            'advance_amount' => 0,
+            'balance_amount' => 4000,
+            'payment_status' => 'pay_on_pickup',
+            'payment_collection_by' => 'driver',
+            'status' => 'Started',
+            'assigned_driver_id' => $driver->id,
+            'start_otp' => '4455',
+        ]);
+        $cashBid = DriverBid::create([
+            'booking_id' => $cashBooking->id,
+            'driver_id' => $driver->id,
+            'bid_amount' => 3200.0,
+            'status' => 'accepted',
+            'is_winning' => true,
+        ]);
+        $cashBooking->forceFill([
+            'assigned_bid_id' => $cashBid->id,
+            'driver_payout_amount' => 3200.0,
+        ])->save();
+
+        $this->actingAs($driverUser)
+            ->postJson("/api/driver/trips/{$cashBooking->id}/complete", [
+                'collected_by_driver' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('driver_collected_amount', 4000)
+            ->assertJsonPath('net_wallet_delta', -800);
+
+        // 3. Exact match where collected ₹3,200 == winning bid ₹3,200 -> records ₹0 settled ledger entry
+        $exactBooking = Booking::create([
+            'booking_reference' => 'ICW-EXACT-9902',
+            'service_type' => 'cab',
+            'trip_type' => 'oneway',
+            'route_summary' => 'Pune → Nashik',
+            'pickup_location' => 'Shivajinagar',
+            'drop_location' => 'Nashik CBS',
+            'customer_name' => 'Amit Joshi',
+            'customer_phone' => '9876500002',
+            'passengers' => [['name' => 'Amit Joshi']],
+            'selected_units' => ['suv'],
+            'base_fare' => 3800,
+            'toll_fare' => 200,
+            'addon_fare' => 0,
+            'discount_fare' => 0,
+            'total_amount' => 4000,
+            'payment_mode' => 'part_pay',
+            'advance_percentage' => 20,
+            'advance_amount' => 800,
+            'balance_amount' => 3200,
+            'payment_status' => 'partial_paid',
+            'payment_collection_by' => 'driver',
+            'status' => 'Started',
+            'assigned_driver_id' => $driver->id,
+            'start_otp' => '7788',
+        ]);
+        $exactBid = DriverBid::create([
+            'booking_id' => $exactBooking->id,
+            'driver_id' => $driver->id,
+            'bid_amount' => 3200.0,
+            'status' => 'accepted',
+            'is_winning' => true,
+        ]);
+        $exactBooking->forceFill([
+            'assigned_bid_id' => $exactBid->id,
+            'driver_payout_amount' => 3200.0,
+        ])->save();
+
+        $this->actingAs($driverUser)
+            ->postJson("/api/driver/trips/{$exactBooking->id}/complete", [
+                'collected_by_driver' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('driver_collected_amount', 3200)
+            ->assertJsonPath('net_wallet_delta', 0);
+
+        // Verify payment-history API returns trip-wise records, bid amounts, parts received & clarifications
+        $historyRes = $this->actingAs($driverUser)->getJson('/api/driver/payment-history');
+        $historyRes->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('summary.total_driver_collected', 11200)
+            ->assertJsonPath('summary.total_driver_earnings', 10700);
+        $this->assertEquals($before + 300 - 800, (float) $historyRes->json('summary.wallet_balance'));
+
+        $tripRecords = collect($historyRes->json('trip_records'));
+        $partTrip = $tripRecords->firstWhere('booking_reference', $booking->booking_reference);
+        $this->assertNotNull($partTrip);
+        $this->assertEquals(4300.0, $partTrip['bidding_amount']);
+        $this->assertEquals(1000.0, $partTrip['platform_received_amount']);
+        $this->assertEquals(4000.0, $partTrip['driver_collected_amount']);
+        $this->assertEquals(300.0, $partTrip['wallet_credited_part']);
+        $this->assertEquals(4300.0, $partTrip['total_received_by_driver']);
+        $this->assertStringContainsString('collected ₹4,000', $partTrip['clarification']);
+
+        $exactTx = WalletTransaction::where('booking_id', $exactBooking->id)->first();
+        $this->assertNotNull($exactTx);
+        $this->assertEquals(0.0, (float) $exactTx->amount);
+        $this->assertStringContainsString('₹0 wallet adjustment', (string) $exactTx->description);
+
+        // Rendered Driver Wallet page displays trip-wise payment part record, bid badge, and clarification
+        $html = $this->actingAs($driverUser)->get('/')->getContent();
+        $this->assertStringContainsString('Trip-Wise Payment Part Record', $html);
+        $this->assertStringContainsString('Winning Bid: ₹4,300', $html);
+        $this->assertStringContainsString('Collected by You', $html);
+        $this->assertStringContainsString('Total Part Received', $html);
+        $this->assertStringContainsString('platform margin settled from wallet', $html);
+
+        // Customers cannot access driver payment history API
+        $customer = User::factory()->create(['role' => 'customer']);
+        $this->actingAs($customer)->getJson('/api/driver/payment-history')->assertStatus(403);
+    }
 }

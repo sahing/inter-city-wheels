@@ -480,6 +480,8 @@ function switchTab(tabId, options = {}) {
     window.refreshMyBookingsList();
   } else if (tabId === 'driver-trips' && typeof window.refreshDriverTripsList === 'function') {
     window.refreshDriverTripsList();
+  } else if (tabId === 'driver-wallet' && typeof window.refreshDriverPaymentHistory === 'function') {
+    window.refreshDriverPaymentHistory();
   }
 
   if (!options?.skipScrollTop) {
@@ -3697,8 +3699,17 @@ function computeDriverCollectDue(dt) {
 function openDriverTripDetails(dt) {
   if (!dt) return;
   const due = computeDriverCollectDue(dt);
+  const totalFare = Number(dt.total_amount || 0);
+  const collected = dt.driver_collected_at ? Number(dt.driver_collected_amount || 0) : 0;
+  const bidAmt = dt.assigned_bid?.bid_amount != null
+    ? Number(dt.assigned_bid.bid_amount)
+    : (dt.driver_payout_amount != null ? Number(dt.driver_payout_amount) : null);
+  const payout = bidAmt != null ? bidAmt : Math.round(totalFare * 0.9);
+  const platformPaid = dt.payment_status === 'paid'
+    ? (collected > 0 ? Math.max(0, totalFare - collected) : totalFare)
+    : (dt.payment_status === 'partial_paid' ? Number(dt.advance_amount || 0) : 0);
   const collectionText = dt.driver_collected_at
-    ? `Collected ₹${Number(dt.driver_collected_amount || 0).toLocaleString('en-IN')} on completion`
+    ? `Collected ₹${collected.toLocaleString('en-IN')} on completion`
     : (due > 0
       ? `Collect ₹${due.toLocaleString('en-IN')} from passenger when drive completes`
       : 'Prepaid (Confirmed by Platform — Collect ₹0)');
@@ -3714,7 +3725,9 @@ function openDriverTripDetails(dt) {
     { label: 'Passenger', value: (dt.customer_name || '—') + (dt.customer_phone ? ' (' + dt.customer_phone + ')' : '') },
     { label: 'Pickup Location', value: dt.pickup_location || '—' },
     { label: 'Drop Location', value: dt.drop_location || '—' },
-    { label: 'Total Fare', value: '₹' + Number(dt.total_amount || 0).toLocaleString('en-IN') + ' (Tolls & taxes included)' },
+    { label: 'Total Fare', value: '₹' + totalFare.toLocaleString('en-IN') + ' (Tolls & taxes included)' },
+    { label: bidAmt != null ? 'Your Winning Bid' : 'Standard Payout (90%)', value: '₹' + payout.toLocaleString('en-IN') },
+    { label: 'Paid Online to Platform', value: '₹' + platformPaid.toLocaleString('en-IN') },
     { label: 'Payment Status', value: `${(dt.payment_mode || 'full_online').toUpperCase()} · ${(dt.payment_status || 'paid').replace(/_/g, ' ')}` },
     { label: 'Collection Duty', value: collectionText }
   ], due > 0 ? 'Take responsibility for collecting the due fare from the passenger before marking the drive completed.' : '', extraCallBtn);
@@ -6644,7 +6657,16 @@ window.completeDriverTrip = async function (bookingId, collectDue = 0, paymentSt
             </button>
           `;
       }
-      if (data.net_wallet_delta !== undefined) {
+      if (data.wallet_balance !== undefined) {
+        const walletEl = document.getElementById('driver-header-wallet-bal');
+        const walletPanelEl = document.getElementById('driver-wallet-bal-display');
+        const withdrawBtn = document.getElementById('driver-payout-withdraw-btn');
+        const nextBal = Math.round(Number(data.wallet_balance) || 0);
+        const nextFormatted = `₹${nextBal.toLocaleString('en-IN')}`;
+        if (walletEl) walletEl.textContent = nextFormatted;
+        if (walletPanelEl) walletPanelEl.textContent = nextFormatted;
+        if (withdrawBtn) withdrawBtn.dataset.walletBalance = String(Number(data.wallet_balance) || 0);
+      } else if (data.net_wallet_delta !== undefined) {
         const delta = Math.round(Number(data.net_wallet_delta) || 0);
         const walletEl = document.getElementById('driver-header-wallet-bal');
         const walletPanelEl = document.getElementById('driver-wallet-bal-display');
@@ -6653,15 +6675,12 @@ window.completeDriverTrip = async function (bookingId, collectDue = 0, paymentSt
         const nextFormatted = `₹${(curVal + delta).toLocaleString('en-IN')}`;
         if (walletEl) walletEl.textContent = nextFormatted;
         if (walletPanelEl) walletPanelEl.textContent = nextFormatted;
-      } else if (data.booking && data.booking.total_amount) {
-        const payout = Math.round(data.booking.total_amount * 0.9);
-        const walletEl = document.getElementById('driver-header-wallet-bal');
-        const walletPanelEl = document.getElementById('driver-wallet-bal-display');
-        const currentRaw = (walletEl || walletPanelEl)?.textContent || '0';
-        const curVal = parseInt(currentRaw.replace(/[^0-9]/g, ''), 10) || 0;
-        const nextFormatted = `₹${(curVal + payout).toLocaleString('en-IN')}`;
-        if (walletEl) walletEl.textContent = nextFormatted;
-        if (walletPanelEl) walletPanelEl.textContent = nextFormatted;
+      }
+      if (typeof window.refreshDriverPaymentHistory === 'function') {
+        window.refreshDriverPaymentHistory();
+      }
+      if (typeof window.refreshDriverTripsList === 'function') {
+        window.refreshDriverTripsList();
       }
     } else {
       showToast(data.message || 'Failed to complete trip.', 'warning');
@@ -6670,6 +6689,126 @@ window.completeDriverTrip = async function (bookingId, collectDue = 0, paymentSt
     console.error('Complete trip error:', err);
     showToast('Network error while completing trip.', 'warning');
   }
+};
+
+window.refreshDriverPaymentHistory = async function () {
+  const tripBody = document.getElementById('driver-trip-payment-history-body');
+  const ledgerBody = document.getElementById('driver-wallet-ledger-body');
+  if (!tripBody && !ledgerBody) return;
+
+  try {
+    const res = await fetch('/api/driver/payment-history', { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.success) return;
+
+    const sum = data.summary || {};
+    const bal = Number(sum.wallet_balance || 0);
+    const balText = `₹${Math.round(bal).toLocaleString('en-IN')}`;
+    const headerBal = document.getElementById('driver-header-wallet-bal');
+    const panelBal = document.getElementById('driver-wallet-bal-display');
+    const withdrawBtn = document.getElementById('driver-payout-withdraw-btn');
+    if (headerBal) headerBal.textContent = balText;
+    if (panelBal) panelBal.textContent = balText;
+    if (withdrawBtn) withdrawBtn.dataset.walletBalance = String(bal);
+
+    const colEl = document.getElementById('driver-wallet-collected-display');
+    const earnEl = document.getElementById('driver-wallet-earnings-display');
+    const tripsEl = document.getElementById('driver-wallet-trips-display');
+    if (colEl) colEl.textContent = `₹${Math.round(Number(sum.total_driver_collected || 0)).toLocaleString('en-IN')}`;
+    if (earnEl) earnEl.textContent = `₹${Math.round(Number(sum.total_driver_earnings || 0)).toLocaleString('en-IN')}`;
+    if (tripsEl) tripsEl.textContent = `${Number(sum.trips_count || 0)} Trips`;
+
+    const records = Array.isArray(data.trip_records) ? data.trip_records : [];
+    const tripCountEl = document.getElementById('driver-trip-pay-count');
+    if (tripCountEl) tripCountEl.textContent = `${records.length} trips`;
+
+    if (tripBody) {
+      if (records.length === 0) {
+        tripBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:22px; color:var(--text-muted); font-size:12px;">Trip-wise payment parts, bid amounts, and customer collections will appear here once trips are assigned or completed.</td></tr>';
+      } else {
+        tripBody.innerHTML = records.map(tr => {
+          const bidHtml = tr.is_bid_won && tr.bidding_amount != null
+            ? `<div style="margin-top:3px;"><span class="admin-badge badge-success" style="font-size:9.5px; padding:1px 6px;">Winning Bid: ₹${Number(tr.bidding_amount).toLocaleString('en-IN')}</span></div>`
+            : `<div class="cell-subtext">Standard Payout (90%): ₹${Number(tr.driver_payout || 0).toLocaleString('en-IN')}</div>`;
+          let partsHtml = `<span class="driver-part-chip"><span>Online to Platform</span><strong>₹${Number(tr.platform_received_amount || 0).toLocaleString('en-IN')}</strong></span>`;
+          if (Number(tr.driver_collected_amount || 0) > 0) {
+            partsHtml += `<span class="driver-part-chip is-collected"><span>Collected by You</span><strong>₹${Number(tr.driver_collected_amount).toLocaleString('en-IN')}</strong></span>`;
+          } else if (Number(tr.pending_driver_collection || 0) > 0) {
+            partsHtml += `<span class="driver-part-chip is-debit"><span>Due from Customer</span><strong>₹${Number(tr.pending_driver_collection).toLocaleString('en-IN')}</strong></span>`;
+          }
+          if (tr.status === 'Completed') {
+            if (Number(tr.wallet_credited_part || 0) > 0) {
+              partsHtml += `<span class="driver-part-chip is-credit"><span>Wallet Credited</span><strong>+₹${Number(tr.wallet_credited_part).toLocaleString('en-IN')}</strong></span>`;
+            } else if (Number(tr.wallet_debited_part || 0) > 0) {
+              partsHtml += `<span class="driver-part-chip is-debit"><span>Platform Margin Settled</span><strong>-₹${Number(tr.wallet_debited_part).toLocaleString('en-IN')}</strong></span>`;
+            } else {
+              partsHtml += `<span class="driver-part-chip"><span>Wallet Adjustment</span><strong>₹0 (Exact Match)</strong></span>`;
+            }
+            partsHtml += `<span class="driver-part-chip is-collected"><span>Total Part Received</span><strong>₹${Number(tr.total_received_by_driver || 0).toLocaleString('en-IN')}</strong></span>`;
+          }
+          return `
+            <tr>
+              <th>
+                <div class="booking-ref-link">${escapeHtml(tr.booking_reference || '')}</div>
+                <div class="cell-primary-text" style="font-size:12px;">${escapeHtml(tr.route_summary || '')}</div>
+                <div class="cell-subtext">${escapeHtml(tr.payment_mode_label || '')} &bull; ${escapeHtml(tr.status || '')}</div>
+              </th>
+              <td data-col-label="Fare & Bid Amount" class="text-tabular">
+                <div class="cell-primary-text">Fare: ₹${Number(tr.total_fare || 0).toLocaleString('en-IN')}</div>
+                ${bidHtml}
+              </td>
+              <td data-col-label="Payment Parts Received">
+                <div class="driver-part-pills">${partsHtml}</div>
+              </td>
+              <td data-col-label="Clarification" style="max-width:290px;">
+                <div style="font-size:11.5px; color:#334155; line-height:1.45;">${escapeHtml(tr.clarification || '')}</div>
+                ${tr.driver_collected_at_label ? `<div class="cell-subtext" style="margin-top:4px; color:#15803d;">Collected on ${escapeHtml(tr.driver_collected_at_label)}</div>` : ''}
+              </td>
+            </tr>`;
+        }).join('');
+      }
+    }
+
+    const txs = Array.isArray(data.transactions) ? data.transactions : [];
+    const txCountEl = document.getElementById('driver-wallet-ledger-count');
+    if (txCountEl) txCountEl.textContent = `${txs.length} latest entries`;
+
+    if (ledgerBody) {
+      if (txs.length === 0) {
+        ledgerBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:22px; color:var(--text-muted); font-size:12px;">Completed trip payouts, customer collection settlements, and bank withdrawals will appear here.</td></tr>';
+      } else {
+        ledgerBody.innerHTML = txs.map(wt => {
+          const amt = Number(wt.amount || 0);
+          const isZero = amt === 0;
+          const isCredit = wt.type === 'credit';
+          const badgeCls = isZero ? 'badge-info' : (isCredit ? 'badge-success' : 'badge-warning');
+          const typeLabel = isZero ? 'SETTLED' : String(wt.type || '').toUpperCase();
+          const amtColor = isZero ? '#0284c7' : (isCredit ? 'var(--success)' : 'var(--danger)');
+          const amtText = isZero ? '₹0' : `${isCredit ? '+' : '-'}₹${amt.toLocaleString('en-IN')}`;
+          const tb = wt.trip_breakdown;
+          const tbLine = tb
+            ? `<div class="cell-subtext" style="margin-top:3px; font-size:10.5px; color:#64748b;">${escapeHtml(tb.route_summary || '')} &bull; Fare: ₹${Number(tb.total_fare || 0).toLocaleString('en-IN')} &bull; ${tb.is_bid_won ? 'Your Bid' : 'Payout'}: ₹${Number(tb.driver_payout || 0).toLocaleString('en-IN')}${Number(tb.driver_collected_amount || 0) > 0 ? ` &bull; Collected: ₹${Number(tb.driver_collected_amount).toLocaleString('en-IN')}` : ''}</div>`
+            : '';
+          return `
+            <tr>
+              <th>
+                <div class="cell-primary-text">${escapeHtml(wt.date_label || '—')}</div>
+                <div class="cell-subtext">${escapeHtml(wt.time_label || '')}</div>
+              </th>
+              <td data-col-label="Transaction Record & Clarification">
+                <div class="cell-primary-text">${escapeHtml(wt.reason_label || 'Transaction')}${wt.booking_reference ? ` &bull; <span class="booking-ref-link">${escapeHtml(wt.booking_reference)}</span>` : ''}</div>
+                <div class="cell-subtext" style="color:#334155; margin-top:2px; line-height:1.4;">${escapeHtml(wt.description || 'Wallet settlement')}</div>
+                ${tbLine}
+              </td>
+              <td data-col-label="Type"><span class="admin-badge ${badgeCls}" style="font-size:10px;">${typeLabel}</span></td>
+              <td data-col-label="Amount" style="text-align:right;" class="text-tabular"><strong style="color:${amtColor};">${amtText}</strong></td>
+              <td data-col-label="Balance After" style="text-align:right;" class="text-tabular"><span class="cell-primary-text">₹${Number(wt.balance_after || 0).toLocaleString('en-IN')}</span></td>
+            </tr>`;
+        }).join('');
+      }
+    }
+  } catch (_) { }
 };
 
 window.requestDriverPayout = async function (balance) {
@@ -6694,6 +6833,9 @@ window.requestDriverPayout = async function (balance) {
     const data = await res.json();
     if (res.ok && data.success) {
       showToast(data.message, 'success');
+      if (typeof window.refreshDriverPaymentHistory === 'function') {
+        window.refreshDriverPaymentHistory();
+      }
     } else {
       showToast(data.message || 'Payout request failed.', 'warning');
     }

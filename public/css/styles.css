@@ -4168,7 +4168,7 @@ h1, h2, h3, h4, .font-display {
 }
 .auction-metrics-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 10px;
 }
 .auction-metric-cell {
@@ -5906,3 +5906,128 @@ td[data-booking-part].notif-part-highlight {
 }
 .admin-pag-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .admin-pag-ellipsis { padding: 0 4px; color: #64748b; font-weight: 700; }
+
+/* Responsive Driver Payment History & Ledger Tables */
+.driver-responsive-table-wrap {
+  overflow: auto;
+  max-inline-size: 100%;
+  max-block-size: min(560px, 75vh);
+  container-type: inline-size;
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  background: var(--surface-card);
+}
+.driver-responsive-table-wrap:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.driver-responsive-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.driver-responsive-table caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.driver-responsive-table thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  background: #f8fafc;
+}
+.driver-responsive-table tbody th {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  background: #ffffff;
+  text-align: left;
+  font-weight: 600;
+  vertical-align: top;
+}
+.driver-responsive-table td {
+  vertical-align: top;
+}
+.driver-part-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+}
+.driver-part-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.driver-part-chip.is-collected {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+.driver-part-chip.is-credit {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e40af;
+}
+.driver-part-chip.is-debit {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+@container (width < 600px) {
+  .driver-responsive-table,
+  .driver-responsive-table thead,
+  .driver-responsive-table tbody,
+  .driver-responsive-table tr,
+  .driver-responsive-table th,
+  .driver-responsive-table td {
+    display: block;
+  }
+  .driver-responsive-table thead {
+    display: none;
+  }
+  .driver-responsive-table tr {
+    margin: 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #ffffff;
+  }
+  .driver-responsive-table tbody th {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+    background: #f1f5f9;
+    padding: 10px 12px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .driver-responsive-table td {
+    padding: 8px 12px !important;
+    border-bottom: 1px dashed #e2e8f0;
+    text-align: left !important;
+  }
+  .driver-responsive-table td:last-child {
+    border-bottom: 0;
+  }
+  .driver-responsive-table td[data-col-label]::before {
+    content: attr(data-col-label) ": ";
+    display: block;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    margin-bottom: 3px;
+  }
+}

@@ -14,6 +14,7 @@ use App\Models\SeatLayout;
 use App\Models\ServiceLocation;
 use App\Models\WalletTransaction;
 use App\Models\WorkflowStage;
+use App\Services\DriverPaymentHistoryService;
 
 class HomeController extends Controller
 {
@@ -66,6 +67,7 @@ class HomeController extends Controller
         $driverTrips = collect();
         $driverMyVehicles = collect();
         $driverWalletTransactions = collect();
+        $driverPaymentHistory = app(DriverPaymentHistoryService::class)->buildForDriver(null);
 
         if ($currentUser && $currentUser->role === 'customer') {
             $digits = preg_replace('/[^0-9]/', '', (string) $currentUser->phone) ?? '';
@@ -97,32 +99,36 @@ class HomeController extends Controller
 
             if ($driverProfile) {
                 $driverMyVehicles = DriverVehicle::where('driver_id', $driverProfile->id)->latest()->get();
-                $driverWalletTransactions = WalletTransaction::with('booking')
+                $driverWalletTransactions = WalletTransaction::with(['booking.assignedBid', 'booking.walletTransactions'])
                     ->where('driver_id', $driverProfile->id)
                     ->latest('id')
-                    ->take(15)
+                    ->take(30)
                     ->get();
 
-                $driverTrips = Booking::with('driver')
+                $driverTrips = Booking::with(['driver', 'assignedBid', 'walletTransactions'])
                     ->where('assigned_driver_id', $driverProfile->id)
                     ->where('status', '!=', 'Cancelled')
                     ->latest()
                     ->get();
+
+                $driverPaymentHistory = app(DriverPaymentHistoryService::class)->buildForDriver($driverProfile);
             }
         } elseif ($currentUser && $currentUser->role === 'admin') {
             $driverProfile = Driver::first();
             if ($driverProfile) {
                 $driverMyVehicles = DriverVehicle::where('driver_id', $driverProfile->id)->latest()->get();
-                $driverWalletTransactions = WalletTransaction::with('booking')
+                $driverWalletTransactions = WalletTransaction::with(['booking.assignedBid', 'booking.walletTransactions'])
                     ->where('driver_id', $driverProfile->id)
                     ->latest('id')
-                    ->take(15)
+                    ->take(30)
                     ->get();
-                $driverTrips = Booking::with('driver')
+                $driverTrips = Booking::with(['driver', 'assignedBid', 'walletTransactions'])
                     ->where('assigned_driver_id', $driverProfile->id)
                     ->where('status', '!=', 'Cancelled')
                     ->latest()
                     ->get();
+
+                $driverPaymentHistory = app(DriverPaymentHistoryService::class)->buildForDriver($driverProfile);
             }
         }
 
@@ -149,6 +155,7 @@ class HomeController extends Controller
             'driverVehicles',
             'driverMyVehicles',
             'driverWalletTransactions',
+            'driverPaymentHistory',
             'localPackages',
             'airportHubs',
             'allCarTypes',

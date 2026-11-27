@@ -212,6 +212,7 @@ Route::prefix('api')->middleware(['auth', 'role:driver,admin'])->group(function 
     Route::post('/bids/submit', [DriverBiddingController::class, 'submitDriverBid'])->name('api.bids.submit');
 
     Route::get('/driver/trips', [DriverBiddingController::class, 'myTrips'])->name('api.driver.trips.index');
+    Route::get('/driver/payment-history', [DriverBiddingController::class, 'paymentHistory'])->name('api.driver.paymentHistory');
     Route::post('/driver/trips/{id}/verify-otp', [DriverBiddingController::class, 'verifyStartOtp'])->name('api.driver.trips.verifyOtp');
     Route::post('/driver/trips/{id}/complete', [DriverBiddingController::class, 'completeTrip'])->name('api.driver.trips.complete');
     Route::post('/driver/wallet/withdraw', [DriverBiddingController::class, 'withdrawPayout'])->name('api.driver.wallet.withdraw');

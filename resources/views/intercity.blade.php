@@ -1861,8 +1861,14 @@
         </section>
 
         <!-- ======================================================== -->
-        <!-- TAB: DRIVER WALLET & PAYOUT CONSOLE                     -->
+        <!-- TAB: DRIVER WALLET & PAYMENT HISTORY CONSOLE             -->
         <!-- ======================================================== -->
+        @php
+            $payHistoryData = $driverPaymentHistory ?? app(\App\Services\DriverPaymentHistoryService::class)->buildForDriver($driverProfile ?? null);
+            $paySummary = $payHistoryData['summary'] ?? [];
+            $tripPayRecords = $payHistoryData['trip_records'] ?? [];
+            $ledgerRecords = $payHistoryData['transactions'] ?? [];
+        @endphp
         <section id="tab-driver-wallet" class="tab-pane {{ $defaultTab === 'driver-wallet' ? 'active' : '' }}">
             <!-- Chauffeur Master Header & Navigation -->
             @include('partials.driver_header', ['activeDriverTab' => 'driver-wallet'])
@@ -1872,9 +1878,9 @@
                     <div>
                         <h2 class="driver-panel-card-title">
                             <span class="material-symbols-outlined" style="color:var(--primary); font-size:21px;">account_balance_wallet</span>
-                            <span>Chauffeur Wallet & Instant Payouts</span>
+                            <span>Chauffeur Wallet &amp; Payment History</span>
                         </h2>
-                        <p class="driver-panel-card-subtitle">Real-time trip fare credits, audit ledger &amp; 24/7 bank IMPS withdrawals.</p>
+                        <p class="driver-panel-card-subtitle">Trip-wise payment parts, winning bid payouts, customer collections &amp; verified ledger settlements.</p>
                     </div>
                     <span class="admin-badge badge-success" style="font-size:11px;">IMPS Active</span>
                 </div>
@@ -1883,24 +1889,29 @@
                     <!-- Uniform Metric Cells matching Auction Grid -->
                     <div class="auction-metrics-grid" style="margin-bottom:14px;">
                         <div class="auction-metric-cell">
-                            <div class="auction-metric-label">Available Balance</div>
-                            <div class="auction-metric-value success" id="driver-wallet-bal-display">₹{{ number_format($driverProfile->wallet_balance ?? 14500) }}</div>
+                            <div class="auction-metric-label">Available Wallet Balance</div>
+                            <div class="auction-metric-value success" id="driver-wallet-bal-display">₹{{ number_format((float) ($paySummary['wallet_balance'] ?? ($driverProfile->wallet_balance ?? 0))) }}</div>
                             <div class="cell-subtext">Available for instant withdrawal</div>
                         </div>
                         <div class="auction-metric-cell">
-                            <div class="auction-metric-label">Total Trips Completed</div>
-                            <div class="auction-metric-value">{{ $driverProfile->trips_count ?? 840 }} Trips</div>
-                            <div class="cell-subtext">Outstation completed rides</div>
+                            <div class="auction-metric-label">Collected from Customers</div>
+                            <div class="auction-metric-value" id="driver-wallet-collected-display" style="color:#0284c7;">₹{{ number_format((float) ($paySummary['total_driver_collected'] ?? 0)) }}</div>
+                            <div class="cell-subtext">Cash / UPI received directly</div>
                         </div>
                         <div class="auction-metric-cell">
-                            <div class="auction-metric-label">Chauffeur Star Rating</div>
-                            <div class="auction-metric-value gold">★{{ $driverProfile->rating ?? '4.90' }}</div>
-                            <div class="cell-subtext">Top-rated partner badge</div>
+                            <div class="auction-metric-label">Total Bid / Trip Earnings</div>
+                            <div class="auction-metric-value gold" id="driver-wallet-earnings-display">₹{{ number_format((float) ($paySummary['total_driver_earnings'] ?? 0)) }}</div>
+                            <div class="cell-subtext">Earned across completed rides</div>
+                        </div>
+                        <div class="auction-metric-cell">
+                            <div class="auction-metric-label">Completed Rides &amp; Rating</div>
+                            <div class="auction-metric-value" id="driver-wallet-trips-display">{{ (int) ($paySummary['trips_count'] ?? ($driverProfile->trips_count ?? 0)) }} Trips</div>
+                            <div class="cell-subtext">★{{ $paySummary['rating'] ?? ($driverProfile->rating ?? '4.90') }} top-rated partner</div>
                         </div>
                     </div>
 
                     <!-- Instant Payout Action Strip -->
-                    <div class="driver-compact-item-card" style="margin-bottom:16px; flex-wrap:wrap;">
+                    <div class="driver-compact-item-card" style="margin-bottom:18px; flex-wrap:wrap;">
                         <div style="display:flex; align-items:center; gap:10px; min-width:0;">
                             <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px; flex-shrink:0;">account_balance</span>
                             <div>
@@ -1908,57 +1919,177 @@
                                 <div class="cell-subtext">HDFC Bank &bull; A/C: &bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull; 4912 &bull; IFSC: HDFC0001029 (Instant 24/7 IMPS Settlement)</div>
                             </div>
                         </div>
-                        <button type="button" class="btn btn-sm btn-primary" onclick="requestDriverPayout({{ $driverProfile->wallet_balance ?? 14500 }})">
+                        <button type="button" id="driver-payout-withdraw-btn" class="btn btn-sm btn-primary" data-wallet-balance="{{ (float) ($paySummary['wallet_balance'] ?? ($driverProfile->wallet_balance ?? 0)) }}" onclick="requestDriverPayout(Number(this.dataset.walletBalance || 0))">
                             <span class="material-symbols-outlined" style="font-size:15px;">payments</span>
                             <span>Instant Bank Transfer</span>
                         </button>
                     </div>
 
-                    <!-- Recent Wallet Ledger Table -->
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <span style="font-family:var(--font-display); font-weight:800; font-size:13.5px; color:var(--text-main);">Recent Wallet Ledger</span>
-                        <span class="cell-subtext">{{ count($driverWalletTransactions ?? []) }} latest entries</span>
+                    <!-- Trip-Wise Payment Parts & Bidding Breakdown -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                        <div>
+                            <span id="driver-trip-pay-caption" style="font-family:var(--font-display); font-weight:800; font-size:13.5px; color:var(--text-main);">Trip-Wise Payment Part Record</span>
+                            <div class="cell-subtext">Shows your bidding amount, customer collections, online parts paid, and wallet reconciliation per trip</div>
+                        </div>
+                        <span class="cell-subtext" id="driver-trip-pay-count">{{ count($tripPayRecords) }} trips</span>
                     </div>
-                    <div class="auction-table-wrap">
-                        <table class="admin-data-table admin-table-compact">
+                    <div tabindex="0" role="region" aria-labelledby="driver-trip-pay-caption" class="driver-responsive-table-wrap" id="driver-trip-payment-history-wrap" style="margin-bottom:18px;">
+                        <table class="admin-data-table admin-table-compact driver-responsive-table">
+                            <caption>Trip-wise payment part records, bidding amount, and collections</caption>
+                            <thead>
+                                <tr>
+                                    <th>Trip &amp; Mode</th>
+                                    <th>Fare &amp; Bid Amount</th>
+                                    <th>Payment Parts Received</th>
+                                    <th>Clarification</th>
+                                </tr>
+                            </thead>
+                            <tbody id="driver-trip-payment-history-body">
+                                @forelse($tripPayRecords as $tr)
+                                    <tr>
+                                        <th>
+                                            <div class="booking-ref-link">{{ $tr['booking_reference'] }}</div>
+                                            <div class="cell-primary-text" style="font-size:12px;">{{ $tr['route_summary'] }}</div>
+                                            <div class="cell-subtext">{{ $tr['payment_mode_label'] }} &bull; {{ $tr['status'] }}</div>
+                                        </th>
+                                        <td data-col-label="Fare & Bid Amount" class="text-tabular">
+                                            <div class="cell-primary-text">Fare: ₹{{ number_format((float) $tr['total_fare']) }}</div>
+                                            @if($tr['is_bid_won'] && $tr['bidding_amount'] !== null)
+                                                <div style="margin-top:3px;">
+                                                    <span class="admin-badge badge-success" style="font-size:9.5px; padding:1px 6px;">Winning Bid: ₹{{ number_format((float) $tr['bidding_amount']) }}</span>
+                                                </div>
+                                            @else
+                                                <div class="cell-subtext">Standard Payout (90%): ₹{{ number_format((float) $tr['driver_payout']) }}</div>
+                                            @endif
+                                        </td>
+                                        <td data-col-label="Payment Parts Received">
+                                            <div class="driver-part-pills">
+                                                <span class="driver-part-chip">
+                                                    <span>Online to Platform</span>
+                                                    <strong>₹{{ number_format((float) $tr['platform_received_amount']) }}</strong>
+                                                </span>
+                                                @if((float) $tr['driver_collected_amount'] > 0)
+                                                    <span class="driver-part-chip is-collected">
+                                                        <span>Collected by You</span>
+                                                        <strong>₹{{ number_format((float) $tr['driver_collected_amount']) }}</strong>
+                                                    </span>
+                                                @elseif((float) $tr['pending_driver_collection'] > 0)
+                                                    <span class="driver-part-chip is-debit">
+                                                        <span>Due from Customer</span>
+                                                        <strong>₹{{ number_format((float) $tr['pending_driver_collection']) }}</strong>
+                                                    </span>
+                                                @endif
+                                                @if($tr['status'] === 'Completed')
+                                                    @if((float) $tr['wallet_credited_part'] > 0)
+                                                        <span class="driver-part-chip is-credit">
+                                                            <span>Wallet Credited</span>
+                                                            <strong>+₹{{ number_format((float) $tr['wallet_credited_part']) }}</strong>
+                                                        </span>
+                                                    @elseif((float) $tr['wallet_debited_part'] > 0)
+                                                        <span class="driver-part-chip is-debit">
+                                                            <span>Platform Margin Settled</span>
+                                                            <strong>-₹{{ number_format((float) $tr['wallet_debited_part']) }}</strong>
+                                                        </span>
+                                                    @else
+                                                        <span class="driver-part-chip">
+                                                            <span>Wallet Adjustment</span>
+                                                            <strong>₹0 (Exact Match)</strong>
+                                                        </span>
+                                                    @endif
+                                                    <span class="driver-part-chip is-collected">
+                                                        <span>Total Part Received</span>
+                                                        <strong>₹{{ number_format((float) $tr['total_received_by_driver']) }}</strong>
+                                                    </span>
+                                                @endif
+                                            </div>
+                                        </td>
+                                        <td data-col-label="Clarification" style="max-width:290px;">
+                                            <div style="font-size:11.5px; color:#334155; line-height:1.45;">{{ $tr['clarification'] }}</div>
+                                            @if(!empty($tr['driver_collected_at_label']))
+                                                <div class="cell-subtext" style="margin-top:4px; color:#15803d;">Collected on {{ $tr['driver_collected_at_label'] }}</div>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="4" style="text-align:center; padding:22px; color:var(--text-muted); font-size:12px;">
+                                            Trip-wise payment parts, bid amounts, and customer collections will appear here once trips are assigned or completed.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Recent Wallet Ledger Table -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                        <div>
+                            <span id="driver-ledger-caption" style="font-family:var(--font-display); font-weight:800; font-size:13.5px; color:var(--text-main);">Transaction Ledger &amp; Settlement Record</span>
+                            <div class="cell-subtext">Audit log of every credit, platform margin settlement, and bank withdrawal</div>
+                        </div>
+                        <span class="cell-subtext" id="driver-wallet-ledger-count">{{ count($ledgerRecords) }} latest entries</span>
+                    </div>
+                    <div tabindex="0" role="region" aria-labelledby="driver-ledger-caption" class="driver-responsive-table-wrap">
+                        <table class="admin-data-table admin-table-compact driver-responsive-table">
+                            <caption>Wallet transaction ledger with trip clarification and running balance</caption>
                             <thead>
                                 <tr>
                                     <th>Date</th>
-                                    <th>Reference &amp; Reason</th>
+                                    <th>Transaction Record &amp; Clarification</th>
                                     <th>Type</th>
                                     <th style="text-align:right;">Amount</th>
                                     <th style="text-align:right;">Balance After</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                @forelse($driverWalletTransactions ?? [] as $wt)
+                            <tbody id="driver-wallet-ledger-body">
+                                @forelse($ledgerRecords as $wt)
+                                    @php
+                                        $wtType = $wt['type'] ?? 'credit';
+                                        $wtAmount = (float) ($wt['amount'] ?? 0);
+                                        $tb = $wt['trip_breakdown'] ?? null;
+                                    @endphp
                                     <tr>
-                                        <td>
-                                            <div class="cell-primary-text">{{ $wt->created_at ? $wt->created_at->format('d M Y') : '—' }}</div>
-                                            <div class="cell-subtext">{{ $wt->created_at ? $wt->created_at->format('H:i') : '' }}</div>
+                                        <th>
+                                            <div class="cell-primary-text">{{ $wt['date_label'] ?? '—' }}</div>
+                                            <div class="cell-subtext">{{ $wt['time_label'] ?? '' }}</div>
+                                        </th>
+                                        <td data-col-label="Transaction Record & Clarification">
+                                            <div class="cell-primary-text">
+                                                {{ $wt['reason_label'] ?? 'Transaction' }}
+                                                @if(!empty($wt['booking_reference']))
+                                                    &bull; <span class="booking-ref-link">{{ $wt['booking_reference'] }}</span>
+                                                @endif
+                                            </div>
+                                            <div class="cell-subtext" style="color:#334155; margin-top:2px; line-height:1.4;">{{ $wt['description'] ?? 'Wallet settlement' }}</div>
+                                            @if($tb)
+                                                <div class="cell-subtext" style="margin-top:3px; font-size:10.5px; color:#64748b;">
+                                                    {{ $tb['route_summary'] }} &bull;
+                                                    Fare: ₹{{ number_format((float) $tb['total_fare']) }} &bull;
+                                                    {{ $tb['is_bid_won'] ? 'Your Bid' : 'Payout' }}: ₹{{ number_format((float) $tb['driver_payout']) }}
+                                                    @if((float) $tb['driver_collected_amount'] > 0)
+                                                        &bull; Collected: ₹{{ number_format((float) $tb['driver_collected_amount']) }}
+                                                    @endif
+                                                </div>
+                                            @endif
                                         </td>
-                                        <td>
-                                            <div class="cell-primary-text">{{ ucwords(str_replace('_', ' ', $wt->reason ?? 'transaction')) }}</div>
-                                            <div class="cell-subtext">{{ $wt->booking ? $wt->booking->booking_reference : ($wt->note ?? 'Wallet settlement') }}</div>
-                                        </td>
-                                        <td>
-                                            <span class="admin-badge {{ $wt->type === 'credit' ? 'badge-success' : 'badge-warning' }}" style="font-size:10px;">
-                                                {{ strtoupper($wt->type) }}
+                                        <td data-col-label="Type">
+                                            <span class="admin-badge {{ $wtAmount == 0.0 ? 'badge-info' : ($wtType === 'credit' ? 'badge-success' : 'badge-warning') }}" style="font-size:10px;">
+                                                {{ $wtAmount == 0.0 ? 'SETTLED' : strtoupper($wtType) }}
                                             </span>
                                         </td>
-                                        <td style="text-align:right;" class="text-tabular">
-                                            <strong style="color:{{ $wt->type === 'credit' ? 'var(--success)' : 'var(--danger)' }};">
-                                                {{ $wt->type === 'credit' ? '+' : '-' }}₹{{ number_format((float) $wt->amount) }}
+                                        <td data-col-label="Amount" style="text-align:right;" class="text-tabular">
+                                            <strong style="color:{{ $wtAmount == 0.0 ? '#0284c7' : ($wtType === 'credit' ? 'var(--success)' : 'var(--danger)') }};">
+                                                {{ $wtAmount == 0.0 ? '₹0' : (($wtType === 'credit' ? '+' : '-').'₹'.number_format($wtAmount)) }}
                                             </strong>
                                         </td>
-                                        <td style="text-align:right;" class="text-tabular">
-                                            <span class="cell-primary-text">₹{{ number_format((float) $wt->balance_after) }}</span>
+                                        <td data-col-label="Balance After" style="text-align:right;" class="text-tabular">
+                                            <span class="cell-primary-text">₹{{ number_format((float) ($wt['balance_after'] ?? 0)) }}</span>
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
                                         <td colspan="5" style="text-align:center; padding:22px; color:var(--text-muted); font-size:12px;">
-                                            Completed trip payouts and bank withdrawals will appear here.
+                                            Completed trip payouts, customer collection settlements, and bank withdrawals will appear here.
                                         </td>
                                     </tr>
                                 @endforelse

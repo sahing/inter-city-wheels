@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\WalletTransaction;
 use App\Services\BookingReferenceGenerator;
 use App\Services\BookingWorkflow;
+use App\Services\DriverPaymentHistoryService;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,7 @@ class DriverBiddingController extends Controller
         private readonly BookingWorkflow $workflow,
         private readonly BookingReferenceGenerator $references,
         private readonly NotificationService $notifications,
+        private readonly DriverPaymentHistoryService $paymentHistory,
     ) {}
 
     public function myTrips(Request $request)
@@ -38,7 +40,7 @@ class DriverBiddingController extends Controller
             ]);
         }
 
-        $trips = Booking::with('driver')
+        $trips = Booking::with(['driver', 'assignedBid', 'walletTransactions'])
             ->where('assigned_driver_id', $driver->id)
             ->where('status', '!=', 'Cancelled')
             ->latest()
@@ -48,6 +50,24 @@ class DriverBiddingController extends Controller
             'success' => true,
             'driver_id' => $driver->id,
             'trips' => $trips,
+        ]);
+    }
+
+    public function paymentHistory(Request $request)
+    {
+        $driver = $this->driverForUser($request->user());
+        if (! $driver) {
+            return response()->json([
+                'success' => true,
+                'driver_id' => null,
+                ...$this->paymentHistory->buildForDriver(null),
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'driver_id' => $driver->id,
+            ...$this->paymentHistory->buildForDriver($driver),
         ]);
     }
 
@@ -287,6 +307,9 @@ class DriverBiddingController extends Controller
 
                 $payout = 0.0;
                 $netWalletDelta = 0.0;
+                $platformReceived = $collectDue > 0
+                    ? round(max(0.0, ((float) $locked->total_amount) - $collectDue), 2)
+                    : round((float) $locked->total_amount, 2);
 
                 if ($locked->assigned_driver_id) {
                     $driver = Driver::whereKey($locked->assigned_driver_id)->lockForUpdate()->first();
@@ -300,6 +323,13 @@ class DriverBiddingController extends Controller
                             : round(((float) $locked->total_amount) * (1 - self::PLATFORM_FEE_RATE), 2);
 
                         $netWalletDelta = round($payout - $collectDue, 2);
+                        $txDescription = $this->paymentHistory->formatCompletionDescription(
+                            $locked,
+                            $payout,
+                            $collectDue,
+                            $netWalletDelta,
+                            $platformReceived
+                        );
 
                         if ($netWalletDelta > 0) {
                             $this->creditDriver(
@@ -307,9 +337,7 @@ class DriverBiddingController extends Controller
                                 $netWalletDelta,
                                 WalletTransaction::REASON_TRIP_PAYOUT,
                                 $locked,
-                                $collectDue > 0
-                                    ? 'Trip payout balance after ₹'.number_format($collectDue, 2).' driver collection for '.$locked->booking_reference
-                                    : 'Trip payout for '.$locked->booking_reference
+                                $txDescription
                             );
                         } elseif ($netWalletDelta < 0) {
                             $this->debitDriver(
@@ -317,8 +345,18 @@ class DriverBiddingController extends Controller
                                 abs($netWalletDelta),
                                 WalletTransaction::REASON_ADJUSTMENT,
                                 $locked,
-                                'Platform fee settled from driver-collected fare (₹'.number_format($collectDue, 2).') on '.$locked->booking_reference
+                                $txDescription
                             );
+                        } elseif ($collectDue > 0) {
+                            WalletTransaction::create([
+                                'driver_id' => $driver->id,
+                                'booking_id' => $locked->id,
+                                'type' => WalletTransaction::TYPE_CREDIT,
+                                'reason' => WalletTransaction::REASON_TRIP_PAYOUT,
+                                'amount' => 0.00,
+                                'balance_after' => (float) $driver->wallet_balance,
+                                'description' => $txDescription,
+                            ]);
                         }
 
                         $driver->trips_count = (int) $driver->trips_count + 1;
@@ -343,7 +381,7 @@ class DriverBiddingController extends Controller
         }
 
         [$completed, $payout, $collectDue, $netWalletDelta] = $result;
-        $completedFresh = $completed->fresh(['driver', 'customer']);
+        $completedFresh = $completed->fresh(['driver', 'customer', 'assignedBid', 'walletTransactions']);
         if ($collectDue > 0) {
             PaymentAttempt::create([
                 'booking_id' => $completedFresh->id,
@@ -359,6 +397,8 @@ class DriverBiddingController extends Controller
         }
         $this->notifications->tripCompleted($completedFresh, (float) $payout);
 
+        $breakdown = $this->paymentHistory->buildTripBreakdown($completedFresh, $completedFresh->assigned_driver_id);
+
         $msg = $collectDue > 0
             ? 'Trip completed! Recorded ₹'.number_format($collectDue).' collected from customer and settled driver wallet.'
             : 'Trip marked as completed! Payout credited to your driver wallet.';
@@ -369,6 +409,8 @@ class DriverBiddingController extends Controller
             'payout' => $payout,
             'driver_collected_amount' => $collectDue,
             'net_wallet_delta' => $netWalletDelta,
+            'wallet_balance' => (float) ($completedFresh->driver?->wallet_balance ?? 0),
+            'trip_breakdown' => $breakdown,
             'booking' => $completedFresh,
         ]);
     }
