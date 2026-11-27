@@ -69,6 +69,15 @@
   };
 })();
 
+function escapeHtml(val) {
+  return String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Pre-defined Cities & Route Matrix (mutable — synced from DB at runtime)
 let CITY_DATABASE = {
   "pune": { name: "Pune", state: "Maharashtra", lat: 18.5204, lng: 73.8567 },
@@ -5919,7 +5928,7 @@ window.openViewBookingModal = async function (bookingId) {
     const travelDate = b.departure_time ? new Date(b.departure_time).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : (b.created_at ? new Date(b.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Scheduled');
     document.getElementById('view-booking-date').textContent = travelDate;
 
-    // Customer
+    // Customer & Who Booked
     document.getElementById('view-booking-customer-name').textContent = b.customer_name;
     document.getElementById('view-booking-customer-phone').textContent = b.customer_phone;
     document.getElementById('view-booking-customer-phone').href = `tel:${b.customer_phone}`;
@@ -5927,16 +5936,47 @@ window.openViewBookingModal = async function (bookingId) {
     document.getElementById('view-booking-pickup').textContent = b.pickup_location;
     document.getElementById('view-booking-drop').textContent = b.drop_location;
 
-    // Chauffeur box
+    const bookedByEl = document.getElementById('view-booking-booked-by-meta');
+    if (bookedByEl) {
+      bookedByEl.textContent = b.customer
+        ? `Booked by Account: ${b.customer.name} (#USR-${String(b.customer.id).padStart(4, '0')} · ${String(b.customer.role || 'customer').toUpperCase()})`
+        : 'Booked without account link (Guest / Admin entry)';
+    }
+    const profileLinkEl = document.getElementById('view-booking-profile-link');
+    if (profileLinkEl) {
+      profileLinkEl.onclick = () => {
+        closeModal('admin-view-booking-modal');
+        openAdminBookingCustomerProfile(b.id);
+      };
+    }
+    const createdEl = document.getElementById('view-booking-created-at');
+    if (createdEl) {
+      createdEl.textContent = b.created_at
+        ? new Date(b.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+        : '—';
+    }
+    const extraEl = document.getElementById('view-booking-extra-meta');
+    if (extraEl) {
+      const units = Array.isArray(b.selected_units) && b.selected_units.length ? b.selected_units.join(', ') : '';
+      const paxCount = Array.isArray(b.passengers) ? b.passengers.length : 0;
+      const parts = [];
+      if (units) parts.push(`<strong>Units / Vehicle:</strong> ${escapeHtml(units)}`);
+      if (paxCount > 0) parts.push(`<strong>Passengers:</strong> ${paxCount}`);
+      extraEl.innerHTML = parts.join(' • ');
+    }
+
+    // Chauffeur & Allocation box
     const driverBox = document.getElementById('view-booking-driver-content');
     if (b.driver) {
       driverBox.innerHTML = `
-        <div style="font-size:13px; font-weight:700; color:#0f172a;">${b.driver.name}</div>
+        <div style="font-size:13px; font-weight:700; color:#0f172a;">
+          <a href="javascript:void(0)" onclick="closeModal('admin-view-booking-modal'); openAdminDriverProfileModal(${b.driver.id});" style="color:var(--primary); text-decoration:underline;">${escapeHtml(b.driver.name)}</a>
+        </div>
         <div style="font-size:12px; color:#15803d; margin-top:2px; font-weight:600;">
-          ${b.driver.vehicle_model} • <span class="driver-plate-pill">${b.driver.vehicle_plate}</span>
+          ${escapeHtml(b.driver.vehicle_model)} • <span class="driver-plate-pill">${escapeHtml(b.driver.vehicle_plate)}</span>
         </div>
         <div style="font-size:11.5px; color:#475569; margin-top:2px;">
-          Phone: <a href="tel:${b.driver.phone}" style="color:inherit; font-weight:600;">${b.driver.phone}</a> • ★${b.driver.rating || '4.90'}
+          Phone: <a href="tel:${escapeHtml(b.driver.phone)}" style="color:inherit; font-weight:600;">${escapeHtml(b.driver.phone)}</a> • ★${b.driver.rating || '4.90'}
         </div>
       `;
     } else {
@@ -5949,6 +5989,28 @@ window.openViewBookingModal = async function (bookingId) {
           <span>Allot Chauffeur Now</span>
         </button>
       `;
+    }
+
+    const allocMetaEl = document.getElementById('view-booking-allocation-meta');
+    if (allocMetaEl) {
+      const allocLines = [];
+      if (b.assigned_bid) {
+        allocLines.push(`<div><strong>Allocation:</strong> Won via Driver Bidding (₹${Number(b.assigned_bid.bid_amount || b.driver_payout_amount || 0).toLocaleString('en-IN')})</div>`);
+      } else if (b.driver) {
+        allocLines.push(`<div><strong>Allocation:</strong> Admin Dispatch Allotment</div>`);
+      } else {
+        allocLines.push(`<div><strong>Allocation:</strong> Pending Dispatch</div>`);
+      }
+      if (b.upi_verifier || b.upi_verified_at) {
+        const who = b.upi_verifier ? escapeHtml(b.upi_verifier.name) : 'Admin';
+        const when = b.upi_verified_at ? new Date(b.upi_verified_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+        allocLines.push(`<div style="margin-top:2px;"><strong>UPI Verified:</strong> ${who}${when ? ` (${when})` : ''}</div>`);
+      }
+      if (b.driver_collected_at) {
+        const colWhen = new Date(b.driver_collected_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+        allocLines.push(`<div style="margin-top:2px; color:#15803d;"><strong>Driver Collected:</strong> ₹${Number(b.driver_collected_amount || 0).toLocaleString('en-IN')} (${colWhen})</div>`);
+      }
+      allocMetaEl.innerHTML = allocLines.join('');
     }
 
     // Financial breakdown

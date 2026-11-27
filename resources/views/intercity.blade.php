@@ -6270,14 +6270,18 @@
 
             <!-- Two-Column Information Grid -->
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
-                <!-- Passenger Info Card -->
+                <!-- Passenger & Who Booked Info Card -->
                 <div style="border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px;">
-                    <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; gap:4px;">
-                        <span class="material-symbols-outlined" style="font-size:14px; color:var(--primary);">person</span>
-                        <span>Passenger Manifest</span>
+                    <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:4px;">
+                        <span style="display:flex; align-items:center; gap:4px;">
+                            <span class="material-symbols-outlined" style="font-size:14px; color:var(--primary);">person</span>
+                            <span>Who Booked &amp; Passenger</span>
+                        </span>
+                        <a href="javascript:void(0)" id="view-booking-profile-link" style="font-size:10.5px; font-weight:700; color:var(--primary); text-decoration:underline;">View Profile</a>
                     </div>
                     <div style="font-size:13px; font-weight:700; color:#0f172a;" id="view-booking-customer-name">Rahul Sharma</div>
-                    <div style="font-size:12px; color:#475569; margin-top:3px;">
+                    <div style="font-size:11px; color:#64748b; margin-top:2px;" id="view-booking-booked-by-meta">Account: Registered User</div>
+                    <div style="font-size:12px; color:#475569; margin-top:4px;">
                         📞 <a href="tel:" id="view-booking-customer-phone" style="color:inherit; text-decoration:none;">+91 98220 11920</a>
                     </div>
                     <div style="font-size:12px; color:#475569; margin-top:2px;">
@@ -6286,18 +6290,21 @@
                     <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #e2e8f0; font-size:11.5px; color:#64748b;">
                         <div><strong>Pickup:</strong> <span id="view-booking-pickup">Kothrud, Pune</span></div>
                         <div style="margin-top:2px;"><strong>Drop:</strong> <span id="view-booking-drop">Candolim, Goa</span></div>
+                        <div style="margin-top:2px;"><strong>Booked At:</strong> <span id="view-booking-created-at">—</span></div>
+                        <div style="margin-top:2px;" id="view-booking-extra-meta"></div>
                     </div>
                 </div>
 
-                <!-- Chauffeur / Driver Card -->
+                <!-- Chauffeur / Allocation Card -->
                 <div style="border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px;" id="view-booking-driver-box">
                     <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; gap:4px;">
                         <span class="material-symbols-outlined" style="font-size:14px; color:#16a34a;">local_taxi</span>
-                        <span>Assigned Chauffeur</span>
+                        <span>Assigned Chauffeur &amp; Allocation</span>
                     </div>
                     <div id="view-booking-driver-content">
                         <!-- dynamic chauffeur or unassigned state -->
                     </div>
+                    <div id="view-booking-allocation-meta" style="margin-top:8px; padding-top:8px; border-top:1px dashed #e2e8f0; font-size:11px; color:#475569;"></div>
                 </div>
             </div>
 

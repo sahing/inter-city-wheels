@@ -69,6 +69,11 @@ class Booking extends Model
         return $this->belongsTo(User::class, 'customer_user_id');
     }
 
+    public function upiVerifier()
+    {
+        return $this->belongsTo(User::class, 'upi_verified_by');
+    }
+
     public function walletTransactions()
     {
         return $this->hasMany(WalletTransaction::class);

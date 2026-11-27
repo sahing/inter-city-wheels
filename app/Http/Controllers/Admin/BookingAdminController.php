@@ -155,7 +155,14 @@ class BookingAdminController extends Controller
      */
     public function show($id)
     {
-        $booking = Booking::with(['driver', 'paymentAttempts.user'])->findOrFail($id);
+        $booking = Booking::with([
+            'driver',
+            'customer',
+            'upiVerifier',
+            'assignedBid',
+            'biddingSessions',
+            'paymentAttempts.user',
+        ])->findOrFail($id);
 
         return response()->json([
             'success' => true,

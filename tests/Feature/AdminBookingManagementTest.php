@@ -415,5 +415,27 @@ class AdminBookingManagementTest extends TestCase
             ->assertJsonPath('driver.id', $driver->id)
             ->assertJsonPath('driver.vehicle_plate', $driver->vehicle_plate)
             ->assertJsonStructure(['user', 'driver', 'bookings']);
+
+        // Booking details endpoint & modal include who booked, route/time, driver/allocation & payment attempts
+        $this->actingAs($admin)->getJson("/api/admin/bookings/{$booking->id}")
+            ->assertOk()
+            ->assertJsonPath('booking.driver.id', $driver->id)
+            ->assertJsonStructure([
+                'booking' => [
+                    'id',
+                    'booking_reference',
+                    'pickup_location',
+                    'drop_location',
+                    'customer',
+                    'driver',
+                    'upi_verifier',
+                    'assigned_bid',
+                    'payment_attempts',
+                ],
+            ]);
+
+        $this->assertStringContainsString('id="view-booking-booked-by-meta"', $html);
+        $this->assertStringContainsString('id="view-booking-allocation-meta"', $html);
+        $this->assertStringContainsString('id="view-booking-created-at"', $html);
     }
 }
