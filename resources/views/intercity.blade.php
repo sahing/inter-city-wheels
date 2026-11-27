@@ -7825,7 +7825,7 @@
             </h3>
             <button type="button" class="modal-close-btn" onclick="closeModal('admin-car-type-modal')">×</button>
         </div>
-        <div class="modal-body" style="padding:16px 20px;">
+        <div class="modal-body" style="padding:16px 20px; max-height:calc(88vh - 110px); overflow-y:auto;">
             <form id="admin-car-type-form" onsubmit="saveCarType(event)">
                 <input type="hidden" id="admin-car-type-id" value="">
 
@@ -7877,14 +7877,67 @@
                     </div>
                 </div>
 
-                <div style="display:grid; grid-template-columns: 2.2fr 0.8fr; gap:12px; margin-bottom:12px;">
-                    <div class="form-group">
-                        <label class="form-label" for="admin-car-type-image">Vehicle Photo URL</label>
-                        <input type="text" id="admin-car-type-image" class="form-control" placeholder="https://..." value="https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80">
+                <div style="display:grid; grid-template-columns: 2.2fr 0.8fr; gap:12px; margin-bottom:12px; align-items:start;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label" for="admin-car-type-image">Vehicle Photo (File Upload ≤ 30 KB or URL)</label>
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
+                            <img id="admin-car-type-preview-img" src="https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80" alt="Car Preview" style="width:76px; height:48px; object-fit:cover; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; flex-shrink:0;">
+                            <div style="display:flex; flex-direction:column; gap:4px;">
+                                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                    <label class="btn btn-xs btn-outline" style="cursor:pointer; margin:0;">
+                                        <span class="material-symbols-outlined" style="font-size:14px;">upload</span>
+                                        <span>Choose Image &amp; Crop</span>
+                                        <input type="file" id="admin-car-type-file-input" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none;" onchange="onCarTypeFileSelected(this)">
+                                    </label>
+                                    <span id="admin-car-type-img-meta" style="font-size:11px; color:#64748b; font-weight:600;">Max 30 KB after crop</span>
+                                </div>
+                            </div>
+                        </div>
+                        <input type="text" id="admin-car-type-image" class="form-control" placeholder="https://... or /uploads/car-types/..." value="https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80" oninput="syncCarTypeImagePreview()">
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" style="margin-bottom:0;">
                         <label class="form-label" for="admin-car-type-order">Order Index</label>
                         <input type="number" id="admin-car-type-order" class="form-control" value="0" min="0">
+                    </div>
+                </div>
+
+                <!-- Interactive Image Cropper & <=30 KB Compressor -->
+                <div id="car-type-cropper-box" style="display:none; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:12px; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                        <div style="font-size:12px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:6px;">
+                            <span class="material-symbols-outlined" style="font-size:16px; color:var(--primary);">crop</span>
+                            <span>Crop &amp; Reduce Vehicle Photo (&le; 30 KB)</span>
+                        </div>
+                        <span id="car-type-crop-size-badge" class="admin-badge badge-success" style="font-size:10.5px;">Estimating…</span>
+                    </div>
+
+                    <div style="display:flex; justify-content:center; background:#0f172a; border-radius:8px; padding:8px; overflow:hidden; margin-bottom:10px;">
+                        <canvas id="car-type-crop-canvas" width="360" height="225" style="max-width:100%; border-radius:6px; cursor:grab; touch-action:none; background:#1e293b;"></canvas>
+                    </div>
+
+                    <div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:10px;">
+                        <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; color:#334155; flex:1; min-width:160px;">
+                            <span>Zoom</span>
+                            <input type="range" id="car-type-crop-zoom" min="1" max="3" step="0.05" value="1" oninput="updateCarTypeCropZoom(this.value)" style="flex:1;">
+                        </label>
+                        <select id="car-type-crop-aspect" class="form-control" onchange="setCarTypeCropAspect(this.value)" style="width:auto; height:30px; font-size:11.5px; padding:2px 8px;">
+                            <option value="16:10" selected>16:10 Fleet Card</option>
+                            <option value="4:3">4:3 Standard</option>
+                            <option value="1:1">1:1 Square</option>
+                        </select>
+                        <button type="button" class="btn btn-xs btn-outline" onclick="rotateCarTypeCrop()">
+                            <span class="material-symbols-outlined" style="font-size:14px;">rotate_right</span>
+                            <span>Rotate</span>
+                        </button>
+                        <button type="button" class="btn btn-xs btn-outline" onclick="resetCarTypeCropTransform()">Fit</button>
+                    </div>
+
+                    <div style="display:flex; justify-content:flex-end; gap:8px;">
+                        <button type="button" class="btn btn-xs btn-secondary" onclick="cancelCarTypeCropper()">Cancel Crop</button>
+                        <button type="button" class="btn btn-xs btn-primary" id="car-type-crop-upload-btn" onclick="uploadCroppedCarTypeImage()">
+                            <span class="material-symbols-outlined" style="font-size:14px;">check_circle</span>
+                            <span>Crop &amp; Upload (&le; 30 KB)</span>
+                        </button>
                     </div>
                 </div>
 

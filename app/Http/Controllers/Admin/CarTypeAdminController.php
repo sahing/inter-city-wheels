@@ -9,6 +9,9 @@ use Illuminate\Support\Facades\DB;
 
 class CarTypeAdminController extends Controller
 {
+    private const MAX_IMAGE_BYTES = 30720; // 30 KB strict target
+
+    private const DEFAULT_IMAGE_URL = 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80';
     /**
      * List all car types / fleet categories.
      */
@@ -67,7 +70,7 @@ class CarTypeAdminController extends Controller
             'rate_per_km' => (float) $validated['rate_per_km'],
             'extra_km_rate' => isset($validated['extra_km_rate']) ? (float) $validated['extra_km_rate'] : (float) $validated['rate_per_km'],
             'base_fare_min' => (float) ($validated['base_fare_min'] ?? 800),
-            'image_url' => $validated['image_url'] ?? 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80',
+            'image_url' => ! empty($validated['image_url']) ? trim($validated['image_url']) : self::DEFAULT_IMAGE_URL,
             'order_index' => (int) ($validated['order_index'] ?? 0),
             'is_active' => $request->has('is_active') ? (bool) $request->is_active : true,
         ]);
@@ -182,6 +185,163 @@ class CarTypeAdminController extends Controller
             'message' => "Updated rates for {$updatedCount} car type(s) successfully!",
             'car_types' => CarType::orderBy('order_index')->get(),
         ]);
+    }
+
+    /**
+     * Upload a vehicle image file for a car type, cropping and compressing it <= 30 KB.
+     */
+    public function uploadImage(Request $request)
+    {
+        $request->validate([
+            'image' => 'required|file|mimes:png,jpg,jpeg,webp,gif|max:5120',
+            'crop_x' => 'nullable|numeric|min:0',
+            'crop_y' => 'nullable|numeric|min:0',
+            'crop_w' => 'nullable|numeric|min:1',
+            'crop_h' => 'nullable|numeric|min:1',
+        ]);
+
+        $file = $request->file('image');
+        $dir = public_path('uploads/car-types');
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        $baseName = 'car-type-'.time().'-'.substr(bin2hex(random_bytes(4)), 0, 8);
+        $hasCrop = $request->filled('crop_w') && $request->filled('crop_h');
+        $origSize = (int) ($file->getSize() ?: 0);
+        $origExt = strtolower($file->getClientOriginalExtension() ?: '');
+
+        // Fast-path: browser already cropped & compressed cleanly <= 30 KB
+        if (! $hasCrop && $origSize > 0 && $origSize <= self::MAX_IMAGE_BYTES && in_array($origExt, ['webp', 'jpg', 'jpeg', 'png'], true)) {
+            $filename = $baseName.'.'.$origExt;
+            $file->move($dir, $filename);
+            $savedPath = $dir.'/'.$filename;
+            $info = @getimagesize($savedPath);
+
+            return response()->json([
+                'success' => true,
+                'image_url' => '/uploads/car-types/'.$filename,
+                'size_bytes' => filesize($savedPath) ?: $origSize,
+                'size_kb' => round((filesize($savedPath) ?: $origSize) / 1024, 2),
+                'width' => $info[0] ?? null,
+                'height' => $info[1] ?? null,
+                'message' => 'Car type image uploaded under 30 KB!',
+            ]);
+        }
+
+        $cropRect = $hasCrop ? [
+            'x' => (float) $request->input('crop_x', 0),
+            'y' => (float) $request->input('crop_y', 0),
+            'w' => (float) $request->input('crop_w'),
+            'h' => (float) $request->input('crop_h'),
+        ] : null;
+
+        try {
+            $saved = $this->cropAndCompressUnderLimit(
+                $file->getRealPath(),
+                $dir.'/'.$baseName,
+                self::MAX_IMAGE_BYTES,
+                $cropRect
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        $filename = basename($saved['path']);
+
+        return response()->json([
+            'success' => true,
+            'image_url' => '/uploads/car-types/'.$filename,
+            'size_bytes' => $saved['size_bytes'],
+            'size_kb' => round($saved['size_bytes'] / 1024, 2),
+            'width' => $saved['width'],
+            'height' => $saved['height'],
+            'message' => 'Car type image cropped & optimized to '.round($saved['size_bytes'] / 1024, 1).' KB!',
+        ]);
+    }
+
+    /**
+     * Crop and iteratively downscale/compress an image via GD until <= maxBytes.
+     *
+     * @param  array{x: float, y: float, w: float, h: float}|null  $cropRect
+     * @return array{path: string, size_bytes: int, width: int, height: int}
+     */
+    private function cropAndCompressUnderLimit(string $sourcePath, string $destBasePath, int $maxBytes, ?array $cropRect): array
+    {
+        $raw = @file_get_contents($sourcePath);
+        if ($raw === false) {
+            throw new \RuntimeException('Could not read uploaded image file.');
+        }
+
+        $src = @imagecreatefromstring($raw);
+        if (! $src) {
+            throw new \RuntimeException('Unsupported or corrupted image file.');
+        }
+
+        try {
+            $srcW = imagesx($src);
+            $srcH = imagesy($src);
+
+            $sx = $cropRect ? max(0, min($srcW - 1, (int) round($cropRect['x']))) : 0;
+            $sy = $cropRect ? max(0, min($srcH - 1, (int) round($cropRect['y']))) : 0;
+            $sw = $cropRect ? max(1, min($srcW - $sx, (int) round($cropRect['w']))) : $srcW;
+            $sh = $cropRect ? max(1, min($srcH - $sy, (int) round($cropRect['h']))) : $srcH;
+
+            $useWebp = function_exists('imagewebp');
+            $ext = $useWebp ? 'webp' : 'jpg';
+            $destPath = $destBasePath.'.'.$ext;
+
+            foreach ([480, 380, 320, 260, 200, 160] as $maxWidth) {
+                $targetW = min($maxWidth, $sw);
+                $targetH = max(1, (int) round($targetW * ($sh / $sw)));
+
+                $canvas = imagecreatetruecolor($targetW, $targetH);
+                $white = imagecolorallocate($canvas, 255, 255, 255);
+                imagefill($canvas, 0, 0, $white);
+                imagecopyresampled($canvas, $src, 0, 0, $sx, $sy, $targetW, $targetH, $sw, $sh);
+
+                foreach ([82, 70, 58, 46, 34, 24, 15] as $quality) {
+                    if ($useWebp) {
+                        imagewebp($canvas, $destPath, $quality);
+                    } else {
+                        imagejpeg($canvas, $destPath, $quality);
+                    }
+                    clearstatcache(true, $destPath);
+                    $size = @filesize($destPath);
+                    if ($size !== false && $size <= $maxBytes) {
+                        imagedestroy($canvas);
+
+                        return [
+                            'path' => $destPath,
+                            'size_bytes' => $size,
+                            'width' => $targetW,
+                            'height' => $targetH,
+                        ];
+                    }
+                }
+
+                imagedestroy($canvas);
+            }
+
+            clearstatcache(true, $destPath);
+            $finalSize = (int) (@filesize($destPath) ?: 0);
+            if ($finalSize > 0 && $finalSize <= $maxBytes) {
+                return [
+                    'path' => $destPath,
+                    'size_bytes' => $finalSize,
+                    'width' => 160,
+                    'height' => max(1, (int) round(160 * ($sh / $sw))),
+                ];
+            }
+
+            @unlink($destPath);
+            throw new \RuntimeException('Could not compress image under 30 KB cleanly.');
+        } finally {
+            imagedestroy($src);
+        }
     }
 
     /**

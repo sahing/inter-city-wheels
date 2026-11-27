@@ -283,6 +283,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     // Car Types & Fleet Categories
     Route::get('/admin/car-types', [CarTypeAdminController::class, 'index'])->name('api.admin.carTypes.index');
     Route::post('/admin/car-types', [CarTypeAdminController::class, 'store'])->name('api.admin.carTypes.store');
+    Route::post('/admin/car-types/upload-image', [CarTypeAdminController::class, 'uploadImage'])->name('api.admin.carTypes.uploadImage');
     Route::post('/admin/car-types/bulk-rates', [CarTypeAdminController::class, 'bulkUpdateRates'])->name('api.admin.carTypes.bulkRates');
     Route::get('/admin/car-types/{id}', [CarTypeAdminController::class, 'show'])->name('api.admin.carTypes.show');
     Route::put('/admin/car-types/{id}', [CarTypeAdminController::class, 'update'])->name('api.admin.carTypes.update');

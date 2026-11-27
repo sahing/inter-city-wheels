@@ -308,4 +308,84 @@ class AdminBookingManagementTest extends TestCase
         $this->assertStringContainsString('+91 98888 12345', $driverHtml);
         $this->assertStringContainsString('Asha Kulkarni', $driverHtml);
     }
+
+    public function test_admin_can_upload_crop_and_compress_car_type_image_under_30kb(): void
+    {
+        $admin = User::where('role', 'admin')->firstOrFail();
+        $customer = User::where('role', 'customer')->firstOrFail();
+
+        // Modal renders file picker & interactive cropper controls
+        $html = $this->actingAs($admin)->get('/')->getContent();
+        $this->assertStringContainsString('id="admin-car-type-file-input"', $html);
+        $this->assertStringContainsString('id="car-type-cropper-box"', $html);
+        $this->assertStringContainsString('id="car-type-crop-canvas"', $html);
+        $this->assertStringContainsString('id="car-type-crop-upload-btn"', $html);
+
+        // Create a rich noisy 1200x800 PNG (> 30 KB raw) so server-side crop & compression must reduce it <= 30 KB
+        $tmpPng = tempnam(sys_get_temp_dir(), 'cartype_').'.png';
+        $im = imagecreatetruecolor(1200, 800);
+        for ($y = 0; $y < 800; $y += 8) {
+            for ($x = 0; $x < 1200; $x += 8) {
+                $col = imagecolorallocate($im, ($x * 3) % 255, ($y * 5) % 255, (($x + $y) * 7) % 255);
+                imagefilledrectangle($im, $x, $y, $x + 7, $y + 7, $col);
+            }
+        }
+        imagepng($im, $tmpPng);
+        imagedestroy($im);
+
+        $uploadedFile = new \Illuminate\Http\UploadedFile(
+            $tmpPng,
+            'large-fleet-photo.png',
+            'image/png',
+            null,
+            true
+        );
+
+        // Non-admin cannot upload
+        $this->actingAs($customer)
+            ->post('/api/admin/car-types/upload-image', ['image' => $uploadedFile], ['Accept' => 'application/json'])
+            ->assertStatus(403);
+
+        $uploadRes = $this->actingAs($admin)->post('/api/admin/car-types/upload-image', [
+            'image' => $uploadedFile,
+            'crop_x' => 100,
+            'crop_y' => 80,
+            'crop_w' => 960,
+            'crop_h' => 600,
+        ], ['Accept' => 'application/json']);
+
+        @unlink($tmpPng);
+
+        $uploadRes->assertOk()
+            ->assertJsonPath('success', true);
+
+        $imageUrl = (string) $uploadRes->json('image_url');
+        $sizeBytes = (int) $uploadRes->json('size_bytes');
+        $savedPath = public_path(ltrim($imageUrl, '/'));
+
+        try {
+            $this->assertStringStartsWith('/uploads/car-types/car-type-', $imageUrl);
+            $this->assertFileExists($savedPath);
+            $this->assertGreaterThan(0, $sizeBytes);
+            $this->assertLessThanOrEqual(30720, $sizeBytes);
+            $this->assertLessThanOrEqual(30720, filesize($savedPath));
+
+            // Save a Car Type using the compressed image URL
+            $storeRes = $this->actingAs($admin)->postJson('/api/admin/car-types', [
+                'name' => 'EV Executive Sedan',
+                'category_key' => 'ev_sedan',
+                'badge' => 'Zero Emission',
+                'models' => 'Tata Tigor EV, MG ZS EV',
+                'seats' => '4 Seats',
+                'luggage' => '2 Bags',
+                'rate_per_km' => 15.5,
+                'image_url' => $imageUrl,
+            ]);
+
+            $storeRes->assertStatus(201)
+                ->assertJsonPath('car_type.image_url', $imageUrl);
+        } finally {
+            @unlink($savedPath);
+        }
+    }
 }

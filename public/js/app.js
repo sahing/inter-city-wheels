@@ -7882,7 +7882,280 @@ window.saveCabRoute = async function (e) {
 // ========================================================
 // 1D. CAR TYPES & FLEET CATEGORIES MANAGEMENT (Admin)
 // ========================================================
+// Interactive image cropper & <= 30 KB compressor state for Car Types
+const CAR_TYPE_MAX_IMAGE_BYTES = 30 * 1024;
+const carTypeCropState = {
+  img: null,
+  zoom: 1,
+  offsetX: 0,
+  offsetY: 0,
+  rotation: 0,
+  aspect: '16:10',
+  dragging: false,
+  lastX: 0,
+  lastY: 0,
+  lastBlob: null,
+  lastExt: 'webp',
+  pendingUpload: false,
+  listenersBound: false,
+};
+
+window.syncCarTypeImagePreview = function (metaText) {
+  const url = document.getElementById('admin-car-type-image')?.value?.trim() || '';
+  const prev = document.getElementById('admin-car-type-preview-img');
+  const meta = document.getElementById('admin-car-type-img-meta');
+  if (prev && url) prev.src = url;
+  if (meta && typeof metaText === 'string') meta.textContent = metaText;
+};
+
+function bindCarTypeCanvasDrag() {
+  const canvas = document.getElementById('car-type-crop-canvas');
+  if (!canvas || carTypeCropState.listenersBound) return;
+  carTypeCropState.listenersBound = true;
+
+  const getPoint = (e) => {
+    const t = e.touches && e.touches[0] ? e.touches[0] : e;
+    return { x: t.clientX, y: t.clientY };
+  };
+  const onDown = (e) => {
+    if (!carTypeCropState.img) return;
+    carTypeCropState.dragging = true;
+    const p = getPoint(e);
+    carTypeCropState.lastX = p.x;
+    carTypeCropState.lastY = p.y;
+    canvas.style.cursor = 'grabbing';
+  };
+  const onMove = (e) => {
+    if (!carTypeCropState.dragging || !carTypeCropState.img) return;
+    const p = getPoint(e);
+    carTypeCropState.offsetX += p.x - carTypeCropState.lastX;
+    carTypeCropState.offsetY += p.y - carTypeCropState.lastY;
+    carTypeCropState.lastX = p.x;
+    carTypeCropState.lastY = p.y;
+    renderCarTypeCropCanvas();
+  };
+  const onUp = () => {
+    if (!carTypeCropState.dragging) return;
+    carTypeCropState.dragging = false;
+    canvas.style.cursor = 'grab';
+    estimateCarTypeCompressedBlob();
+  };
+
+  canvas.addEventListener('mousedown', onDown);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+  canvas.addEventListener('touchstart', onDown, { passive: true });
+  window.addEventListener('touchmove', onMove, { passive: true });
+  window.addEventListener('touchend', onUp);
+}
+
+function getCarTypeTargetDims(aspectKey) {
+  if (aspectKey === '4:3') return { w: 360, h: 270 };
+  if (aspectKey === '1:1') return { w: 300, h: 300 };
+  return { w: 360, h: 225 };
+}
+
+function drawCarTypeToCanvas(canvas, img) {
+  const ctx = canvas.getContext('2d');
+  const cw = canvas.width;
+  const ch = canvas.height;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, cw, ch);
+
+  const rotated = carTypeCropState.rotation % 180 !== 0;
+  const iw = rotated ? img.height : img.width;
+  const ih = rotated ? img.width : img.height;
+  const baseScale = Math.max(cw / iw, ch / ih);
+  const scale = baseScale * carTypeCropState.zoom;
+
+  ctx.save();
+  ctx.translate(cw / 2 + carTypeCropState.offsetX, ch / 2 + carTypeCropState.offsetY);
+  ctx.rotate((carTypeCropState.rotation * Math.PI) / 180);
+  ctx.scale(scale, scale);
+  ctx.drawImage(img, -img.width / 2, -img.height / 2);
+  ctx.restore();
+}
+
+function renderCarTypeCropCanvas() {
+  const canvas = document.getElementById('car-type-crop-canvas');
+  if (!canvas || !carTypeCropState.img) return;
+  const dims = getCarTypeTargetDims(carTypeCropState.aspect);
+  if (canvas.width !== dims.w || canvas.height !== dims.h) {
+    canvas.width = dims.w;
+    canvas.height = dims.h;
+  }
+  drawCarTypeToCanvas(canvas, carTypeCropState.img);
+}
+
+function canvasToBlobPromise(canvas, mime, quality) {
+  return new Promise(resolve => canvas.toBlob(blob => resolve(blob), mime, quality));
+}
+
+async function compressCanvasUnder30Kb() {
+  const sourceCanvas = document.getElementById('car-type-crop-canvas');
+  if (!sourceCanvas || !carTypeCropState.img) return null;
+
+  const scales = [1, 0.85, 0.72, 0.6];
+  const mimes = ['image/webp', 'image/jpeg'];
+  const qualities = [0.85, 0.72, 0.6, 0.48, 0.36, 0.25];
+
+  for (const sc of scales) {
+    const tmp = document.createElement('canvas');
+    tmp.width = Math.max(120, Math.round(sourceCanvas.width * sc));
+    tmp.height = Math.max(80, Math.round(sourceCanvas.height * sc));
+    drawCarTypeToCanvas(tmp, carTypeCropState.img);
+
+    for (const mime of mimes) {
+      for (const q of qualities) {
+        const blob = await canvasToBlobPromise(tmp, mime, q);
+        if (blob && blob.type === mime && blob.size <= CAR_TYPE_MAX_IMAGE_BYTES) {
+          return {
+            blob,
+            ext: mime === 'image/webp' ? 'webp' : 'jpg',
+            width: tmp.width,
+            height: tmp.height,
+          };
+        }
+      }
+    }
+  }
+
+  // Fallback smallest JPEG
+  const fallbackBlob = await canvasToBlobPromise(sourceCanvas, 'image/jpeg', 0.2);
+  return fallbackBlob
+    ? { blob: fallbackBlob, ext: 'jpg', width: sourceCanvas.width, height: sourceCanvas.height }
+    : null;
+}
+
+async function estimateCarTypeCompressedBlob() {
+  const badge = document.getElementById('car-type-crop-size-badge');
+  if (badge) badge.textContent = 'Compressing…';
+  const res = await compressCanvasUnder30Kb();
+  if (!res || !res.blob) return;
+  carTypeCropState.lastBlob = res.blob;
+  carTypeCropState.lastExt = res.ext;
+  const kb = (res.blob.size / 1024).toFixed(1);
+  if (badge) {
+    badge.textContent = `${res.width}×${res.height} · ${kb} KB / 30 KB (${res.ext.toUpperCase()})`;
+    badge.className = `admin-badge ${res.blob.size <= CAR_TYPE_MAX_IMAGE_BYTES ? 'badge-success' : 'badge-warning'}`;
+  }
+}
+
+window.onCarTypeFileSelected = function (input) {
+  const file = input?.files?.[0];
+  if (!file) return;
+  bindCarTypeCanvasDrag();
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      carTypeCropState.img = img;
+      carTypeCropState.zoom = 1;
+      carTypeCropState.offsetX = 0;
+      carTypeCropState.offsetY = 0;
+      carTypeCropState.rotation = 0;
+      carTypeCropState.pendingUpload = true;
+      const zoomEl = document.getElementById('car-type-crop-zoom');
+      if (zoomEl) zoomEl.value = '1';
+      const box = document.getElementById('car-type-cropper-box');
+      if (box) box.style.display = 'block';
+      renderCarTypeCropCanvas();
+      estimateCarTypeCompressedBlob();
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+};
+
+window.updateCarTypeCropZoom = function (val) {
+  carTypeCropState.zoom = parseFloat(val) || 1;
+  renderCarTypeCropCanvas();
+  estimateCarTypeCompressedBlob();
+};
+
+window.setCarTypeCropAspect = function (aspect) {
+  carTypeCropState.aspect = aspect || '16:10';
+  carTypeCropState.offsetX = 0;
+  carTypeCropState.offsetY = 0;
+  renderCarTypeCropCanvas();
+  estimateCarTypeCompressedBlob();
+};
+
+window.rotateCarTypeCrop = function () {
+  carTypeCropState.rotation = (carTypeCropState.rotation + 90) % 360;
+  carTypeCropState.offsetX = 0;
+  carTypeCropState.offsetY = 0;
+  renderCarTypeCropCanvas();
+  estimateCarTypeCompressedBlob();
+};
+
+window.resetCarTypeCropTransform = function () {
+  carTypeCropState.zoom = 1;
+  carTypeCropState.offsetX = 0;
+  carTypeCropState.offsetY = 0;
+  carTypeCropState.rotation = 0;
+  const zoomEl = document.getElementById('car-type-crop-zoom');
+  if (zoomEl) zoomEl.value = '1';
+  renderCarTypeCropCanvas();
+  estimateCarTypeCompressedBlob();
+};
+
+window.cancelCarTypeCropper = function () {
+  const box = document.getElementById('car-type-cropper-box');
+  if (box) box.style.display = 'none';
+  const fileIn = document.getElementById('admin-car-type-file-input');
+  if (fileIn) fileIn.value = '';
+  carTypeCropState.img = null;
+  carTypeCropState.lastBlob = null;
+  carTypeCropState.pendingUpload = false;
+};
+
+window.uploadCroppedCarTypeImage = async function () {
+  if (!carTypeCropState.img) return false;
+  const btn = document.getElementById('car-type-crop-upload-btn');
+  if (btn) btn.disabled = true;
+
+  try {
+    const compressed = await compressCanvasUnder30Kb();
+    if (!compressed || !compressed.blob) {
+      showToast('Could not prepare cropped image.', 'danger');
+      return false;
+    }
+
+    const formData = new FormData();
+    formData.append('image', compressed.blob, `car-type-crop.${compressed.ext}`);
+
+    const res = await fetch('/api/admin/car-types/upload-image', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: formData,
+    });
+    const data = await res.json();
+    if (res.ok && data.success && data.image_url) {
+      const urlInput = document.getElementById('admin-car-type-image');
+      if (urlInput) urlInput.value = data.image_url;
+      window.syncCarTypeImagePreview(`Uploaded · ${data.size_kb || (compressed.blob.size / 1024).toFixed(1)} KB (≤ 30 KB)`);
+      window.cancelCarTypeCropper();
+      showToast(data.message || 'Image cropped & uploaded under 30 KB!', 'success');
+      return true;
+    }
+    showToast(data.message || 'Image upload failed.', 'danger');
+    return false;
+  } catch (err) {
+    console.error('uploadCroppedCarTypeImage', err);
+    showToast('Network error while uploading image.', 'danger');
+    return false;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
 window.openAddCarTypeModal = function () {
+  window.cancelCarTypeCropper();
   document.getElementById('admin-car-type-modal-title').textContent = 'Add Car Type & Fleet Category';
   document.getElementById('admin-car-type-id').value = '';
   document.getElementById('admin-car-type-name').value = '';
@@ -7896,6 +8169,7 @@ window.openAddCarTypeModal = function () {
   document.getElementById('admin-car-type-extra-km').value = '12.5';
   document.getElementById('admin-car-type-min-fare').value = '800';
   document.getElementById('admin-car-type-image').value = 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=640&q=80';
+  window.syncCarTypeImagePreview('Max 30 KB after crop');
   document.getElementById('admin-car-type-order').value = '0';
   document.getElementById('admin-car-type-active').checked = true;
 
@@ -7907,6 +8181,7 @@ window.openAddCarTypeModal = function () {
 };
 
 window.openEditCarTypeModal = async function (id) {
+  window.cancelCarTypeCropper();
   try {
     const res = await fetch(`/api/admin/car-types/${id}`);
     const data = await res.json();
@@ -7925,6 +8200,7 @@ window.openEditCarTypeModal = async function (id) {
     document.getElementById('admin-car-type-extra-km').value = ct.extra_km_rate || ct.rate_per_km;
     document.getElementById('admin-car-type-min-fare').value = ct.base_fare_min || 800;
     document.getElementById('admin-car-type-image').value = ct.image_url || '';
+    window.syncCarTypeImagePreview('Max 30 KB after crop');
     document.getElementById('admin-car-type-order').value = ct.order_index || 0;
     document.getElementById('admin-car-type-active').checked = Boolean(ct.is_active);
 
@@ -7941,6 +8217,10 @@ window.openEditCarTypeModal = async function (id) {
 
 window.saveCarType = async function (e) {
   e.preventDefault();
+  if (carTypeCropState.pendingUpload && carTypeCropState.img) {
+    const uploadedOk = await window.uploadCroppedCarTypeImage();
+    if (!uploadedOk) return;
+  }
   const id = document.getElementById('admin-car-type-id').value;
   const isEdit = Boolean(id);
 
