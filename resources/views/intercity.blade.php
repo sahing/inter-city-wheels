@@ -1706,92 +1706,98 @@
                 </div>
 
                 <div class="driver-panel-card-body">
-                    <div class="admin-trip-type-filters" id="driver-trips-status-filters" role="group" aria-label="Filter assigned rides by status" style="border:1px solid var(--outline); border-radius:10px; margin-bottom:14px; padding:8px 12px; justify-content:space-between;">
-                        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
-                            <span class="admin-trip-type-label">Status:</span>
-                            <button type="button" class="admin-trip-type-btn active" data-trip-filter="all" onclick="setDriverTripFilter('all', this)">
-                                All ({{ $assignedTripList->count() }})
-                            </button>
-                            <button type="button" class="admin-trip-type-btn" data-trip-filter="assigned" onclick="setDriverTripFilter('assigned', this)">
-                                Pending Start ({{ $pendingStartCount }})
-                            </button>
-                            <button type="button" class="admin-trip-type-btn" data-trip-filter="started" onclick="setDriverTripFilter('started', this)">
-                                In Progress ({{ $inProgressCount }})
-                            </button>
-                            <button type="button" class="admin-trip-type-btn" data-trip-filter="completed" onclick="setDriverTripFilter('completed', this)">
-                                Completed ({{ $completedTripCount }})
+                    <div id="driver-trips-queue-screen">
+                        <div class="admin-trip-type-filters" id="driver-trips-status-filters" role="group" aria-label="Filter assigned rides by status" style="border:1px solid var(--outline); border-radius:10px; margin-bottom:14px; padding:8px 12px; justify-content:space-between;">
+                            <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
+                                <span class="admin-trip-type-label">Status:</span>
+                                <button type="button" class="admin-trip-type-btn active" data-trip-filter="all" onclick="setDriverTripFilter('all', this)">
+                                    All ({{ $assignedTripList->count() }})
+                                </button>
+                                <button type="button" class="admin-trip-type-btn" data-trip-filter="assigned" onclick="setDriverTripFilter('assigned', this)">
+                                    Pending Start ({{ $pendingStartCount }})
+                                </button>
+                                <button type="button" class="admin-trip-type-btn" data-trip-filter="started" onclick="setDriverTripFilter('started', this)">
+                                    In Progress ({{ $inProgressCount }})
+                                </button>
+                                <button type="button" class="admin-trip-type-btn" data-trip-filter="completed" onclick="setDriverTripFilter('completed', this)">
+                                    Completed ({{ $completedTripCount }})
+                                </button>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:4px;">
+                                <button type="button" class="admin-trip-type-btn active" data-trip-view="table" onclick="setDriverTripView('table', this)" title="Compact Table View">Table</button>
+                                <button type="button" class="admin-trip-type-btn" data-trip-view="cards" onclick="setDriverTripView('cards', this)" title="Compact Card View">Cards</button>
+                            </div>
+                        </div>
+
+                        <div id="driver-trips-empty-state" style="display:{{ $assignedTripList->isEmpty() ? 'block' : 'none' }}; text-align:center; padding:32px 20px; color:var(--text-muted); background:var(--surface-base); border:1px solid var(--outline); border-radius:10px;">
+                            <span class="material-symbols-outlined" style="font-size:38px; color:#cbd5e1; display:block; margin-bottom:8px;">local_taxi</span>
+                            <div style="font-weight:700; font-size:14px; color:var(--text-main);">No assigned rides in your queue currently</div>
+                            <p style="font-size:12px; margin:4px 0 14px;">Switch to the &ldquo;Live Bids &amp; Auctions&rdquo; tab to bid on upcoming passenger outstation trips.</p>
+                            <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('bidding')">
+                                <span>Open Bidding Marketplace</span>
                             </button>
                         </div>
-                        <div style="display:flex; align-items:center; gap:4px;">
-                            <button type="button" class="admin-trip-type-btn active" data-trip-view="table" onclick="setDriverTripView('table', this)" title="Compact Table View">Table</button>
-                            <button type="button" class="admin-trip-type-btn" data-trip-view="cards" onclick="setDriverTripView('cards', this)" title="Compact Card View">Cards</button>
-                        </div>
-                    </div>
 
-                    <div id="driver-trips-empty-state" style="display:{{ $assignedTripList->isEmpty() ? 'block' : 'none' }}; text-align:center; padding:32px 20px; color:var(--text-muted); background:var(--surface-base); border:1px solid var(--outline); border-radius:10px;">
-                        <span class="material-symbols-outlined" style="font-size:38px; color:#cbd5e1; display:block; margin-bottom:8px;">local_taxi</span>
-                        <div style="font-weight:700; font-size:14px; color:var(--text-main);">No assigned rides in your queue currently</div>
-                        <p style="font-size:12px; margin:4px 0 14px;">Switch to the &ldquo;Live Bids &amp; Auctions&rdquo; tab to bid on upcoming passenger outstation trips.</p>
-                        <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('bidding')">
-                            <span>Open Bidding Marketplace</span>
-                        </button>
-                    </div>
-
-                    <div class="auction-table-wrap driver-trips-view" id="driver-trips-view-wrap" style="display:{{ $assignedTripList->isEmpty() ? 'none' : 'block' }};">
-                        <table class="admin-data-table admin-table-compact">
-                            <thead>
-                                <tr>
-                                    <th>Booking</th>
-                                    <th>Route &amp; Passenger</th>
-                                    <th>Status</th>
-                                    <th>Payout</th>
-                                    <th>OTP / Dispatch Action</th>
-                                    <th style="text-align:right;">Details</th>
-                                </tr>
-                            </thead>
-                            <tbody id="driver-trips-table-body">
-                                @foreach($assignedTripList as $dt)
-                                    @php
-                                        $tripBucket = $dt->status === 'Started'
-                                            ? 'started'
-                                            : ($dt->status === 'Completed' ? 'completed' : 'assigned');
-                                        $driverCollectDue = 0.0;
-                                        if ($dt->driver_collected_at === null) {
-                                            if ($dt->payment_mode === 'part_pay' && (float) $dt->balance_amount > 0) {
-                                                $driverCollectDue = (float) $dt->balance_amount;
-                                            } elseif (
-                                                $dt->payment_collection_by === 'driver'
-                                                || in_array($dt->payment_status, ['pay_on_pickup', 'driver_collect', 'upi_rejected', 'pending_upi_verification', 'awaiting_upi_utr'], true)
-                                            ) {
-                                                $driverCollectDue = (float) ($dt->balance_amount > 0 ? $dt->balance_amount : $dt->total_amount);
+                        <div class="auction-table-wrap driver-trips-view" id="driver-trips-view-wrap" style="display:{{ $assignedTripList->isEmpty() ? 'none' : 'block' }};">
+                            <table class="admin-data-table admin-table-compact">
+                                <thead>
+                                    <tr>
+                                        <th>When &amp; Booking</th>
+                                        <th>Where to Pick Up &amp; Whom</th>
+                                        <th>Status</th>
+                                        <th>Bid / Payout</th>
+                                        <th>Dispatch &amp; Start OTP</th>
+                                        <th style="text-align:right;">Screen View</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="driver-trips-table-body">
+                                    @foreach($assignedTripList as $dt)
+                                        @php
+                                            $tripBucket = $dt->status === 'Started'
+                                                ? 'started'
+                                                : ($dt->status === 'Completed' ? 'completed' : 'assigned');
+                                            $driverCollectDue = 0.0;
+                                            if ($dt->driver_collected_at === null) {
+                                                if ($dt->payment_mode === 'part_pay' && (float) $dt->balance_amount > 0) {
+                                                    $driverCollectDue = (float) $dt->balance_amount;
+                                                } elseif (
+                                                    $dt->payment_collection_by === 'driver'
+                                                    || in_array($dt->payment_status, ['pay_on_pickup', 'driver_collect', 'upi_rejected', 'pending_upi_verification', 'awaiting_upi_utr'], true)
+                                                ) {
+                                                    $driverCollectDue = (float) ($dt->balance_amount > 0 ? $dt->balance_amount : $dt->total_amount);
+                                                }
                                             }
-                                        }
-                                        $isUpiPendingAdmin = in_array($dt->payment_status, ['pending_upi_verification', 'awaiting_upi_utr'], true);
-            @endphp
-                                    <tr class="driver-trip-row" id="driver-trip-box-{{ $dt->id }}" data-booking-ref="{{ $dt->booking_reference }}" data-trip-bucket="{{ $tripBucket }}">
-                                        <td>
-                                            <span class="booking-ref-link">{{ $dt->booking_reference }}</span>
-                                            <div class="cell-subtext">{{ $dt->trip_date ? \Carbon\Carbon::parse($dt->trip_date)->format('d M') : 'Scheduled' }}{{ $dt->trip_time ? ' • '.$dt->trip_time : '' }}</div>
-                                        </td>
-                                        <td data-booking-part="trip">
-                                            <div class="cell-primary-text">{{ $dt->route_summary }}</div>
-                                            @if($dt->assigned_driver_id && $dt->status !== 'Cancelled')
-                                                <div class="cell-subtext">
-                                                    <strong style="color:var(--text-main);">{{ $dt->customer_name }}</strong>
-                                                    &bull;
-                                                    <a href="tel:{{ $dt->customer_phone }}" style="color:var(--info); text-decoration:none; font-weight:700;">{{ $dt->customer_phone }}</a>
-                                                    @if($dt->driver_payout_amount !== null)
-                                                        &bull;
-                                                        <span class="admin-badge badge-success" style="font-size:9.5px; padding:1px 6px;">Won via driver bidding</span>
-                                                    @endif
-                                                </div>
-                                                <div class="cell-subtext" style="font-size:11px; color:#64748b;">
-                                                    {{ $dt->pickup_location }} &rarr; {{ $dt->drop_location }}
-                                                </div>
-                                            @else
-                                                <div class="cell-subtext">Customer name &amp; contact unlock once allotted.</div>
-                                            @endif
-                                        </td>
+                                            $isUpiPendingAdmin = in_array($dt->payment_status, ['pending_upi_verification', 'awaiting_upi_utr'], true);
+                                            $whenText = $dt->departure_time
+                                                ? $dt->departure_time->format('D, d M Y · h:i A')
+                                                : ($dt->trip_date ? \Carbon\Carbon::parse($dt->trip_date)->format('d M Y').($dt->trip_time ? ' · '.$dt->trip_time : '') : 'Scheduled');
+                                            $custTelClean = preg_replace('/[^0-9+]/', '', (string) $dt->customer_phone) ?: (string) $dt->customer_phone;
+                                        @endphp
+                                        <tr class="driver-trip-row" id="driver-trip-box-{{ $dt->id }}" data-booking-ref="{{ $dt->booking_reference }}" data-trip-bucket="{{ $tripBucket }}">
+                                            <td>
+                                                <span class="booking-ref-link">{{ $dt->booking_reference }}</span>
+                                                <div class="cell-primary-text" style="font-size:11.5px; margin-top:2px;">{{ $whenText }}</div>
+                                            </td>
+                                            <td data-booking-part="trip">
+                                                <div class="cell-primary-text">{{ $dt->route_summary }}</div>
+                                                @if($dt->assigned_driver_id && $dt->status !== 'Cancelled')
+                                                    <div class="cell-subtext" style="font-size:11.5px; color:#0f172a; margin-top:2px;">
+                                                        <strong>Pickup:</strong> {{ $dt->pickup_location }} &rarr; <strong>Drop:</strong> {{ $dt->drop_location }}
+                                                    </div>
+                                                    <div class="cell-subtext" style="margin-top:3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                                        <strong style="color:var(--text-main);">{{ $dt->customer_name }}</strong>
+                                                        <a href="tel:{{ $custTelClean }}" class="btn btn-xs btn-outline" style="min-height:24px; padding:0 8px; text-decoration:none; color:#0284c7; border-color:#bae6fd; font-weight:700;">
+                                                            <span class="material-symbols-outlined" style="font-size:13px;">call</span>
+                                                            <span>{{ $dt->customer_phone }}</span>
+                                                        </a>
+                                                        @if($dt->driver_payout_amount !== null)
+                                                            <span class="admin-badge badge-success" style="font-size:9.5px; padding:1px 6px;">Won via bidding</span>
+                                                        @endif
+                                                    </div>
+                                                @else
+                                                    <div class="cell-subtext">Customer name &amp; contact unlock once allotted.</div>
+                                                @endif
+                                            </td>
                                             <td data-booking-part="status">
                                                 <span class="admin-badge @if($dt->status === 'Confirmed') badge-success @elseif($dt->status === 'Driver Assigned') badge-gold @elseif($dt->status === 'Started') badge-info @elseif($dt->status === 'Completed') badge-primary @else badge-secondary @endif" id="driver-trip-status-badge-{{ $dt->id }}">
                                                     {{ $dt->status }}
@@ -1800,7 +1806,7 @@
                                             <td data-booking-part="payment">
                                                 @if($dt->driver_payout_amount !== null)
                                                     <div class="cell-primary-text text-tabular" style="color:var(--success);">₹{{ number_format((float) $dt->driver_payout_amount) }}</div>
-                                                    <div class="cell-subtext">Your winning bid payout</div>
+                                                    <div class="cell-subtext">Your winning bid</div>
                                                 @else
                                                     <div class="cell-primary-text text-tabular" style="color:var(--success);">₹{{ number_format($dt->total_amount) }}</div>
                                                     <div class="cell-subtext">All-inclusive</div>
@@ -1818,31 +1824,27 @@
                                             <td>
                                                 <div id="driver-trip-actions-{{ $dt->id }}" style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
                                                     @if($dt->status === 'Driver Assigned' || $dt->status === 'Confirmed')
-                                                        <div class="driver-otp-controls" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                                                            <label for="driver-otp-input-{{ $dt->id }}" style="font-size:11px; font-weight:700; color:var(--text-muted); white-space:nowrap;">OTP</label>
-                                                            <input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" id="driver-otp-input-{{ $dt->id }}" placeholder="4-digit" maxlength="4" style="width:80px; padding:4px 6px; font-family:monospace; font-size:13px; font-weight:800; text-align:center; border:1px solid var(--outline); border-radius:6px; letter-spacing:2px;">
-                                                            <button type="button" class="btn btn-sm btn-primary" style="height:28px; padding:0 10px; font-size:11px;" onclick="verifyDriverStartOtp({{ $dt->id }})">
-                                                                <span class="material-symbols-outlined" style="font-size:14px;">check_circle</span>
-                                                                <span>Verify &amp; Start</span>
-                                                            </button>
-                                                        </div>
+                                                        <button type="button" class="btn btn-sm btn-primary" style="min-height:32px; padding:0 12px; font-size:11.5px;" onclick='openDriverTripScreen(@json($dt))'>
+                                                            <span class="material-symbols-outlined" style="font-size:15px;">pin</span>
+                                                            <span>Pickup &amp; Enter OTP</span>
+                                                        </button>
                                                     @elseif($dt->status === 'Started')
-                                                        <button type="button" class="btn btn-sm btn-accent" style="height:28px; padding:0 10px; font-size:11px;" onclick="completeDriverTrip({{ $dt->id }}, {{ $driverCollectDue }}, '{{ $dt->payment_status ?? '' }}')">
-                                                            <span class="material-symbols-outlined" style="font-size:14px;">flag</span>
+                                                        <button type="button" class="btn btn-sm btn-accent" style="min-height:32px; padding:0 12px; font-size:11.5px;" onclick='openDriverTripScreen(@json($dt))'>
+                                                            <span class="material-symbols-outlined" style="font-size:15px;">flag</span>
                                                             <span>{{ $driverCollectDue > 0 ? 'Collect ₹'.number_format($driverCollectDue).' & Complete' : 'Complete Trip & Settle' }}</span>
                                                         </button>
                                                     @else
                                                         <span style="color:var(--success); font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;">
                                                             <span class="material-symbols-outlined" style="font-size:15px;">verified</span>
-                                                            <span>Trip completed &amp; payout settled.</span>
+                                                            <span>Trip completed &amp; settled.</span>
                                                         </span>
                                                     @endif
                                                 </div>
                                             </td>
                                             <td style="text-align:right; white-space:nowrap;">
-                                                <button type="button" class="btn btn-sm btn-outline driver-item-details-btn" style="min-height:28px; padding:0 10px !important;" onclick='openDriverTripDetails(@json($dt))'>
-                                                    <span class="material-symbols-outlined" style="font-size:14px;">visibility</span>
-                                                    <span>Trip Details</span>
+                                                <button type="button" class="btn btn-sm btn-outline driver-item-details-btn" style="min-height:30px; padding:0 10px !important;" onclick='openDriverTripScreen(@json($dt))'>
+                                                    <span class="material-symbols-outlined" style="font-size:14px;">open_in_new</span>
+                                                    <span>Open Screen</span>
                                                 </button>
                                             </td>
                                         </tr>
@@ -1856,6 +1858,110 @@
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+
+                    <!-- SCREEN 2: DEDICATED TRIP DISPATCH, CALL CUSTOMER & PROMINENT OTP ENTRY -->
+                    <div id="driver-trip-dispatch-screen" hidden style="display:none;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding-bottom:12px; margin-bottom:14px; border-bottom:1px solid var(--outline);">
+                            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                <button type="button" class="btn btn-sm btn-secondary" onclick="closeDriverTripScreen()" style="min-height:38px;">
+                                    <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+                                    <span>Back to All Trips</span>
+                                </button>
+                                <div>
+                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                        <strong id="dispatch-trip-ref" style="font-family:monospace; font-size:14px; color:#0f172a;">ICW-0000</strong>
+                                        <span id="dispatch-trip-status-badge" class="admin-badge badge-gold">Driver Assigned</span>
+                                    </div>
+                                    <div id="dispatch-trip-route" style="font-size:12.5px; color:#475569; font-weight:600;">Route</div>
+                                </div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="font-size:10.5px; font-weight:700; color:#64748b; text-transform:uppercase;">Your Bid / Payout</div>
+                                <div id="dispatch-trip-payout" style="font-size:18px; font-weight:800; color:#15803d;">₹0</div>
+                            </div>
+                        </div>
+
+                        <!-- Step-wise Dispatch Progress -->
+                        <nav aria-label="Trip Dispatch Steps" style="margin-bottom:16px;">
+                            <ol style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; list-style:none; padding:0; margin:0;">
+                                <li id="dispatch-step-1" style="padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; font-size:11.5px; font-weight:700; color:#334155;">1. Pickup &amp; Call Customer</li>
+                                <li id="dispatch-step-2" style="padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; font-size:11.5px; font-weight:700; color:#334155;">2. Verify Start OTP</li>
+                                <li id="dispatch-step-3" style="padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; font-size:11.5px; font-weight:700; color:#334155;">3. Collect &amp; Complete</li>
+                            </ol>
+                        </nav>
+
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin-bottom:16px;">
+                            <!-- WHEN & WHERE TO PICK UP -->
+                            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px;">
+                                <div style="font-size:11px; font-weight:800; color:#b45309; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">When &amp; Where to Pick Up</div>
+                                <div style="margin-bottom:10px;">
+                                    <div style="font-size:11px; color:#64748b;">Pickup Date &amp; Time</div>
+                                    <div id="dispatch-trip-when" style="font-size:15px; font-weight:800; color:#0f172a;">Scheduled</div>
+                                </div>
+                                <div style="margin-bottom:8px;">
+                                    <div style="font-size:11px; color:#64748b;">Exact Pickup Location</div>
+                                    <div id="dispatch-trip-pickup" style="font-size:13.5px; font-weight:700; color:#0f172a; line-height:1.4;">—</div>
+                                </div>
+                                <div>
+                                    <div style="font-size:11px; color:#64748b;">Drop Destination</div>
+                                    <div id="dispatch-trip-drop" style="font-size:13px; font-weight:600; color:#334155; line-height:1.4;">—</div>
+                                </div>
+                            </div>
+
+                            <!-- WHOM TO PICK UP & CALL CUSTOMER -->
+                            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px; display:flex; flex-direction:column; justify-content:space-between; gap:10px;">
+                                <div>
+                                    <div style="font-size:11px; font-weight:800; color:#0284c7; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">Passenger Contact &amp; Collection Duty</div>
+                                    <div id="dispatch-trip-customer-name" style="font-size:15px; font-weight:800; color:#0f172a;">Passenger</div>
+                                    <div id="dispatch-trip-customer-phone" style="font-size:13px; font-weight:700; color:#475569; margin-top:2px;">—</div>
+                                    <div id="dispatch-trip-collection-summary" style="margin-top:10px; padding:8px 10px; border-radius:8px; background:#fffbeb; border:1px solid #fde68a; font-size:12px; font-weight:700; color:#92400e;">—</div>
+                                </div>
+                                <a id="dispatch-call-customer-btn" href="#" class="btn btn-primary" style="width:100%; min-height:48px; justify-content:center; text-decoration:none; font-size:14px; font-weight:800;">
+                                    <span class="material-symbols-outlined" style="font-size:19px;">call</span>
+                                    <span>Call Customer for Exact Location</span>
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- PROMINENT OTP ENTRY PANEL (Step 2: Driver Assigned / Confirmed) -->
+                        <div id="dispatch-otp-card" style="display:none; background:linear-gradient(135deg, #fffbeb 0%, #ffffff 100%); border:2px solid #d49b4c; border-radius:14px; padding:18px; text-align:center;">
+                            <div style="font-size:11.5px; font-weight:800; color:#b45309; text-transform:uppercase; letter-spacing:0.06em;">Step 2 • Start Ride Verification</div>
+                            <h3 style="font-size:17px; font-weight:800; color:#0f172a; margin:4px 0 6px;">Enter Passenger 4-Digit Ride Start OTP</h3>
+                            <p id="driver-dispatch-otp-hint" style="font-size:12.5px; color:#475569; margin:0 auto 14px; max-width:420px;">
+                                Confirm you have met the passenger at pickup and ask for their 4-digit Ride Start OTP to begin the trip.
+                            </p>
+                            <form id="driver-dispatch-otp-form" method="POST" onsubmit="submitDispatchStartOtp(event)" style="max-width:340px; margin:0 auto;">
+                                <label for="driver-dispatch-otp-input" style="position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%);">4-Digit Ride Start OTP</label>
+                                <input type="text" id="driver-dispatch-otp-input" name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="\d{4}" maxlength="4" aria-describedby="driver-dispatch-otp-hint" placeholder="••••" required style="width:100%; min-height:56px; font-family:ui-monospace, monospace; font-size:24px; font-weight:800; letter-spacing:0.45em; text-align:center; border:2px solid #0f172a; border-radius:12px; background:#ffffff; color:#0f172a; margin-bottom:12px; box-sizing:border-box;" oninput="this.removeAttribute('aria-invalid')">
+                                <button type="submit" id="driver-dispatch-otp-submit" class="btn btn-primary" style="width:100%; min-height:48px; justify-content:center; font-size:14.5px; font-weight:800;">
+                                    <span class="material-symbols-outlined" style="font-size:19px;">check_circle</span>
+                                    <span>Verify OTP &amp; Start Trip</span>
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- ACTIVE TRIP COMPLETION PANEL (Step 3: Started) -->
+                        <div id="dispatch-active-card" style="display:none; background:#eff6ff; border:2px solid #3b82f6; border-radius:14px; padding:18px; text-align:center;">
+                            <div style="font-size:11.5px; font-weight:800; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.06em;">Step 3 • Ride In Progress</div>
+                            <h3 style="font-size:17px; font-weight:800; color:#0f172a; margin:4px 0 8px;">Trip Started — Ready for Drop-Off Settlement</h3>
+                            <p id="dispatch-active-collect-note" style="font-size:13px; color:#1e3a8a; margin:0 auto 14px; max-width:460px; font-weight:600;">—</p>
+                            <button type="button" id="dispatch-complete-trip-btn" class="btn btn-accent" style="min-height:48px; padding:0 24px; font-size:14.5px; font-weight:800;">
+                                <span class="material-symbols-outlined" style="font-size:19px;">flag</span>
+                                <span id="dispatch-complete-trip-label">Complete Trip &amp; Settle</span>
+                            </button>
+                        </div>
+
+                        <!-- COMPLETED TRIP SUMMARY PANEL -->
+                        <div id="dispatch-completed-card" style="display:none; background:#f0fdf4; border:1.5px solid #86efac; border-radius:14px; padding:18px; text-align:center;">
+                            <div style="font-size:12px; font-weight:800; color:#15803d; text-transform:uppercase;">✓ Trip Completed &amp; Settled</div>
+                            <p id="dispatch-completed-note" style="font-size:13px; color:#166534; margin:6px 0 14px;">Payout and collection details are recorded in your Payment History.</p>
+                            <button type="button" class="btn btn-primary" style="min-height:44px;" onclick="switchTab('driver-wallet')">
+                                <span class="material-symbols-outlined" style="font-size:17px;">account_balance_wallet</span>
+                                <span>View in Wallet &amp; Payment History</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -1910,19 +2016,114 @@
                         </div>
                     </div>
 
-                    <!-- Instant Payout Action Strip -->
-                    <div class="driver-compact-item-card" style="margin-bottom:18px; flex-wrap:wrap;">
-                        <div style="display:flex; align-items:center; gap:10px; min-width:0;">
-                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px; flex-shrink:0;">account_balance</span>
-                            <div>
-                                <div style="font-weight:700; font-size:13px; color:var(--text-main);">Registered Bank Account for Payouts</div>
-                                <div class="cell-subtext">HDFC Bank &bull; A/C: &bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull; 4912 &bull; IFSC: HDFC0001029 (Instant 24/7 IMPS Settlement)</div>
+                    @php
+                        $payoutProfile = $payHistoryData['payout_profile'] ?? [];
+                        $payoutReqs = $payHistoryData['payout_requests'] ?? [];
+                        $prefMethod = $payoutProfile['preferred_payout_method'] ?? ($driverProfile->preferred_payout_method ?? 'upi');
+                        $hasUpiCfg = ! empty($payoutProfile['has_upi']);
+                        $hasBankCfg = ! empty($payoutProfile['has_bank']);
+                        $availWalletBal = (float) ($paySummary['wallet_balance'] ?? ($driverProfile->wallet_balance ?? 0));
+                    @endphp
+                    <!-- Request Payout Card (Deducts Wallet & Sends for Admin Approval) -->
+                    <div style="background:#f8fafc; border:1px solid var(--outline); border-radius:12px; padding:14px 16px; margin-bottom:18px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+                            <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                                <span class="material-symbols-outlined" style="color:var(--primary); font-size:22px; flex-shrink:0;">account_balance</span>
+                                <div>
+                                    <div style="font-weight:800; font-size:13.5px; color:var(--text-main);">Request Wallet Payout (Admin Approval Required)</div>
+                                    <div id="driver-wallet-payout-dest-summary" class="cell-subtext">{{ $payoutProfile['summary_label'] ?? ($driverProfile ? $driverProfile->payoutSummaryLabel() : 'Configure UPI or Bank in Driver Profile') }}</div>
+                                </div>
                             </div>
+                            <button type="button" class="btn btn-xs btn-outline" onclick="switchTab('driver-profile')" style="min-height:32px;">
+                                <span class="material-symbols-outlined" style="font-size:14px;">settings</span>
+                                <span>Manage UPI / Bank in Profile</span>
+                            </button>
                         </div>
-                        <button type="button" id="driver-payout-withdraw-btn" class="btn btn-sm btn-primary" data-wallet-balance="{{ (float) ($paySummary['wallet_balance'] ?? ($driverProfile->wallet_balance ?? 0)) }}" onclick="requestDriverPayout(Number(this.dataset.walletBalance || 0))">
-                            <span class="material-symbols-outlined" style="font-size:15px;">payments</span>
-                            <span>Instant Bank Transfer</span>
-                        </button>
+
+                        <form id="driver-wallet-withdraw-form" onsubmit="submitDriverPayoutRequest(event)" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px; align-items:end; accent-color:#0f172a;">
+                            <fieldset style="border:0; padding:0; margin:0;">
+                                <legend style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:4px; padding:0;">Payout Method</legend>
+                                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                    <label for="withdraw-method-upi" style="display:flex; align-items:center; gap:6px; padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; background:#ffffff; cursor:pointer; font-size:12.5px; min-height:42px; flex:1;">
+                                        <input type="radio" id="withdraw-method-upi" name="driver_withdraw_method" value="upi" {{ $prefMethod === 'upi' ? 'checked' : '' }} style="width:16px; height:16px;">
+                                        <span>UPI {{ $hasUpiCfg ? '('.($payoutProfile['payout_upi_id'] ?? '').')' : '(Not set)' }}</span>
+                                    </label>
+                                    <label for="withdraw-method-bank" style="display:flex; align-items:center; gap:6px; padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; background:#ffffff; cursor:pointer; font-size:12.5px; min-height:42px; flex:1;">
+                                        <input type="radio" id="withdraw-method-bank" name="driver_withdraw_method" value="bank" {{ $prefMethod === 'bank' ? 'checked' : '' }} style="width:16px; height:16px;">
+                                        <span>Bank {{ $hasBankCfg ? '('.($payoutProfile['bank_name'] ?? 'Bank').')' : '(Not set)' }}</span>
+                                    </label>
+                                </div>
+                            </fieldset>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label" for="driver-withdraw-amount" style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase;">Amount (Min ₹100)</label>
+                                <input type="number" id="driver-withdraw-amount" class="form-control" min="100" step="1" value="{{ $availWalletBal >= 100 ? (int) floor($availWalletBal) : '' }}" placeholder="Enter ₹ amount" style="min-height:42px; font-weight:700;" required>
+                            </div>
+                            <button type="submit" id="driver-payout-withdraw-btn" class="btn btn-primary" data-wallet-balance="{{ $availWalletBal }}" style="min-height:42px; justify-content:center; font-weight:800;">
+                                <span class="material-symbols-outlined" style="font-size:16px;">payments</span>
+                                <span>Submit Payout Request</span>
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Payout Requests & Admin Approval Status -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                        <div>
+                            <span id="driver-payout-requests-caption" style="font-family:var(--font-display); font-weight:800; font-size:13.5px; color:var(--text-main);">Payout Requests &amp; Approval Status</span>
+                            <div class="cell-subtext">Tracks wallet deduction, Admin approval, and Manual or Gateway API transfer reference</div>
+                        </div>
+                        <span class="cell-subtext" id="driver-payout-requests-count">{{ count($payoutReqs) }} requests</span>
+                    </div>
+                    <div tabindex="0" role="region" aria-labelledby="driver-payout-requests-caption" class="driver-responsive-table-wrap" style="margin-bottom:18px;">
+                        <table class="admin-data-table admin-table-compact driver-responsive-table">
+                            <caption>Driver payout requests and Admin processing status</caption>
+                            <thead>
+                                <tr>
+                                    <th>Request Ref</th>
+                                    <th>Destination</th>
+                                    <th>Amount</th>
+                                    <th>Status &amp; Mode</th>
+                                    <th>Transaction Ref &amp; Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody id="driver-payout-requests-body">
+                                @forelse($payoutReqs as $pr)
+                                    <tr>
+                                        <th>
+                                            <div class="booking-ref-link">{{ $pr['payout_reference'] }}</div>
+                                            <div class="cell-subtext">{{ $pr['requested_at_label'] ?? '—' }}</div>
+                                        </th>
+                                        <td data-col-label="Destination">
+                                            <div class="cell-primary-text">{{ strtoupper($pr['payout_method'] ?? 'bank') }}</div>
+                                            <div class="cell-subtext">{{ $pr['destination_summary'] }}</div>
+                                        </td>
+                                        <td data-col-label="Amount" class="text-tabular">
+                                            <strong>₹{{ number_format((float) $pr['amount']) }}</strong>
+                                        </td>
+                                        <td data-col-label="Status & Mode">
+                                            @if($pr['status'] === 'paid')
+                                                <span class="admin-badge badge-success" style="font-size:10px;">PAID ({{ strtoupper($pr['payout_mode'] ?? 'manual') }})</span>
+                                            @elseif($pr['status'] === 'rejected')
+                                                <span class="admin-badge badge-danger" style="font-size:10px;">REJECTED &amp; REFUNDED</span>
+                                            @else
+                                                <span class="admin-badge badge-warning" style="font-size:10px;">PENDING ADMIN APPROVAL</span>
+                                            @endif
+                                        </td>
+                                        <td data-col-label="Transaction Ref & Notes">
+                                            @if(!empty($pr['transaction_reference']))
+                                                <div class="cell-primary-text" style="font-family:monospace;">Ref: {{ $pr['transaction_reference'] }}</div>
+                                            @endif
+                                            <div class="cell-subtext">{{ $pr['admin_notes'] ?? ($pr['status'] === 'pending' ? 'Deducted from wallet; awaiting Admin review.' : 'Processed') }}</div>
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="5" style="text-align:center; padding:18px; color:var(--text-muted); font-size:12px;">
+                                            No payout requests submitted yet. Save your UPI or Bank details in Profile and request a withdrawal above.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
                     </div>
 
                     <!-- Trip-Wise Payment Parts & Bidding Breakdown -->
@@ -2165,6 +2366,10 @@
                                 <span class="driver-details-label">Rating &amp; Trips</span>
                                 <span class="driver-details-value" style="color:var(--gold-dark);">★{{ $driverProfile->rating ?? '4.90' }} <span style="color:var(--text-muted); font-weight:500;">({{ $driverProfile->trips_count ?? 840 }} Trips)</span></span>
                             </div>
+                            <div class="driver-details-row">
+                                <span class="driver-details-label">Payout Destination</span>
+                                <span class="driver-details-value" id="driver-profile-payout-summary">{{ $driverProfile ? $driverProfile->payoutSummaryLabel() : 'Not configured' }}</span>
+                            </div>
                             <div class="driver-details-row" style="align-items:center;">
                                 <span class="driver-details-label">Duty Status</span>
                                 <button type="button" class="driver-duty-toggle-pill {{ ($driverProfile->is_online ?? true) ? 'online' : 'offline' }} driver-duty-pill-toggle" onclick="toggleDriverDutyStatus()" style="cursor:pointer; border:none;">
@@ -2222,6 +2427,76 @@
                                     </div>
                                 @endforelse
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Driver Payout Collection Methods (UPI & Bank Account) -->
+                    <div class="driver-panel-card animate-load stagger-3" style="margin-bottom:0;" id="driver-payout-profile-card">
+                        <div class="driver-panel-card-header">
+                            <div>
+                                <h3 class="driver-panel-card-title">
+                                    <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">account_balance</span>
+                                    <span>Payout Collection Details (UPI &amp; Bank Account)</span>
+                                </h3>
+                                <p class="driver-panel-card-subtitle">Configure how you receive wallet payouts via UPI or Banking System</p>
+                            </div>
+                            <span class="admin-badge badge-info" style="font-size:10.5px;">Required for Withdrawals</span>
+                        </div>
+
+                        <div class="driver-panel-card-body">
+                            <form id="driver-payout-settings-form" onsubmit="saveDriverPayoutDetails(event)" style="accent-color:#0f172a;">
+                                @php $drvPrefPay = $driverProfile->preferred_payout_method ?? 'upi'; @endphp
+                                <fieldset style="border:0; padding:0; margin:0 0 12px 0;">
+                                    <legend style="font-size:11.5px; font-weight:700; color:#334155; text-transform:uppercase; margin-bottom:6px; padding:0;">Preferred Payout Method</legend>
+                                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                        <label for="driver-pref-upi" style="display:flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; cursor:pointer; font-size:13px; min-height:42px;">
+                                            <input type="radio" id="driver-pref-upi" name="driver_pref_payout_method" value="upi" {{ $drvPrefPay === 'upi' ? 'checked' : '' }} style="width:17px; height:17px;">
+                                            <span><strong>UPI Transfer</strong> (Instant VPA)</span>
+                                        </label>
+                                        <label for="driver-pref-bank" style="display:flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; cursor:pointer; font-size:13px; min-height:42px;">
+                                            <input type="radio" id="driver-pref-bank" name="driver_pref_payout_method" value="bank" {{ $drvPrefPay === 'bank' ? 'checked' : '' }} style="width:17px; height:17px;">
+                                            <span><strong>Bank Account</strong> (IMPS / NEFT)</span>
+                                        </label>
+                                    </div>
+                                </fieldset>
+
+                                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:12px; padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; margin-bottom:12px;">
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" for="driver-payout-upi-id">Driver UPI ID (VPA)</label>
+                                        <input type="text" id="driver-payout-upi-id" class="form-control" value="{{ $driverProfile->payout_upi_id ?? '' }}" placeholder="e.g. ramesh@okicici" autocomplete="off" autocapitalize="none" spellcheck="false">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" for="driver-payout-upi-name">UPI Registered Name</label>
+                                        <input type="text" id="driver-payout-upi-name" class="form-control" value="{{ $driverProfile->payout_upi_name ?? '' }}" placeholder="Name shown in UPI app">
+                                    </div>
+                                </div>
+
+                                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; margin-bottom:14px;">
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" for="driver-bank-holder">Bank Account Holder Name</label>
+                                        <input type="text" id="driver-bank-holder" class="form-control" value="{{ $driverProfile->bank_account_holder ?? '' }}" placeholder="Full name as in bank">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" for="driver-bank-name">Bank Name</label>
+                                        <input type="text" id="driver-bank-name" class="form-control" value="{{ $driverProfile->bank_name ?? '' }}" placeholder="e.g. HDFC Bank / SBI">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" for="driver-bank-account">Account Number</label>
+                                        <input type="text" id="driver-bank-account" class="form-control" value="{{ $driverProfile->bank_account_number ?? '' }}" placeholder="Bank account number" inputmode="numeric" autocomplete="off">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" for="driver-bank-ifsc">IFSC Code</label>
+                                        <input type="text" id="driver-bank-ifsc" class="form-control" maxlength="11" value="{{ $driverProfile->bank_ifsc ?? '' }}" placeholder="e.g. HDFC0001029" style="text-transform:uppercase; font-family:monospace;" autocapitalize="characters" spellcheck="false">
+                                    </div>
+                                </div>
+
+                                <div style="display:flex; justify-content:flex-end;">
+                                    <button type="submit" id="driver-save-payout-btn" class="btn btn-primary btn-sm" style="min-height:40px;">
+                                        <span class="material-symbols-outlined" style="font-size:16px;">save</span>
+                                        <span>Save Payout Settings</span>
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
 
@@ -2417,6 +2692,14 @@
                                 <a href="javascript:void(0)" class="admin-nav-link" data-section="pricing" onclick="switchAdminSection('pricing')">
                                     <span class="material-symbols-outlined admin-nav-icon">currency_rupee</span>
                                     <span class="admin-nav-text">Fares & Surcharges</span>
+                                </a>
+                            </li>
+                            @php $pendingPayoutsCount = ($adminPayoutRequests ?? collect())->where('status', 'pending')->count(); @endphp
+                            <li class="admin-nav-item">
+                                <a href="javascript:void(0)" class="admin-nav-link" data-section="payouts" onclick="switchAdminSection('payouts'); loadAdminPayoutRequests();">
+                                    <span class="material-symbols-outlined admin-nav-icon">account_balance_wallet</span>
+                                    <span class="admin-nav-text">Driver Payout Approvals</span>
+                                    <span class="admin-nav-badge {{ $pendingPayoutsCount > 0 ? 'badge-danger' : 'badge-success' }}" id="admin-badge-pending-payouts">{{ $pendingPayoutsCount }} Pending</span>
                                 </a>
                             </li>
 
@@ -4248,6 +4531,98 @@
                             </div>
                         </div>
 
+                        <!-- 6.5 DRIVER PAYOUT APPROVALS -->
+                        @php
+                            $adminPayoutList = collect($adminPayoutRequests ?? []);
+                            $pendingPayoutBadgeCount = $adminPayoutList->where('status', 'pending')->count();
+                        @endphp
+                        <div class="admin-section" id="admin-sec-payouts">
+                            <div class="card">
+                                <div class="card-header" style="flex-wrap:wrap; gap:10px;">
+                                    <div>
+                                        <h3 class="card-title">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:18px;">account_balance_wallet</span>
+                                            <span>Driver Wallet Payout Approvals</span>
+                                        </h3>
+                                        <p class="card-subtitle">Approve driver withdrawal requests via Manual Transfer (UTR/IMPS) or Payment Gateway API, or reject &amp; refund to wallet</p>
+                                    </div>
+                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                        <select id="admin-payouts-status-filter" class="form-control" style="height:34px; font-size:12px;" onchange="loadAdminPayoutRequests(this.value)">
+                                            <option value="all">All Requests</option>
+                                            <option value="pending">Pending Approval</option>
+                                            <option value="paid">Paid</option>
+                                            <option value="rejected">Rejected &amp; Refunded</option>
+                                        </select>
+                                        <button type="button" class="btn btn-sm btn-outline" onclick="loadAdminPayoutRequests()">
+                                            <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
+                                            <span>Refresh</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="driver-responsive-table-wrap" tabindex="0" role="region" aria-label="Driver Payout Requests">
+                                    <table class="admin-data-table admin-table-compact driver-responsive-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Request Ref</th>
+                                                <th>Driver</th>
+                                                <th>Destination (UPI / Bank)</th>
+                                                <th>Amount</th>
+                                                <th>Status &amp; Mode</th>
+                                                <th style="text-align:right;">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="admin-payouts-tbody">
+                                            @forelse($adminPayoutList as $pr)
+                                                <tr>
+                                                    <th>
+                                                        <div class="booking-ref-link">{{ $pr->payout_reference }}</div>
+                                                        <div class="cell-subtext">{{ $pr->requested_at ? $pr->requested_at->format('d M Y, h:i A') : $pr->created_at?->format('d M Y, h:i A') }}</div>
+                                                    </th>
+                                                    <td data-col-label="Driver">
+                                                        <div class="cell-primary-text">{{ $pr->driver?->name ?? 'Driver' }}</div>
+                                                        <div class="cell-subtext">{{ $pr->driver?->phone ?? '' }}</div>
+                                                    </td>
+                                                    <td data-col-label="Destination">
+                                                        <div class="cell-primary-text">{{ strtoupper($pr->payout_method) }}</div>
+                                                        <div class="cell-subtext">{{ $pr->destinationSummary() }}</div>
+                                                    </td>
+                                                    <td data-col-label="Amount" class="text-tabular">
+                                                        <strong>₹{{ number_format((float) $pr->amount) }}</strong>
+                                                    </td>
+                                                    <td data-col-label="Status & Mode">
+                                                        @if($pr->status === 'paid')
+                                                            <span class="admin-badge badge-success" style="font-size:10px;">PAID ({{ strtoupper($pr->payout_mode ?? 'manual') }})</span>
+                                                            @if($pr->transaction_reference)
+                                                                <div class="cell-subtext" style="font-family:monospace;">Ref: {{ $pr->transaction_reference }}</div>
+                                                            @endif
+                                                        @elseif($pr->status === 'rejected')
+                                                            <span class="admin-badge badge-danger" style="font-size:10px;">REJECTED &amp; REFUNDED</span>
+                                                        @else
+                                                            <span class="admin-badge badge-warning" style="font-size:10px;">PENDING APPROVAL</span>
+                                                        @endif
+                                                    </td>
+                                                    <td data-col-label="Action" style="text-align:right;">
+                                                        @if($pr->status === 'pending')
+                                                            <button type="button" class="btn btn-xs btn-primary" onclick='openAdminProcessPayoutModal(@json(["id" => $pr->id, "payout_reference" => $pr->payout_reference, "driver_name" => $pr->driver?->name, "amount" => (float) $pr->amount, "payout_method" => $pr->payout_method, "destination_summary" => $pr->destinationSummary()]))'>
+                                                                <span>Approve / Process</span>
+                                                            </button>
+                                                        @else
+                                                            <span class="cell-subtext">{{ $pr->processed_at?->format('d M, h:i A') ?? 'Processed' }}</span>
+                                                        @endif
+                                                    </td>
+                                                </tr>
+                                            @empty
+                                                <tr>
+                                                    <td colspan="6" style="text-align:center; padding:24px; color:#64748b;">No driver payout requests yet.</td>
+                                                </tr>
+                                            @endforelse
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- 7. SYSTEM & HEALTH -->
                         <div class="admin-section" id="admin-sec-system">
                             <div class="admin-card-grid-split">
@@ -4547,6 +4922,10 @@
                                             <div class="form-group" style="margin-bottom:0;">
                                                 <label class="form-label" for="setting-razorpay-display-name">Checkout Business Name</label>
                                                 <input type="text" id="setting-razorpay-display-name" class="form-control" value="{{ $rzpDisplayName }}" placeholder="Intercity Wheels">
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label class="form-label" for="setting-razorpayx-account-number">RazorpayX Payout Account No. (Optional)</label>
+                                                <input type="text" id="setting-razorpayx-account-number" class="form-control" value="{{ $adminPaySettings['razorpayx_account_number'] ?? '' }}" placeholder="For Gateway API Driver Payouts">
                                             </div>
                                         </div>
                                     </div>
@@ -7732,6 +8111,66 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: ADMIN PROCESS DRIVER PAYOUT REQUEST               -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="admin-process-payout-modal">
+    <div class="modal-dialog" style="max-width: 480px;">
+        <div class="modal-header">
+            <h3 class="modal-title" style="display:flex; align-items:center; gap:8px;">
+                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">account_balance_wallet</span>
+                <span>Process Driver Payout Request</span>
+            </h3>
+            <button type="button" class="modal-close-btn" onclick="closeModal('admin-process-payout-modal')">×</button>
+        </div>
+        <div class="modal-body" style="padding:18px 20px;">
+            <input type="hidden" id="admin-payout-req-id" value="">
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px; margin-bottom:14px; font-size:12.5px;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                    <span style="color:#64748b;">Request Ref</span>
+                    <strong id="admin-payout-req-ref" style="font-family:monospace;">—</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                    <span style="color:#64748b;">Driver</span>
+                    <strong id="admin-payout-req-driver">—</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                    <span style="color:#64748b;">Amount</span>
+                    <strong id="admin-payout-req-amount" style="color:#15803d; font-size:15px;">₹0</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span style="color:#64748b;">Destination</span>
+                    <strong id="admin-payout-req-dest" style="text-align:right;">—</strong>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label" for="admin-payout-txn-ref">Transfer Reference / UTR / IMPS Ref (Required for Manual Mode)</label>
+                <input type="text" id="admin-payout-txn-ref" class="form-control" placeholder="e.g. IMPS4321987654 or UPIUTR12345" style="font-family:monospace; text-transform:uppercase;">
+            </div>
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label" for="admin-payout-notes">Admin Notes / Rejection Reason</label>
+                <input type="text" id="admin-payout-notes" class="form-control" placeholder="Optional note or rejection reason">
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <button type="button" class="btn btn-primary" style="min-height:42px; justify-content:center;" onclick="submitAdminProcessPayout('approve_manual')">
+                    <span class="material-symbols-outlined" style="font-size:17px;">check_circle</span>
+                    <span>Approve &amp; Record Manual Payout</span>
+                </button>
+                <button type="button" class="btn btn-outline" style="min-height:42px; justify-content:center; border-color:#0284c7; color:#0284c7;" onclick="submitAdminProcessPayout('approve_gateway')">
+                    <span class="material-symbols-outlined" style="font-size:17px;">bolt</span>
+                    <span>Approve &amp; Pay via Payment Gateway API</span>
+                </button>
+                <button type="button" class="btn btn-outline-danger" style="min-height:40px; justify-content:center;" onclick="submitAdminProcessPayout('reject')">
+                    <span class="material-symbols-outlined" style="font-size:17px;">cancel</span>
+                    <span>Reject &amp; Refund to Driver Wallet</span>
+                </button>
+            </div>
         </div>
     </div>
 </div>

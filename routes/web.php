@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\BookingAdminController;
 use App\Http\Controllers\Admin\CabRouteAdminController;
 use App\Http\Controllers\Admin\CarTypeAdminController;
 use App\Http\Controllers\Admin\CouponAdminController;
+use App\Http\Controllers\Admin\DriverPayoutAdminController;
 use App\Http\Controllers\Admin\DynamicFormController;
 use App\Http\Controllers\Admin\LocalPackageAdminController;
 use App\Http\Controllers\Admin\LocationAdminController;
@@ -218,6 +219,7 @@ Route::prefix('api')->middleware(['auth', 'role:driver,admin'])->group(function 
     Route::post('/driver/wallet/withdraw', [DriverBiddingController::class, 'withdrawPayout'])->name('api.driver.wallet.withdraw');
     Route::get('/driver/profile', [DriverBiddingController::class, 'getProfile'])->name('api.driver.profile.get');
     Route::post('/driver/profile', [DriverBiddingController::class, 'updateProfile'])->name('api.driver.profile.update');
+    Route::post('/driver/profile/payout-details', [DriverBiddingController::class, 'updatePayoutDetails'])->name('api.driver.profile.payoutDetails');
     Route::post('/driver/toggle-online', [DriverBiddingController::class, 'toggleOnlineStatus'])->name('api.driver.toggleOnline');
 
     Route::post('/driver/vehicles', [VehicleAdminController::class, 'driverStore'])->name('api.driver.vehicles.store');
@@ -344,6 +346,8 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
 
     // Driver Bidding Marketplace
     Route::get('/admin/biddings', [BiddingAdminController::class, 'index'])->name('api.admin.biddings.index');
+    Route::get('/admin/payout-requests', [DriverPayoutAdminController::class, 'index'])->name('api.admin.payoutRequests.index');
+    Route::post('/admin/payout-requests/{id}/process', [DriverPayoutAdminController::class, 'process'])->name('api.admin.payoutRequests.process');
     Route::post('/admin/bookings/{bookingId}/bidding', [BiddingAdminController::class, 'store'])->name('api.admin.bidding.store');
     Route::post('/admin/bookings/{bookingId}/bidding/share', [BiddingAdminController::class, 'share'])->name('api.admin.bidding.share');
     Route::get('/admin/biddings/{id}', [BiddingAdminController::class, 'show'])->name('api.admin.biddings.show');

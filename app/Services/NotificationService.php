@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BiddingSession;
 use App\Models\Booking;
 use App\Models\Driver;
+use App\Models\DriverPayoutRequest;
 use App\Models\DriverVehicle;
 use App\Models\User;
 use App\Notifications\PlatformAlertNotification;
@@ -635,29 +636,34 @@ class NotificationService
         ));
     }
 
-    public function walletWithdrawal(Driver $driver, float $amount, float $balanceAfter): void
+    public function walletWithdrawal(Driver $driver, float $amount, float $balanceAfter, ?DriverPayoutRequest $payoutRequest = null): void
     {
         $amountText = '₹'.number_format($amount);
         $balanceText = '₹'.number_format($balanceAfter);
+        $ref = $payoutRequest?->payout_reference ? " ({$payoutRequest->payout_reference})" : '';
+        $dest = $payoutRequest ? $payoutRequest->destinationSummary() : 'Registered payout profile';
 
         $driverUser = $this->resolveDriverUser($driver);
         if ($driverUser) {
             $this->notifyUser($driverUser, new PlatformAlertNotification(
                 event: 'wallet.withdrawal',
-                title: "Withdrawal Initiated: {$amountText}",
-                message: "Your payout request of {$amountText} has been initiated. Remaining balance: {$balanceText}.",
+                title: "Payout Request Submitted{$ref}: {$amountText}",
+                message: "Your payout request of {$amountText} to {$dest} has been deducted from your wallet and sent for Admin approval. Remaining balance: {$balanceText}.",
                 category: 'wallet',
                 meta: [
                     'amount' => $amount,
                     'balance_after' => $balanceAfter,
+                    'payout_reference' => $payoutRequest?->payout_reference,
                     'tab' => 'driver-wallet',
                     'focus' => 'wallet',
                 ],
                 lines: [
                     "Withdrawal Amount: {$amountText}",
+                    "Destination: {$dest}",
+                    "Status: Pending Admin Approval",
                     "Remaining Wallet Balance: {$balanceText}",
                 ],
-                actionLabel: 'View Wallet Ledger',
+                actionLabel: 'View Wallet & Payout Status',
                 actionUrl: url('/?tab=driver-wallet'),
                 sendEmail: true,
             ));
@@ -665,18 +671,64 @@ class NotificationService
 
         $this->notifyAdmins(new PlatformAlertNotification(
             event: 'wallet.withdrawal',
-            title: "Driver Withdrawal: {$driver->name} ({$amountText})",
-            message: "{$driver->name} requested an IMPS payout of {$amountText}. Remaining balance: {$balanceText}.",
+            title: "Payout Approval Needed{$ref}: {$driver->name} ({$amountText})",
+            message: "{$driver->name} requested a payout of {$amountText} via {$dest}. Approve via Manual or Payment Gateway mode.",
             category: 'wallet',
             meta: [
                 'driver_id' => $driver->id,
+                'payout_request_id' => $payoutRequest?->id,
+                'payout_reference' => $payoutRequest?->payout_reference,
                 'amount' => $amount,
                 'balance_after' => $balanceAfter,
                 'tab' => 'admin',
-                'section' => 'fleet',
+                'section' => 'payouts',
                 'focus' => 'wallet',
             ],
-            actionUrl: url('/?tab=admin&section=fleet'),
+            actionUrl: url('/?tab=admin&section=payouts'),
+            sendEmail: true,
+        ));
+    }
+
+    public function payoutProcessed(DriverPayoutRequest $payoutRequest): void
+    {
+        $payoutRequest->loadMissing('driver');
+        $driver = $payoutRequest->driver;
+        if (! $driver) {
+            return;
+        }
+
+        $driverUser = $this->resolveDriverUser($driver);
+        if (! $driverUser) {
+            return;
+        }
+
+        $amountText = '₹'.number_format((float) $payoutRequest->amount);
+        $ref = $payoutRequest->payout_reference;
+        $isPaid = $payoutRequest->status === DriverPayoutRequest::STATUS_PAID;
+        $modeLabel = $payoutRequest->payout_mode === DriverPayoutRequest::MODE_GATEWAY ? 'Payment Gateway API' : 'Manual Transfer';
+
+        $title = $isPaid
+            ? "Payout Approved & Paid ({$ref}): {$amountText}"
+            : "Payout Rejected & Refunded ({$ref}): {$amountText}";
+
+        $message = $isPaid
+            ? "Your payout of {$amountText} to {$payoutRequest->destinationSummary()} was processed via {$modeLabel} (Ref: {$payoutRequest->transaction_reference})."
+            : "Your payout request {$ref} for {$amountText} was rejected ({$payoutRequest->admin_notes}). The full amount has been refunded to your wallet.";
+
+        $this->notifyUser($driverUser, new PlatformAlertNotification(
+            event: 'wallet.payout_processed',
+            title: $title,
+            message: $message,
+            category: 'wallet',
+            meta: [
+                'payout_request_id' => $payoutRequest->id,
+                'payout_reference' => $ref,
+                'status' => $payoutRequest->status,
+                'tab' => 'driver-wallet',
+                'focus' => 'wallet',
+            ],
+            actionLabel: 'View Wallet History',
+            actionUrl: url('/?tab=driver-wallet'),
             sendEmail: true,
         ));
     }

@@ -234,6 +234,7 @@ class PlatformSettingAdminController extends Controller
             'razorpay_key_id' => 'nullable|string|max:120',
             'razorpay_key_secret' => 'nullable|string|max:160',
             'razorpay_display_name' => 'nullable|string|max:80',
+            'razorpayx_account_number' => 'nullable|string|max:60',
         ]);
 
         $enabledMap = [
@@ -314,6 +315,9 @@ class PlatformSettingAdminController extends Controller
         }
         if ($request->has('razorpay_display_name')) {
             PlatformSetting::set('razorpay_display_name', trim((string) ($validated['razorpay_display_name'] ?? '')) ?: 'Intercity Wheels');
+        }
+        if ($request->has('razorpayx_account_number')) {
+            PlatformSetting::set('razorpayx_account_number', trim((string) ($validated['razorpayx_account_number'] ?? '')));
         }
 
         return response()->json([

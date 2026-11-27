@@ -5,9 +5,12 @@ namespace Tests\Feature;
 use App\Models\Booking;
 use App\Models\Driver;
 use App\Models\DriverBid;
+use App\Models\DriverPayoutRequest;
+use App\Models\PlatformSetting;
 use App\Models\User;
 use App\Models\WalletTransaction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -346,5 +349,148 @@ class DriverWalletLedgerTest extends TestCase
         // Customers cannot access driver payment history API
         $customer = User::factory()->create(['role' => 'customer']);
         $this->actingAs($customer)->getJson('/api/driver/payment-history')->assertStatus(403);
+    }
+
+    public function test_driver_payout_request_deducts_wallet_and_admin_processes_manual_gateway_and_reject_refund(): void
+    {
+        $admin = User::where('role', 'admin')->firstOrFail();
+        $driverUser = $this->driverUser();
+        $driver = $this->driver();
+        $driver->forceFill([
+            'wallet_balance' => 10000,
+            'preferred_payout_method' => 'upi',
+            'payout_upi_id' => 'vikram.cab@okicici',
+            'payout_upi_name' => 'Vikram Chauffeur',
+            'bank_account_holder' => null,
+            'bank_name' => null,
+            'bank_account_number' => null,
+            'bank_ifsc' => null,
+        ])->save();
+
+        // Requesting bank payout without configured bank profile is rejected with 422
+        $this->actingAs($driverUser)->postJson('/api/driver/wallet/withdraw', [
+            'amount' => 1500,
+            'payout_method' => 'bank',
+        ])->assertStatus(422);
+
+        // 1. Driver submits UPI payout request -> deducts wallet & creates pending payout request
+        $req1 = $this->actingAs($driverUser)->postJson('/api/driver/wallet/withdraw', [
+            'amount' => 2000,
+            'payout_method' => 'upi',
+        ]);
+        $req1->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('balance_after', 8000)
+            ->assertJsonPath('payout_request.status', 'pending')
+            ->assertJsonPath('payout_request.payout_method', 'upi');
+
+        $pr1Id = (int) $req1->json('payout_request.id');
+        $this->assertEquals(8000.0, (float) $driver->fresh()->wallet_balance);
+
+        // Non-admin cannot access or process admin payout endpoints
+        $this->actingAs($driverUser)->getJson('/api/admin/payout-requests')->assertStatus(403);
+        $this->actingAs($driverUser)->postJson("/api/admin/payout-requests/{$pr1Id}/process", [
+            'action' => 'approve_manual',
+            'transaction_reference' => 'UTR123',
+        ])->assertStatus(403);
+
+        // Manual approval requires a transaction reference
+        $this->actingAs($admin)->postJson("/api/admin/payout-requests/{$pr1Id}/process", [
+            'action' => 'approve_manual',
+        ])->assertStatus(422);
+
+        // Admin approves via Manual Mode with UTR reference
+        $manualApprove = $this->actingAs($admin)->postJson("/api/admin/payout-requests/{$pr1Id}/process", [
+            'action' => 'approve_manual',
+            'transaction_reference' => 'UPIUTR99887766',
+            'admin_notes' => 'Transferred via ICICI Business UPI',
+        ]);
+        $manualApprove->assertOk()
+            ->assertJsonPath('payout_request.status', 'paid')
+            ->assertJsonPath('payout_request.payout_mode', 'manual')
+            ->assertJsonPath('payout_request.transaction_reference', 'UPIUTR99887766');
+
+        // Re-processing an already paid request is rejected
+        $this->actingAs($admin)->postJson("/api/admin/payout-requests/{$pr1Id}/process", [
+            'action' => 'reject',
+        ])->assertStatus(422);
+
+        // 2. Save Bank details, request Bank payout, and approve via Payment Gateway API Mode
+        $this->actingAs($driverUser)->postJson('/api/driver/profile/payout-details', [
+            'preferred_payout_method' => 'bank',
+            'payout_upi_id' => 'vikram.cab@okicici',
+            'bank_account_holder' => 'Vikram Chauffeur',
+            'bank_name' => 'HDFC Bank',
+            'bank_account_number' => '50100234567890',
+            'bank_ifsc' => 'HDFC0001029',
+        ])->assertOk();
+
+        $req2 = $this->actingAs($driverUser)->postJson('/api/driver/wallet/withdraw', [
+            'amount' => 3000,
+            'payout_method' => 'bank',
+        ])->assertOk();
+        $pr2Id = (int) $req2->json('payout_request.id');
+        $this->assertEquals(5000.0, (float) $driver->fresh()->wallet_balance);
+
+        PlatformSetting::set('payment_gateway', 'razorpay');
+        PlatformSetting::set('razorpay_key_id', 'rzp_test_payout1');
+        PlatformSetting::set('razorpay_key_secret', 'rzp_secret_payout1');
+        PlatformSetting::set('razorpayx_account_number', '2323230011223344');
+
+        Http::fake([
+            'https://api.razorpay.com/v1/payouts' => Http::response([
+                'id' => 'pout_RzpGateway001',
+                'status' => 'processing',
+                'utr' => 'IMPSUTR55443322',
+            ], 200),
+        ]);
+
+        $gwApprove = $this->actingAs($admin)->postJson("/api/admin/payout-requests/{$pr2Id}/process", [
+            'action' => 'approve_gateway',
+            'admin_notes' => 'Auto-dispatched via RazorpayX',
+        ]);
+        $gwApprove->assertOk()
+            ->assertJsonPath('payout_request.status', 'paid')
+            ->assertJsonPath('payout_request.payout_mode', 'gateway')
+            ->assertJsonPath('payout_request.gateway_provider', 'razorpayx')
+            ->assertJsonPath('payout_request.transaction_reference', 'IMPSUTR55443322');
+
+        // 3. Submit a third payout request and Admin rejects it -> refunds ₹1,500 back to wallet
+        $req3 = $this->actingAs($driverUser)->postJson('/api/driver/wallet/withdraw', [
+            'amount' => 1500,
+            'payout_method' => 'upi',
+        ])->assertOk();
+        $pr3Id = (int) $req3->json('payout_request.id');
+        $this->assertEquals(3500.0, (float) $driver->fresh()->wallet_balance);
+
+        $rejectRes = $this->actingAs($admin)->postJson("/api/admin/payout-requests/{$pr3Id}/process", [
+            'action' => 'reject',
+            'admin_notes' => 'Weekly reconciliation hold',
+        ]);
+        $rejectRes->assertOk()
+            ->assertJsonPath('payout_request.status', 'rejected');
+
+        // Wallet balance refunded back to ₹5,000
+        $this->assertEquals(5000.0, (float) $driver->fresh()->wallet_balance);
+        $pr3 = DriverPayoutRequest::findOrFail($pr3Id);
+        $this->assertNotNull($pr3->refund_wallet_transaction_id);
+
+        // Driver payment history lists all 3 payout requests with their status & references
+        $history = $this->actingAs($driverUser)->getJson('/api/driver/payment-history')->assertOk();
+        $reqs = collect($history->json('payout_requests'));
+        $this->assertCount(3, $reqs);
+        $this->assertSame('UPIUTR99887766', $reqs->firstWhere('id', $pr1Id)['transaction_reference']);
+        $this->assertSame('IMPSUTR55443322', $reqs->firstWhere('id', $pr2Id)['transaction_reference']);
+        $this->assertSame('rejected', $reqs->firstWhere('id', $pr3Id)['status']);
+
+        // Admin payouts API & HTML render the approval queue
+        $this->actingAs($admin)->getJson('/api/admin/payout-requests')
+            ->assertOk()
+            ->assertJsonPath('counts.paid', 2)
+            ->assertJsonPath('counts.rejected', 1);
+
+        $adminHtml = $this->actingAs($admin)->get('/')->getContent();
+        $this->assertStringContainsString('id="admin-sec-payouts"', $adminHtml);
+        $this->assertStringContainsString('id="admin-process-payout-modal"', $adminHtml);
     }
 }

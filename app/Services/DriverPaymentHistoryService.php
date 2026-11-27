@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Booking;
 use App\Models\Driver;
+use App\Models\DriverPayoutRequest;
 use App\Models\WalletTransaction;
 
 class DriverPaymentHistoryService
@@ -37,6 +38,13 @@ class DriverPaymentHistoryService
                 ],
                 'trip_records' => [],
                 'transactions' => [],
+                'payout_requests' => [],
+                'payout_profile' => [
+                    'preferred_payout_method' => 'upi',
+                    'has_upi' => false,
+                    'has_bank' => false,
+                    'summary_label' => 'Not configured',
+                ],
             ];
         }
 
@@ -51,6 +59,28 @@ class DriverPaymentHistoryService
             ->latest('id')
             ->take($transactionLimit)
             ->get();
+
+        $payoutRequests = DriverPayoutRequest::with('processor')
+            ->where('driver_id', $driver->id)
+            ->latest('id')
+            ->take(20)
+            ->get()
+            ->map(fn (DriverPayoutRequest $pr) => [
+                'id' => $pr->id,
+                'payout_reference' => $pr->payout_reference,
+                'amount' => round((float) $pr->amount, 2),
+                'payout_method' => $pr->payout_method,
+                'destination_summary' => $pr->destinationSummary(),
+                'status' => $pr->status,
+                'payout_mode' => $pr->payout_mode,
+                'gateway_provider' => $pr->gateway_provider,
+                'transaction_reference' => $pr->transaction_reference,
+                'admin_notes' => $pr->admin_notes,
+                'requested_at_label' => $pr->requested_at?->format('d M Y, h:i A') ?? $pr->created_at?->format('d M Y, h:i A'),
+                'processed_at_label' => $pr->processed_at?->format('d M Y, h:i A'),
+            ])
+            ->values()
+            ->all();
 
         $tripRecords = $bookings
             ->map(fn (Booking $b) => $this->buildTripBreakdown($b, (int) $driver->id))
@@ -113,6 +143,19 @@ class DriverPaymentHistoryService
             ],
             'trip_records' => $tripRecords,
             'transactions' => $enrichedTransactions,
+            'payout_requests' => $payoutRequests,
+            'payout_profile' => [
+                'preferred_payout_method' => $driver->preferred_payout_method ?: 'upi',
+                'has_upi' => $driver->hasUpiPayoutConfigured(),
+                'has_bank' => $driver->hasBankPayoutConfigured(),
+                'payout_upi_id' => $driver->payout_upi_id,
+                'payout_upi_name' => $driver->payout_upi_name,
+                'bank_account_holder' => $driver->bank_account_holder,
+                'bank_name' => $driver->bank_name,
+                'bank_account_number' => $driver->bank_account_number,
+                'bank_ifsc' => $driver->bank_ifsc,
+                'summary_label' => $driver->payoutSummaryLabel(),
+            ],
         ];
     }
 

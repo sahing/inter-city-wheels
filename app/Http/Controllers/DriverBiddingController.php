@@ -6,6 +6,7 @@ use App\Exceptions\InvalidBookingTransition;
 use App\Models\Booking;
 use App\Models\Driver;
 use App\Models\DriverBid;
+use App\Models\DriverPayoutRequest;
 use App\Models\PaymentAttempt;
 use App\Models\User;
 use App\Models\WalletTransaction;
@@ -419,6 +420,7 @@ class DriverBiddingController extends Controller
     {
         $validated = $request->validate([
             'amount' => 'required|numeric|min:100',
+            'payout_method' => 'nullable|string|in:upi,bank',
         ]);
 
         $driver = $this->driverForUser($request->user());
@@ -431,9 +433,35 @@ class DriverBiddingController extends Controller
         }
 
         $amount = round((float) $validated['amount'], 2);
+        $explicitMethod = $validated['payout_method'] ?? null;
+        $method = $explicitMethod ?? ($driver->preferred_payout_method ?: 'bank');
+        $destination = $driver->payoutDestinationFor($method);
+
+        if ($explicitMethod !== null && $destination === null) {
+            $missingLabel = $method === 'upi' ? 'UPI ID' : 'Bank Account details (holder, bank, account no. & IFSC)';
+
+            return response()->json([
+                'success' => false,
+                'message' => "Please save your {$missingLabel} in Driver Profile before requesting a ".strtoupper($method).' payout.',
+                'errors' => ['payout_method' => ["{$missingLabel} not configured in Driver Profile."]],
+            ], 422);
+        }
+
+        if ($destination === null) {
+            // Fallback to whichever method is configured, or record profile placeholder for legacy API callers
+            if ($driver->hasUpiPayoutConfigured()) {
+                $method = 'upi';
+                $destination = $driver->payoutDestinationFor('upi');
+            } elseif ($driver->hasBankPayoutConfigured()) {
+                $method = 'bank';
+                $destination = $driver->payoutDestinationFor('bank');
+            } else {
+                $destination = ['note' => 'Registered driver payout profile'];
+            }
+        }
 
         try {
-            $transaction = DB::transaction(function () use ($driver, $amount) {
+            [$transaction, $payoutRequest] = DB::transaction(function () use ($driver, $amount, $method, $destination, $request) {
                 $locked = Driver::whereKey($driver->id)->lockForUpdate()->firstOrFail();
 
                 // Balance floor: a withdrawal can never overdraw the wallet.
@@ -444,13 +472,34 @@ class DriverBiddingController extends Controller
                     ]);
                 }
 
-                return $this->debitDriver(
+                $payoutRef = 'PAY-'.strtoupper(substr(bin2hex(random_bytes(5)), 0, 8));
+                $destPreview = $method === 'upi'
+                    ? (string) ($destination['upi_id'] ?? 'UPI')
+                    : ((isset($destination['bank_account_number']) && strlen((string) $destination['bank_account_number']) >= 4)
+                        ? (($destination['bank_name'] ?? 'Bank').' •••• '.substr((string) $destination['bank_account_number'], -4))
+                        : 'Registered Bank Account');
+
+                $tx = $this->debitDriver(
                     $locked,
                     $amount,
                     WalletTransaction::REASON_WITHDRAWAL,
                     null,
-                    'IMPS payout request to registered bank account'
+                    "Payout request {$payoutRef} via ".strtoupper($method)." ({$destPreview}) — Pending Admin Approval"
                 );
+
+                $pr = DriverPayoutRequest::create([
+                    'payout_reference' => $payoutRef,
+                    'driver_id' => $locked->id,
+                    'user_id' => $request->user()?->id,
+                    'amount' => $amount,
+                    'payout_method' => $method,
+                    'payout_destination' => $destination,
+                    'status' => DriverPayoutRequest::STATUS_PENDING,
+                    'wallet_transaction_id' => $tx->id,
+                    'requested_at' => now(),
+                ]);
+
+                return [$tx, $pr];
             });
         } catch (ValidationException $e) {
             return response()->json([
@@ -460,13 +509,21 @@ class DriverBiddingController extends Controller
             ], 422);
         }
 
-        $this->notifications->walletWithdrawal($driver, $amount, (float) $transaction->balance_after);
+        $this->notifications->walletWithdrawal($driver, $amount, (float) $transaction->balance_after, $payoutRequest);
 
         return response()->json([
             'success' => true,
-            'message' => 'Payout request for ₹'.number_format($amount).' initiated to your registered bank account (HDFC •••• 4912) via IMPS.',
+            'message' => "Payout request {$payoutRequest->payout_reference} for ₹".number_format($amount).' submitted for Admin approval. Your wallet balance has been updated.',
             'balance_after' => (float) $transaction->balance_after,
             'transaction_id' => $transaction->id,
+            'payout_request' => [
+                'id' => $payoutRequest->id,
+                'payout_reference' => $payoutRequest->payout_reference,
+                'amount' => round((float) $payoutRequest->amount, 2),
+                'payout_method' => $payoutRequest->payout_method,
+                'destination_summary' => $payoutRequest->destinationSummary(),
+                'status' => $payoutRequest->status,
+            ],
         ]);
     }
 
@@ -492,7 +549,7 @@ class DriverBiddingController extends Controller
     }
 
     /**
-     * Update current driver profile credentials.
+     * Update current driver profile credentials (and optional payout settings).
      */
     public function updateProfile(Request $request)
     {
@@ -513,6 +570,13 @@ class DriverBiddingController extends Controller
             'fleet_category' => 'required|string|in:sedan,prime,suv,luxury,sleeper_van',
             'avatar' => 'nullable|string|max:10',
             'city' => 'nullable|string|max:100',
+            'preferred_payout_method' => 'nullable|string|in:upi,bank',
+            'payout_upi_id' => ['nullable', 'string', 'max:120', 'regex:/^[\w.\-]{2,}@[A-Za-z0-9.\-]{2,}$/'],
+            'payout_upi_name' => 'nullable|string|max:120',
+            'bank_account_holder' => 'nullable|string|max:120',
+            'bank_name' => 'nullable|string|max:120',
+            'bank_account_number' => ['nullable', 'string', 'min:6', 'max:30', 'regex:/^[0-9A-Za-z\-]+$/'],
+            'bank_ifsc' => ['nullable', 'string', 'size:11', 'regex:/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/'],
         ]);
 
         $driver->name = trim($validated['name']);
@@ -523,6 +587,10 @@ class DriverBiddingController extends Controller
         if (! empty($validated['avatar'])) {
             $driver->avatar = $validated['avatar'];
         }
+        if (array_key_exists('city', $validated)) {
+            $driver->city = trim((string) ($validated['city'] ?? '')) ?: $driver->city;
+        }
+        $this->applyPayoutFields($driver, $request, $validated);
         $driver->save();
 
         $currentUser = $request->user();
@@ -539,9 +607,94 @@ class DriverBiddingController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Driver profile updated successfully.',
-            'profile' => $driver,
-            'driver' => $driver,
+            'profile' => $driver->fresh(),
+            'driver' => $driver->fresh(),
         ]);
+    }
+
+    /**
+     * Save driver's UPI and/or Bank payout collection details.
+     */
+    public function updatePayoutDetails(Request $request)
+    {
+        $driver = $this->driverForUser($request->user());
+
+        if (! $driver) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No driver profile is linked to this account.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'preferred_payout_method' => 'required|string|in:upi,bank',
+            'payout_upi_id' => ['nullable', 'string', 'max:120', 'regex:/^[\w.\-]{2,}@[A-Za-z0-9.\-]{2,}$/'],
+            'payout_upi_name' => 'nullable|string|max:120',
+            'bank_account_holder' => 'nullable|string|max:120',
+            'bank_name' => 'nullable|string|max:120',
+            'bank_account_number' => ['nullable', 'string', 'min:6', 'max:30', 'regex:/^[0-9A-Za-z\-]+$/'],
+            'bank_ifsc' => ['nullable', 'string', 'size:11', 'regex:/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/'],
+        ]);
+
+        $pref = $validated['preferred_payout_method'];
+        $upiId = trim((string) ($validated['payout_upi_id'] ?? ''));
+        $bankHolder = trim((string) ($validated['bank_account_holder'] ?? ''));
+        $bankName = trim((string) ($validated['bank_name'] ?? ''));
+        $bankAcct = trim((string) ($validated['bank_account_number'] ?? ''));
+        $bankIfsc = strtoupper(trim((string) ($validated['bank_ifsc'] ?? '')));
+
+        if ($pref === 'upi' && $upiId === '') {
+            throw ValidationException::withMessages([
+                'payout_upi_id' => 'Enter a valid UPI ID (e.g. driver@okicici) when UPI is selected as preferred payout method.',
+            ]);
+        }
+
+        if ($pref === 'bank' && ($bankHolder === '' || $bankName === '' || $bankAcct === '' || $bankIfsc === '')) {
+            throw ValidationException::withMessages([
+                'bank_account_number' => 'Enter Account Holder Name, Bank Name, Account Number, and IFSC Code for Bank payouts.',
+            ]);
+        }
+
+        $this->applyPayoutFields($driver, $request, $validated);
+        $driver->save();
+
+        $fresh = $driver->fresh();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Driver payout details saved! Ready for '.strtoupper($fresh->preferred_payout_method).' withdrawals.',
+            'profile' => $fresh,
+            'payout_summary' => $fresh->payoutSummaryLabel(),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function applyPayoutFields(Driver $driver, Request $request, array $validated): void
+    {
+        if (! empty($validated['preferred_payout_method'])) {
+            $driver->preferred_payout_method = $validated['preferred_payout_method'];
+        }
+        if ($request->has('payout_upi_id')) {
+            $driver->payout_upi_id = trim((string) ($validated['payout_upi_id'] ?? '')) ?: null;
+        }
+        if ($request->has('payout_upi_name')) {
+            $driver->payout_upi_name = trim((string) ($validated['payout_upi_name'] ?? '')) ?: null;
+        }
+        if ($request->has('bank_account_holder')) {
+            $driver->bank_account_holder = trim((string) ($validated['bank_account_holder'] ?? '')) ?: null;
+        }
+        if ($request->has('bank_name')) {
+            $driver->bank_name = trim((string) ($validated['bank_name'] ?? '')) ?: null;
+        }
+        if ($request->has('bank_account_number')) {
+            $driver->bank_account_number = trim((string) ($validated['bank_account_number'] ?? '')) ?: null;
+        }
+        if ($request->has('bank_ifsc')) {
+            $ifsc = strtoupper(trim((string) ($validated['bank_ifsc'] ?? '')));
+            $driver->bank_ifsc = $ifsc !== '' ? $ifsc : null;
+        }
     }
 
     /**

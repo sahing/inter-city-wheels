@@ -143,6 +143,62 @@ class DriverProfileAndLayoutTest extends TestCase
         $response->assertSee('id="tab-driver-profile"', false);
         $response->assertSee('id="driver-edit-profile-modal"', false);
         $response->assertSee('id="driver-edit-profile-form"', false);
+        $response->assertSee('id="driver-payout-settings-form"', false);
         $response->assertSee('Save Profile Changes', false);
+
+        // Assert Screen-Wise Driver Trips Dispatch & Prominent OTP Entry UI
+        $response->assertSee('id="driver-trips-queue-screen"', false);
+        $response->assertSee('id="driver-trip-dispatch-screen"', false);
+        $response->assertSee('id="dispatch-call-customer-btn"', false);
+        $response->assertSee('id="driver-dispatch-otp-form"', false);
+        $response->assertSee('id="driver-dispatch-otp-input"', false);
+        $response->assertSee('Call Customer for Exact Location', false);
+        $response->assertSee('Verify OTP &amp; Start Trip', false);
+    }
+
+    public function test_driver_can_configure_upi_and_bank_payout_details_in_profile(): void
+    {
+        $driverUser = User::where('role', 'driver')->firstOrFail();
+        $driver = Driver::where('phone', $driverUser->phone)->firstOrFail();
+
+        // Reject missing UPI ID when UPI is selected
+        $this->actingAs($driverUser)->postJson('/api/driver/profile/payout-details', [
+            'preferred_payout_method' => 'upi',
+            'payout_upi_id' => '',
+        ])->assertStatus(422)->assertJsonValidationErrors(['payout_upi_id']);
+
+        // Reject invalid IFSC when bank is selected
+        $this->actingAs($driverUser)->postJson('/api/driver/profile/payout-details', [
+            'preferred_payout_method' => 'bank',
+            'bank_account_holder' => 'Ramesh Driver',
+            'bank_name' => 'SBI',
+            'bank_account_number' => '123456789012',
+            'bank_ifsc' => 'BADIFSC',
+        ])->assertStatus(422)->assertJsonValidationErrors(['bank_ifsc']);
+
+        // Save both UPI and Bank details successfully
+        $res = $this->actingAs($driverUser)->postJson('/api/driver/profile/payout-details', [
+            'preferred_payout_method' => 'bank',
+            'payout_upi_id' => 'ramesh.cab@okaxis',
+            'payout_upi_name' => 'Ramesh Patil',
+            'bank_account_holder' => 'Ramesh Patil',
+            'bank_name' => 'State Bank of India',
+            'bank_account_number' => '301245678901',
+            'bank_ifsc' => 'sbin0001234',
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('profile.preferred_payout_method', 'bank')
+            ->assertJsonPath('profile.payout_upi_id', 'ramesh.cab@okaxis')
+            ->assertJsonPath('profile.bank_ifsc', 'SBIN0001234');
+
+        $this->assertDatabaseHas('drivers', [
+            'id' => $driver->id,
+            'preferred_payout_method' => 'bank',
+            'payout_upi_id' => 'ramesh.cab@okaxis',
+            'bank_name' => 'State Bank of India',
+            'bank_ifsc' => 'SBIN0001234',
+        ]);
     }
 }

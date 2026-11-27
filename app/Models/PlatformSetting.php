@@ -90,6 +90,7 @@ class PlatformSetting extends Model
             'razorpay_mode' => 'test',
             'razorpay_key_id' => '',
             'razorpay_display_name' => 'Intercity Wheels',
+            'razorpayx_account_number' => '',
         ];
     }
 
