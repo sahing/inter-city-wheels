@@ -26,11 +26,25 @@
         </div>
     </div>
 
+    @php
+        $drvSupportCfg = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
+        $drvSupportPhone = trim((string) ($drvSupportCfg['legal_contact_helpline'] ?? $drvSupportCfg['invoice_support_phone'] ?? '700 3434 088')) ?: '700 3434 088';
+        $drvSupportTel = 'tel:' . (preg_replace('/[^0-9+]/', '', $drvSupportPhone) ?: '7003434088');
+        $drvSupportEmail = trim((string) ($drvSupportCfg['legal_contact_email'] ?? 'support@intercitywheels.com')) ?: 'support@intercitywheels.com';
+    @endphp
     <div class="driver-banner-right">
         <div class="driver-banner-metric">
             <div class="driver-banner-metric-label">Wallet</div>
             <div class="driver-banner-metric-val driver-header-wallet-bal">₹{{ number_format($driverProfile->wallet_balance ?? 14500) }}</div>
         </div>
+        <a href="{{ $drvSupportTel }}" class="btn btn-sm btn-outline driver-banner-action-btn" style="text-decoration:none;" aria-label="Call Driver Support" title="Call 24/7 Driver Support: {{ $drvSupportPhone }}">
+            <span class="material-symbols-outlined" style="font-size:15px;">support_agent</span>
+            <span>Support</span>
+        </a>
+        <a href="mailto:{{ $drvSupportEmail }}" class="btn btn-sm btn-outline driver-banner-action-btn" style="text-decoration:none;" aria-label="Email Driver Support" title="Email Support: {{ $drvSupportEmail }}">
+            <span class="material-symbols-outlined" style="font-size:15px;">mail</span>
+            <span>Help Desk</span>
+        </a>
         <button type="button" class="btn btn-sm btn-outline-gold driver-banner-action-btn" onclick="openDriverEditProfileModal()" aria-label="Edit Profile">
             <span class="material-symbols-outlined" style="font-size:15px;">badge</span>
             <span>Edit</span>

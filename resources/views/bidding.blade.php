@@ -14,10 +14,20 @@
                 </div>
             </div>
         </div>
-        <a href="{{ route('home') }}" class="btn btn-sm btn-outline">
-            <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
-            <span>Back to Console</span>
-        </a>
+        @php
+            $bidSupportPhone = trim((string) (\App\Models\PlatformSetting::get('legal_contact_helpline') ?? \App\Models\PlatformSetting::get('invoice_support_phone') ?? '700 3434 088')) ?: '700 3434 088';
+            $bidSupportTel = 'tel:' . (preg_replace('/[^0-9+]/', '', $bidSupportPhone) ?: '7003434088');
+        @endphp
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <a href="{{ $bidSupportTel }}" class="btn btn-sm btn-outline" style="text-decoration:none;">
+                <span class="material-symbols-outlined" style="font-size:16px;">support_agent</span>
+                <span>Driver Support: {{ $bidSupportPhone }}</span>
+            </a>
+            <a href="{{ route('home') }}" class="btn btn-sm btn-outline">
+                <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+                <span>Back to Console</span>
+            </a>
+        </div>
     </div>
 
     @if($missing)

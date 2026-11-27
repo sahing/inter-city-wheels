@@ -76,6 +76,12 @@
     @endunless
 
     <!-- Top Announcement Bar -->
+    @php
+        $topSupportSettings = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
+        $topSupportPhone = trim((string) ($topSupportSettings['legal_contact_helpline'] ?? $topSupportSettings['invoice_support_phone'] ?? '700 3434 088')) ?: '700 3434 088';
+        $topSupportTel = 'tel:' . (preg_replace('/[^0-9+]/', '', $topSupportPhone) ?: '7003434088');
+        $topSupportEmail = trim((string) ($topSupportSettings['legal_contact_email'] ?? 'support@intercitywheels.com')) ?: 'support@intercitywheels.com';
+    @endphp
     <div class="top-notice-bar">
         <div class="notice-container">
             <div class="notice-left">
@@ -83,11 +89,17 @@
                 <span>⚡ Verified Outstation Cabs, Luxury Sleeper Berths available</span>
             </div>
             <div class="notice-right">
-                <span style="display:flex; align-items:center; gap:4px; font-weight:600; color:#f5d061;">
-                    <span class="material-symbols-outlined" style="font-size:15px;">support_agent</span> 24/7 Helpline: 700 3434 088
-                </span>
+                <a href="{{ $topSupportTel }}" style="display:inline-flex; align-items:center; gap:4px; font-weight:600; color:#f5d061; text-decoration:none;">
+                    <span class="material-symbols-outlined" style="font-size:15px;">support_agent</span>
+                    <span>24/7 Helpline: {{ $topSupportPhone }}</span>
+                </a>
                 <span>•</span>
-                <button type="button" onclick="showToast('Emergency SOS dispatch ready for active rides.', 'warning')">
+                <a href="mailto:{{ $topSupportEmail }}" style="display:inline-flex; align-items:center; gap:4px; font-weight:600; color:#e2e8f0; text-decoration:none;">
+                    <span class="material-symbols-outlined" style="font-size:14px;">mail</span>
+                    <span>Support</span>
+                </a>
+                <span>•</span>
+                <button type="button" onclick="showToast('Emergency SOS dispatch ready for active rides. Helpline: {{ $topSupportPhone }}', 'warning')">
                     <span class="material-symbols-outlined" style="font-size:15px; color:#ef4444;">shield</span> SOS Safety
                 </button>
             </div>

@@ -2615,6 +2615,9 @@ function finalizeCabBookingUi(b, fromCityName, toCityName, customerName) {
     operator: `${FLEET_TYPES[state.cab.selectedFleet]?.name || 'Executive SUV'} (Intercity Wheels)`,
     berths: ['Private Car Rental'],
     passengers: [customerName],
+    customer_name: b.customer_name || customerName,
+    customer_phone: b.customer_phone || '',
+    driver: b.driver || null,
     amount: Number(b.total_amount),
     status: b.status || 'Requested',
     otp: String(b.start_otp)
@@ -3612,7 +3615,15 @@ window.submitConsoleAuctionBid = async function (token, auctionId) {
   }
 };
 
-function showDriverDetailsScreen(title, icon, rows, note) {
+function getPlatformSupportContact() {
+  const settings = window.PLATFORM_SETTINGS || {};
+  const phone = String(settings.legal_contact_helpline || settings.invoice_support_phone || '700 3434 088').trim() || '700 3434 088';
+  const cleanDigits = phone.replace(/[^0-9+]/g, '') || '7003434088';
+  const email = String(settings.legal_contact_email || 'support@intercitywheels.com').trim() || 'support@intercitywheels.com';
+  return { phone, telHref: `tel:${cleanDigits}`, email };
+}
+
+function showDriverDetailsScreen(title, icon, rows, note, extraActionsHtml = '') {
   const modal = document.getElementById('driver-item-details-modal');
   const titleEl = document.getElementById('driver-details-title');
   const iconEl = document.getElementById('driver-details-icon');
@@ -3629,10 +3640,22 @@ function showDriverDetailsScreen(title, icon, rows, note) {
   const noteHtml = note
     ? '<div style="margin-top:10px; padding:10px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; font-size:11.5px; color:#92400e;">' + auctionEscape(note) + '</div>'
     : '';
-  bodyEl.innerHTML = '<div class="driver-details-grid">' + rowsHtml + '</div>' + noteHtml
-    + '<div style="display:flex; justify-content:flex-end; margin-top:14px;">'
-    + '<button type="button" class="btn btn-sm btn-secondary" onclick="closeModal(\'driver-item-details-modal\')">Close</button>'
-    + '</div>';
+  const support = getPlatformSupportContact();
+  const supportFooterHtml = `<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:14px; padding-top:10px; border-top:1px solid #e2e8f0;">
+    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+      ${extraActionsHtml || ''}
+      <a href="${auctionEscape(support.telHref)}" class="btn btn-sm btn-outline" style="text-decoration:none;">
+        <span class="material-symbols-outlined" style="font-size:15px;">support_agent</span>
+        <span>Support: ${auctionEscape(support.phone)}</span>
+      </a>
+      <a href="mailto:${auctionEscape(support.email)}" class="btn btn-sm btn-outline" style="text-decoration:none;">
+        <span class="material-symbols-outlined" style="font-size:15px;">mail</span>
+        <span>Email</span>
+      </a>
+    </div>
+    <button type="button" class="btn btn-sm btn-secondary" onclick="closeModal('driver-item-details-modal')">Close</button>
+  </div>`;
+  bodyEl.innerHTML = '<div class="driver-details-grid">' + rowsHtml + '</div>' + noteHtml + supportFooterHtml;
   modal.classList.add('active');
 }
 
@@ -3671,6 +3694,12 @@ function openDriverTripDetails(dt) {
     : (due > 0
       ? `Collect ₹${due.toLocaleString('en-IN')} from passenger when drive completes`
       : 'Prepaid (Confirmed by Platform — Collect ₹0)');
+  const unlockedStates = ['Driver Assigned', 'Confirmed', 'Started', 'Completed'];
+  const canCallCustomer = unlockedStates.includes(dt.status) && dt.customer_phone;
+  const custTel = canCallCustomer ? `tel:${String(dt.customer_phone).replace(/[^0-9+]/g, '') || dt.customer_phone}` : '';
+  const extraCallBtn = canCallCustomer
+    ? `<a href="${auctionEscape(custTel)}" class="btn btn-sm btn-primary" style="text-decoration:none;"><span class="material-symbols-outlined" style="font-size:15px;">call</span><span>Call Customer</span></a>`
+    : '';
   showDriverDetailsScreen('Trip ' + (dt.booking_reference || ''), 'local_taxi', [
     { label: 'Status', value: dt.status || '—' },
     { label: 'Route', value: dt.route_summary || '—' },
@@ -3680,7 +3709,7 @@ function openDriverTripDetails(dt) {
     { label: 'Total Fare', value: '₹' + Number(dt.total_amount || 0).toLocaleString('en-IN') + ' (Tolls & taxes included)' },
     { label: 'Payment Status', value: `${(dt.payment_mode || 'full_online').toUpperCase()} · ${(dt.payment_status || 'paid').replace(/_/g, ' ')}` },
     { label: 'Collection Duty', value: collectionText }
-  ], due > 0 ? 'Take responsibility for collecting the due fare from the passenger before marking the drive completed.' : '');
+  ], due > 0 ? 'Take responsibility for collecting the due fare from the passenger before marking the drive completed.' : '', extraCallBtn);
 }
 
 function openDriverAuctionDetails(auctionId) {
@@ -4094,9 +4123,52 @@ function showTicketModal(booking) {
   document.getElementById('ticket-display-id').textContent = booking.id;
   document.getElementById('ticket-display-route').textContent = booking.route;
   document.getElementById('ticket-display-operator').textContent = booking.operator;
-  document.getElementById('ticket-display-berths').textContent = booking.berths.join(', ');
-  document.getElementById('ticket-display-amount').textContent = `₹${booking.amount.toLocaleString('en-IN')}`;
+  document.getElementById('ticket-display-berths').textContent = (booking.berths || ['Private Cab']).join(', ');
+  document.getElementById('ticket-display-amount').textContent = `₹${Number(booking.amount || 0).toLocaleString('en-IN')}`;
   document.getElementById('ticket-display-otp').textContent = booking.otp;
+
+  const drv = booking.driver || null;
+  const drvNameEl = document.getElementById('ticket-display-driver-name');
+  const drvVehEl = document.getElementById('ticket-display-driver-vehicle');
+  const custContactEl = document.getElementById('ticket-display-customer-contact');
+  const callDrvBtn = document.getElementById('ticket-call-driver-btn');
+
+  if (drv && drv.name) {
+    if (drvNameEl) drvNameEl.textContent = `${drv.name}${drv.rating ? ` (★${drv.rating})` : ''}`;
+    if (drvVehEl) drvVehEl.textContent = `${drv.vehicle_model || 'Cab'}${drv.vehicle_plate ? ` · ${drv.vehicle_plate}` : ''}${drv.phone ? ` · ${drv.phone}` : ''}`;
+    if (callDrvBtn) {
+      if (drv.phone) {
+        const cleanDrvTel = String(drv.phone).replace(/[^0-9+]/g, '') || String(drv.phone);
+        callDrvBtn.href = `tel:${cleanDrvTel}`;
+        callDrvBtn.style.display = 'inline-flex';
+        callDrvBtn.querySelector('span:last-child').textContent = `Call Driver (${drv.phone})`;
+      } else {
+        callDrvBtn.style.display = 'none';
+      }
+    }
+  } else {
+    if (drvNameEl) drvNameEl.textContent = 'Allotment in progress';
+    if (drvVehEl) drvVehEl.textContent = 'Verified chauffeur details appear once allotted';
+    if (callDrvBtn) callDrvBtn.style.display = 'none';
+  }
+
+  if (custContactEl) {
+    const cname = booking.customer_name || (Array.isArray(booking.passengers) ? booking.passengers[0] : '') || '';
+    const cphone = booking.customer_phone || '';
+    custContactEl.textContent = (cname || cphone) ? `Passenger: ${cname}${cphone ? ` (${cphone})` : ''}` : '';
+  }
+
+  const support = getPlatformSupportContact();
+  const callSupBtn = document.getElementById('ticket-call-support-btn');
+  const mailSupBtn = document.getElementById('ticket-email-support-btn');
+  if (callSupBtn) {
+    callSupBtn.href = support.telHref;
+    const lbl = callSupBtn.querySelector('span:last-child');
+    if (lbl) lbl.textContent = `Call Support (${support.phone})`;
+  }
+  if (mailSupBtn) {
+    mailSupBtn.href = `mailto:${support.email}?subject=${encodeURIComponent(`Support for Booking ${booking.id || ''}`)}`;
+  }
 
   // Generate dynamic QR code pattern (SVG zero-dependency)
   const qrSvg = generateSvgQrCode(booking.id, booking.otp);
@@ -9590,41 +9662,46 @@ window.handleLocationSearch = function (query) {
 };
 
 window.openTicketModal = async function (reference) {
-  let b = (state.bookings || []).find(item => item.id === reference || item.booking_reference === reference);
-  if (!b) {
-    try {
-      // Owner access works for signed-in customers; older bookings that are
-      // only linked by phone need the number that was used to book.
-      const phone = window.CURRENT_USER && window.CURRENT_USER.phone ? window.CURRENT_USER.phone : '';
-      const withPhone = phone ? `?phone=${encodeURIComponent(phone)}` : '';
+  let b = null;
+  try {
+    // Fetch live booking record first so newly allotted chauffeur contact & status are always current.
+    const phone = window.CURRENT_USER && window.CURRENT_USER.phone ? window.CURRENT_USER.phone : '';
+    const withPhone = phone ? `?phone=${encodeURIComponent(phone)}` : '';
 
-      let res = await fetch(`/api/bookings/${reference}${withPhone}`);
-      let data = await res.json();
+    let res = await fetch(`/api/bookings/${encodeURIComponent(reference)}${withPhone}`);
+    let data = await res.json().catch(() => ({}));
 
-      if ((!res.ok || !data.success) && phone) {
-        res = await fetch(`/api/bookings/${reference}`);
-        data = await res.json();
-      }
-
-      if (data && data.success && data.booking) {
-        const dbBooking = data.booking;
-        b = {
-          id: dbBooking.booking_reference,
-          route: dbBooking.route_summary || '',
-          operator: dbBooking.driver
-            ? `${dbBooking.driver.name} (${dbBooking.driver.vehicle_model || 'Cab'})`
-            : (dbBooking.service_type === 'bus' ? 'Intercity Sleeper Bus' : 'Intercity Verified Cab'),
-          berths: Array.isArray(dbBooking.selected_units) && dbBooking.selected_units.length
-            ? dbBooking.selected_units
-            : ['Private Cab'],
-          amount: Number(dbBooking.total_amount || 0),
-          otp: dbBooking.start_otp || '----'
-        };
-      }
-    } catch (err) {
-      console.error('Failed to fetch ticket info:', err);
+    if ((!res.ok || !data.success) && phone) {
+      res = await fetch(`/api/bookings/${encodeURIComponent(reference)}`);
+      data = await res.json().catch(() => ({}));
     }
+
+    if (data && data.success && data.booking) {
+      const dbBooking = data.booking;
+      b = {
+        id: dbBooking.booking_reference,
+        route: dbBooking.route_summary || '',
+        operator: dbBooking.driver
+          ? `${dbBooking.driver.name} (${dbBooking.driver.vehicle_model || 'Cab'})`
+          : (dbBooking.service_type === 'bus' ? 'Intercity Sleeper Bus' : 'Intercity Verified Cab'),
+        berths: Array.isArray(dbBooking.selected_units) && dbBooking.selected_units.length
+          ? dbBooking.selected_units
+          : ['Private Cab'],
+        driver: dbBooking.driver || null,
+        customer_name: dbBooking.customer_name || '',
+        customer_phone: dbBooking.customer_phone || '',
+        amount: Number(dbBooking.total_amount || 0),
+        otp: dbBooking.start_otp || '----'
+      };
+    }
+  } catch (err) {
+    console.error('Failed to fetch ticket info:', err);
   }
+
+  if (!b) {
+    b = (state.bookings || []).find(item => item.id === reference || item.booking_reference === reference) || null;
+  }
+
   if (b) {
     showTicketModal(b);
   } else {
@@ -10936,9 +11013,13 @@ function buildTripCardHtml(booking) {
       </div>
     </div>` : '';
 
+  const driverTel = driver && driver.phone ? `tel:${String(driver.phone).replace(/[^0-9+]/g, '') || driver.phone}` : '';
+  const custTel = booking.customer_phone ? `tel:${String(booking.customer_phone).replace(/[^0-9+]/g, '') || booking.customer_phone}` : '';
+  const support = getPlatformSupportContact();
+
   const driverBlock = driver
     ? `<div class="trip-tile-line" style="font-weight:700; color:#0f172a;">${tripsEscape(driver.name)} (★${tripsEscape(driver.rating)})</div>
-       <div class="trip-tile-sub">${tripsEscape(driver.vehicle_model)} · <strong>${tripsEscape(driver.vehicle_plate)}</strong></div>`
+       <div class="trip-tile-sub">${tripsEscape(driver.vehicle_model)} · <strong>${tripsEscape(driver.vehicle_plate)}</strong>${driver.phone ? ` · <a href="${tripsEscape(driverTel)}" class="trip-driver-tel">${tripsEscape(driver.phone)}</a>` : ''}</div>`
     : (isBeyondUnconfirmed
       ? `<div class="trip-tile-line" style="color:#b45309; font-weight:700;">Availability Not Guaranteed</div>
          <div class="trip-tile-sub">Beyond service region — ride not confirmed until chauffeur accepts</div>`
@@ -10983,6 +11064,7 @@ function buildTripCardHtml(booking) {
         <div class="trip-tile-label">Pickup &amp; Drop</div>
         <div class="trip-tile-line"><strong>From:</strong> ${tripsEscape(booking.pickup_location)}</div>
         <div class="trip-tile-line"><strong>To:</strong> ${tripsEscape(booking.drop_location)}</div>
+        ${booking.customer_phone ? `<div class="trip-tile-sub" style="margin-top:4px;">Passenger: <strong>${tripsEscape(booking.customer_name || 'Passenger')}</strong> · <a href="${tripsEscape(custTel)}" class="trip-driver-tel">${tripsEscape(booking.customer_phone)}</a></div>` : ''}
       </div>
       <div class="trip-info-tile">
         <div class="trip-tile-label">Chauffeur &amp; Vehicle</div>
@@ -10996,6 +11078,19 @@ function buildTripCardHtml(booking) {
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
         <span class="trip-footer-meta">${isBeyondUnconfirmed ? 'Pending Availability Check (Beyond Region)' : (booking.payment_collection_by === 'driver' && !booking.driver_collected_at ? `Driver collects on completion: <strong>${tripsMoney(Number(booking.balance_amount || 0) > 0 ? booking.balance_amount : booking.total_amount)}</strong>` : (booking.payment_mode === 'full_upi' && booking.payment_status === 'pending_upi_verification' ? `UTR ${tripsEscape(booking.upi_utr || '')} pending Admin confirmation` : (passengers ? passengers + ' passenger(s)' : 'Escrow Verified')))}</span>
         <div class="trip-card-actions">
+          ${driver && driver.phone ? `
+          <a href="${tripsEscape(driverTel)}" class="btn btn-xs btn-primary trip-call-driver-btn" style="text-decoration:none;">
+            <span class="material-symbols-outlined" style="font-size:14px;">call</span>
+            <span>Call Driver (${tripsEscape(driver.phone)})</span>
+          </a>` : ''}
+          <a href="${tripsEscape(support.telHref)}" class="btn btn-xs trip-btn-secondary trip-call-support-btn" style="text-decoration:none;" title="24/7 Customer Support">
+            <span class="material-symbols-outlined" style="font-size:14px;">support_agent</span>
+            <span>Call Support</span>
+          </a>
+          <a href="mailto:${tripsEscape(support.email)}?subject=${encodeURIComponent(`Support for Booking ${ref}`)}" class="btn btn-xs trip-btn-secondary trip-email-support-btn" style="text-decoration:none;" title="Email Customer Support">
+            <span class="material-symbols-outlined" style="font-size:14px;">mail</span>
+            <span>Email Support</span>
+          </a>
           <button type="button" class="btn btn-xs trip-btn-secondary" onclick="copyTripReference('${tripsEscape(ref)}')">
             <span class="material-symbols-outlined" style="font-size:14px;">content_copy</span>
             <span>Reference</span>

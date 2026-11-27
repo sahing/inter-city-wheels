@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Booking;
 use App\Models\Driver;
+use App\Models\PlatformSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -233,5 +234,78 @@ class AdminBookingManagementTest extends TestCase
             ->assertSee('id="pag-bar-dashboard-bookings"', false)
             ->assertSee('id="admin-bookings-table-tbody"', false)
             ->assertSee('id="pag-bar-admin-bookings"', false);
+    }
+
+    public function test_customer_sees_allotted_driver_contact_and_customer_and_driver_can_reach_support(): void
+    {
+        PlatformSetting::set('legal_contact_helpline', '+91 80011 22334');
+        PlatformSetting::set('legal_contact_email', 'helpdesk@intercitywheels.test');
+
+        $customer = User::where('role', 'customer')->firstOrFail();
+        $otherCustomer = User::factory()->create([
+            'role' => 'customer',
+            'phone' => '+91 91111 00001',
+        ]);
+        $driver = Driver::firstOrFail();
+        $driverUser = User::where('role', 'driver')->firstOrFail();
+
+        // Customer creates a confirmed/pending booking (before driver allotment, Support is already reachable)
+        $bookRes = $this->actingAs($customer)->postJson('/api/bookings', [
+            'service_type' => 'cab',
+            'trip_type' => 'oneway',
+            'from_city' => 'Pune',
+            'to_city' => 'Goa',
+            'pickup_location' => 'Shivajinagar, Pune',
+            'drop_location' => 'Panaji, Goa',
+            'customer_name' => 'Asha Kulkarni',
+            'customer_phone' => '+91 98888 12345',
+            'fleet_category' => 'sedan',
+            'payment_mode' => 'cash',
+        ])->assertOk();
+
+        $bookingId = (int) $bookRes->json('booking.id');
+        $bookingRef = (string) $bookRes->json('booking.booking_reference');
+
+        $beforeHtml = $this->actingAs($customer)->get('/')->getContent();
+        $this->assertStringContainsString('tel:+918001122334', $beforeHtml);
+        $this->assertStringContainsString('mailto:helpdesk@intercitywheels.test', $beforeHtml);
+        $this->assertStringContainsString('Call Support', $beforeHtml);
+
+        // Admin allots a driver (Driver Assigned / Confirmed stage)
+        $admin = User::where('role', 'admin')->firstOrFail();
+        $this->actingAs($admin)->postJson("/api/admin/bookings/{$bookingId}/allot-driver", [
+            'driver_id' => $driver->id,
+            'status' => 'Confirmed',
+        ])->assertOk();
+
+        // Concerned customer sees allotted driver name, plate, phone & Call Driver button in My Trips, API show & lookup
+        $afterHtml = $this->actingAs($customer)->get('/')->getContent();
+        $cleanDriverTel = preg_replace('/[^0-9+]/', '', (string) $driver->phone);
+        $this->assertStringContainsString($driver->name, $afterHtml);
+        $this->assertStringContainsString((string) $driver->phone, $afterHtml);
+        $this->assertStringContainsString("tel:{$cleanDriverTel}", $afterHtml);
+        $this->assertStringContainsString('Call Driver', $afterHtml);
+        $this->assertStringContainsString('+91 98888 12345', $afterHtml);
+        $this->assertStringContainsString('id="ticket-call-driver-btn"', $afterHtml);
+        $this->assertStringContainsString('id="ticket-call-support-btn"', $afterHtml);
+
+        $this->actingAs($customer)->getJson("/api/bookings/{$bookingRef}")
+            ->assertOk()
+            ->assertJsonPath('booking.driver.id', $driver->id)
+            ->assertJsonPath('booking.driver.phone', $driver->phone);
+
+        // Another unrelated customer cannot view this booking's details or driver phone
+        $this->actingAs($otherCustomer)->getJson("/api/bookings/{$bookingRef}")
+            ->assertStatus(403);
+        $otherHtml = $this->actingAs($otherCustomer)->get('/')->getContent();
+        $this->assertStringNotContainsString($bookingRef, $otherHtml);
+
+        // Driver sees both Support contact (across driver console & header) and Confirmed customer contact
+        $driverHtml = $this->actingAs($driverUser)->get('/')->getContent();
+        $this->assertStringContainsString('tel:+918001122334', $driverHtml);
+        $this->assertStringContainsString('mailto:helpdesk@intercitywheels.test', $driverHtml);
+        $this->assertStringContainsString('Call Driver Support', $driverHtml);
+        $this->assertStringContainsString('+91 98888 12345', $driverHtml);
+        $this->assertStringContainsString('Asha Kulkarni', $driverHtml);
     }
 }
