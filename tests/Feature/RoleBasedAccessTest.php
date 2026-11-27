@@ -86,7 +86,7 @@ class RoleBasedAccessTest extends TestCase
         $response->assertSee('Live Bids & Auctions', false);
         $response->assertSee('My Assigned Trips');
         $response->assertSee('Driver Wallet');
-        $response->assertSee('Chauffeur Wallet & Instant Payouts', false);
+        $response->assertSee('Chauffeur Wallet &amp; Payment History', false);
         $response->assertSee('Chauffeur Console');
         $response->assertSee('id="tab-bidding"', false);
         $response->assertSee('id="tab-driver-trips"', false);

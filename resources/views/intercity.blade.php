@@ -1791,7 +1791,7 @@
                                                             <span>{{ $dt->customer_phone }}</span>
                                                         </a>
                                                         @if($dt->driver_payout_amount !== null)
-                                                            <span class="admin-badge badge-success" style="font-size:9.5px; padding:1px 6px;">Won via bidding</span>
+                                                            <span class="admin-badge badge-success" style="font-size:9.5px; padding:1px 6px;">Won via driver bidding</span>
                                                         @endif
                                                     </div>
                                                 @else
@@ -1806,7 +1806,7 @@
                                             <td data-booking-part="payment">
                                                 @if($dt->driver_payout_amount !== null)
                                                     <div class="cell-primary-text text-tabular" style="color:var(--success);">₹{{ number_format((float) $dt->driver_payout_amount) }}</div>
-                                                    <div class="cell-subtext">Your winning bid</div>
+                                                    <div class="cell-subtext">Your winning bid payout</div>
                                                 @else
                                                     <div class="cell-primary-text text-tabular" style="color:var(--success);">₹{{ number_format($dt->total_amount) }}</div>
                                                     <div class="cell-subtext">All-inclusive</div>
@@ -4604,7 +4604,17 @@
                                                     </td>
                                                     <td data-col-label="Action" style="text-align:right;">
                                                         @if($pr->status === 'pending')
-                                                            <button type="button" class="btn btn-xs btn-primary" onclick='openAdminProcessPayoutModal(@json(["id" => $pr->id, "payout_reference" => $pr->payout_reference, "driver_name" => $pr->driver?->name, "amount" => (float) $pr->amount, "payout_method" => $pr->payout_method, "destination_summary" => $pr->destinationSummary()]))'>
+                                                            @php
+                                                                $prPayload = [
+                                                                    'id' => $pr->id,
+                                                                    'payout_reference' => $pr->payout_reference,
+                                                                    'driver_name' => $pr->driver?->name,
+                                                                    'amount' => (float) $pr->amount,
+                                                                    'payout_method' => $pr->payout_method,
+                                                                    'destination_summary' => $pr->destinationSummary(),
+                                                                ];
+                                                            @endphp
+                                                            <button type="button" class="btn btn-xs btn-primary" onclick='openAdminProcessPayoutModal(@json($prPayload))'>
                                                                 <span>Approve / Process</span>
                                                             </button>
                                                         @else
@@ -4661,7 +4671,8 @@
                                     </div>
                                 </div>
 
-                                <div class="card">
+                                @if(config('demo.enabled'))
+                                <div class="card demo-only">
                                     <div class="card-header">
                                         <div>
                                             <h3 class="card-title">
@@ -4684,6 +4695,7 @@
                                         </button>
                                     </div>
                                 </div>
+                                @endif
                             </div>
 
                             <!-- Platform Feature & Booking Module Controls -->
@@ -5963,6 +5975,7 @@
                                                 <th>Plate Number</th>
                                                 <th>Category</th>
                                                 <th>Capacity</th>
+                                                <th>Car Features</th>
                                                 <th>RC Number</th>
                                                 <th>Approval Status</th>
                                                 <th style="text-align:right;">Actions</th>
@@ -5989,6 +6002,21 @@
                                                     <div>{{ $veh->seating_capacity }} Seats</div>
                                                     @if($veh->berth_capacity > 0)
                                                         <div style="font-size:10.5px; color:#16a34a; font-weight:700;">{{ $veh->berth_capacity }} Berths Fitted</div>
+                                                    @endif
+                                                </td>
+                                                <td>
+                                                    @php $vehFeatures = $veh->featureLabels(); @endphp
+                                                    @if(count($vehFeatures) > 0)
+                                                        <div style="display:flex; flex-wrap:wrap; gap:3px; max-width:190px;">
+                                                            @foreach(array_slice($vehFeatures, 0, 3) as $feature)
+                                                                <span class="admin-badge badge-secondary" style="font-size:9.5px; padding:2px 5px; white-space:nowrap;">{{ $feature }}</span>
+                                                            @endforeach
+                                                            @if(count($vehFeatures) > 3)
+                                                                <span class="admin-badge badge-secondary" style="font-size:9.5px; padding:2px 5px;" title="{{ implode(', ', array_slice($vehFeatures, 3)) }}">+{{ count($vehFeatures) - 3 }}</span>
+                                                            @endif
+                                                        </div>
+                                                    @else
+                                                        <span style="font-size:10.5px; color:#94a3b8;">Not listed</span>
                                                     @endif
                                                 </td>
                                                 <td style="font-family:monospace; font-size:11px;" id="admin-veh-rc-{{ $veh->id }}">{{ $veh->rc_number ?: 'Pending Upload' }}</td>

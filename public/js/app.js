@@ -6706,7 +6706,6 @@ window.printAdminInvoice = function () {
 
     if (!otp || otp.length !== 4) {
       showToast('Please enter the 4-digit ride start OTP provided by the passenger.', 'warning');
-      if (input) input.focus();
       if (inlineInput) inlineInput.focus();
       else if (dispatchInput) dispatchInput.focus();
       return;
@@ -6732,15 +6731,16 @@ window.printAdminInvoice = function () {
         if (badge) {
           badge.className = 'admin-badge badge-info';
           badge.textContent = 'Started';
-          if (data.booking && window._activeDispatchTrip && Number(window._activeDispatchTrip.id) === Number(bookingId)) {
-            window.openDriverTripScreen(data.booking);
-          }
-          const actionsBox = document.getElementById(`driver-trip-actions-${bookingId}`);
-          if (actionsBox) {
-            const due = data.booking ? computeDriverCollectDue(data.booking) : 0;
-            const pStatus = data.booking?.payment_status || '';
-            const completeBtnLabel = due > 0 ? `Collect ₹${due.toLocaleString('en-IN')} & Complete` : 'Complete Trip & Settle Payout';
-            actionsBox.innerHTML = `
+        }
+        if (data.booking && window._activeDispatchTrip && Number(window._activeDispatchTrip.id) === Number(bookingId)) {
+          window.openDriverTripScreen(data.booking);
+        }
+        const actionsBox = document.getElementById(`driver-trip-actions-${bookingId}`);
+        if (actionsBox) {
+          const due = data.booking ? computeDriverCollectDue(data.booking) : 0;
+          const pStatus = data.booking?.payment_status || '';
+          const completeBtnLabel = due > 0 ? `Collect ₹${due.toLocaleString('en-IN')} & Complete` : 'Complete Trip & Settle Payout';
+          actionsBox.innerHTML = `
             <div style="display:flex; align-items:center; gap:6px; color:#0284c7; font-size:12px; font-weight:700;">
                 <span class="material-symbols-outlined" style="font-size:18px;">local_shipping</span>
                 <span>Ride in progress. Drive safely.</span>
@@ -6754,21 +6754,22 @@ window.printAdminInvoice = function () {
                 <span>View Invoice</span>
             </button>
           `;
-            if (typeof window.refreshDriverTripsList === 'function') {
-              window.refreshDriverTripsList();
-            }
-          } else {
-            showToast(data.message || 'Invalid OTP. Please verify with passenger.', 'warning');
-            if (dispatchInput && window._activeDispatchTrip && Number(window._activeDispatchTrip.id) === Number(bookingId)) {
-              dispatchInput.setAttribute('aria-invalid', 'true');
-              dispatchInput.focus();
-            }
-          }
-        } catch (err) {
-          console.error('Verify OTP error:', err);
-          showToast('Network error while verifying OTP.', 'warning');
         }
-      };
+        if (typeof window.refreshDriverTripsList === 'function') {
+          window.refreshDriverTripsList();
+        }
+      } else {
+        showToast(data.message || 'Invalid OTP. Please verify with passenger.', 'warning');
+        if (dispatchInput && window._activeDispatchTrip && Number(window._activeDispatchTrip.id) === Number(bookingId)) {
+          dispatchInput.setAttribute('aria-invalid', 'true');
+          dispatchInput.focus();
+        }
+      }
+    } catch (err) {
+      console.error('Verify OTP error:', err);
+      showToast('Network error while verifying OTP.', 'warning');
+    }
+  };
 
       window.completeDriverTrip = async function (bookingId, collectDue = 0, paymentStatus = '') {
         const due = Number(collectDue || 0);
@@ -7014,39 +7015,35 @@ window.printAdminInvoice = function () {
         } catch (_) { }
       };
 
-      window.requestDriverPayout = async function (balance) {
-        if (!balance || balance <= 0) {
-          showToast('Insufficient wallet balance for withdrawal.', 'warning');
-          window.submitDriverPayoutRequest = function (e) {
-            if (e && e.preventDefault) e.preventDefault();
-            const amtInput = document.getElementById('driver-withdraw-amount');
-            const amount = Number(amtInput ? amtInput.value : 0);
-            const method = document.querySelector('input[name="driver_withdraw_method"]:checked')?.value || 'upi';
-            window.requestDriverPayout(amount, method);
-          };
+      window.submitDriverPayoutRequest = function (e) {
+        if (e && e.preventDefault) e.preventDefault();
+        const amtInput = document.getElementById('driver-withdraw-amount');
+        const amount = Number(amtInput ? amtInput.value : 0);
+        const method = document.querySelector('input[name="driver_withdraw_method"]:checked')?.value || 'upi';
+        window.requestDriverPayout(amount, method);
+      };
 
-          window.requestDriverPayout = async function (balance, payoutMethod = null) {
-            if (!balance || balance < 100) {
-              showToast('Minimum withdrawal amount is ₹100 (or insufficient wallet balance).', 'warning');
-              return;
-            }
+      window.requestDriverPayout = async function (balance, payoutMethod = null) {
+        if (!balance || balance < 100) {
+          showToast('Minimum withdrawal amount is ₹100 (or insufficient wallet balance).', 'warning');
+          return;
+        }
 
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
-            try {
-              const bodyPayload = { amount: balance };
-              if (payoutMethod) bodyPayload.payout_method = payoutMethod;
+        try {
+          const bodyPayload = { amount: balance };
+          if (payoutMethod) bodyPayload.payout_method = payoutMethod;
 
-              const res = await fetch('/api/driver/wallet/withdraw', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json',
-                  'X-CSRF-TOKEN': csrfToken
-                },
-                body: JSON.stringify({ amount: balance })
-      body: JSON.stringify(bodyPayload)
-              });
+          const res = await fetch('/api/driver/wallet/withdraw', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-TOKEN': csrfToken
+            },
+            body: JSON.stringify(bodyPayload)
+          });
 
               const data = await res.json();
               if (res.ok && data.success) {
@@ -11738,360 +11735,6 @@ window.printAdminInvoice = function () {
           // ==========================================
           // MY TRIPS — booking history, filters, guest tracking
           // ==========================================
-
-          let activeTripFilter = 'all';
-
-          function tripsEscape(value) {
-            return String(value === null || value === undefined ? '' : value)
-              .replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
-              .replace(/"/g, '&quot;')
-              .replace(/'/g, '&#39;');
-          }
-
-          function tripsMoney(value) {
-            const n = Number(value);
-            return Number.isFinite(n) ? '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '₹0';
-          }
-
-          function tripBucket(status) {
-            if (status === 'Completed') return 'completed';
-            if (status === 'Cancelled') return 'cancelled';
-            return 'active';
-          }
-
-          function tripStatusBadgeClass(status) {
-            return {
-              Confirmed: 'badge-success',
-              'Driver Assigned': 'badge-gold',
-              Started: 'badge-info',
-              Bidding: 'badge-info',
-              Completed: 'badge-primary',
-            }[status] || 'badge-secondary';
-          }
-
-          /**
-           * Recompute the filter counters from the DOM so a freshly injected booking is
-           * reflected everywhere at once.
-           */
-          function refreshTripCounters() {
-            const cards = Array.from(document.querySelectorAll('#my-trips-list .customer-trip-card'));
-            const counts = { all: cards.length, active: 0, completed: 0 };
-
-            cards.forEach((card) => {
-              const bucket = card.dataset.bucket || 'active';
-              if (bucket === 'active') counts.active += 1;
-              if (bucket === 'completed') counts.completed += 1;
-            });
-
-            const setText = (id, value) => {
-              const el = document.getElementById(id);
-              if (el) el.textContent = String(value);
-            };
-
-            setText('trips-count-all', counts.all);
-            setText('trips-count-active', counts.active);
-            setText('trips-count-completed', counts.completed);
-
-            const summary = document.getElementById('trips-summary');
-            if (summary) {
-              summary.textContent = counts.all === 0
-                ? 'No trips booked yet'
-                : `${counts.active} active · ${counts.completed} completed`;
-            }
-
-            return counts;
-          }
-
-          /**
-           * Show only the requested bucket. "All" also reveals cancelled bookings, which
-           * have no dedicated filter of their own.
-           */
-          window.filterMyTrips = function (filter) {
-            activeTripFilter = filter || 'all';
-
-            document.querySelectorAll('.trip-filter-pill').forEach((pill) => {
-              const isActive = pill.dataset.filter === activeTripFilter;
-              pill.classList.toggle('active', isActive);
-              pill.setAttribute('aria-selected', isActive ? 'true' : 'false');
-            });
-
-            const list = document.getElementById('my-trips-list');
-            if (!list) return;
-
-            const cards = Array.from(list.querySelectorAll('.customer-trip-card'));
-            let visible = 0;
-
-            cards.forEach((card) => {
-              const bucket = card.dataset.bucket || 'active';
-              const show = activeTripFilter === 'all' || bucket === activeTripFilter;
-              card.style.display = show ? '' : 'none';
-              if (show) visible += 1;
-            });
-
-            const empty = document.getElementById('trips-empty');
-            if (empty) {
-              empty.style.display = visible === 0 ? 'block' : 'none';
-
-              if (visible === 0 && cards.length > 0) {
-                const title = document.getElementById('trips-empty-title');
-                const copy = document.getElementById('trips-empty-copy');
-                if (title) title.textContent = activeTripFilter === 'completed' ? 'No completed trips yet' : 'No upcoming trips right now';
-                if (copy) {
-                  copy.textContent = activeTripFilter === 'completed'
-                    ? 'Finished rides will appear here once a trip is completed.'
-                    : 'Your upcoming & active bookings will appear here. Book a trip to get started.';
-                }
-              }
-            }
-
-            refreshTripCounters();
-          };
-
-          window.copyTripReference = async function (reference) {
-            try {
-              await navigator.clipboard.writeText(reference);
-              showToast(`Reference ${reference} copied.`, 'success');
-            } catch (err) {
-              showToast(`Reference: ${reference}`, 'info');
-            }
-          };
-
-          /**
-           * Render a booking as a compact, high-contrast trip card. Used for the instant
-           * post-booking redirect and for guest lookups.
-           */
-          function buildTripCardHtml(booking) {
-            const status = booking.status || 'Requested';
-            const bucket = tripBucket(status);
-            const ref = booking.booking_reference || '';
-            const departure = booking.departure_time
-              ? new Date(booking.departure_time).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
-              : 'Scheduled Departure';
-            const driver = booking.driver;
-            const passengers = Array.isArray(booking.passengers) ? booking.passengers.length : 0;
-            const statusSlug = String(status).toLowerCase().replace(/\s+/g, '-');
-
-            let payTag = 'Prepaid';
-            if (booking.payment_status === 'pending_upi_verification') {
-              payTag = booking.payment_mode === 'part_pay' ? 'Adv UTR Pending Admin' : 'UTR Pending Admin';
-            } else if (booking.payment_status === 'awaiting_upi_utr') {
-              payTag = 'Awaiting UPI UTR';
-            } else if (booking.payment_status === 'driver_collect') {
-              payTag = 'Driver Collects';
-            } else if (booking.payment_status === 'pay_on_pickup') {
-              payTag = 'Pay Driver';
-            } else if (booking.payment_status === 'upi_rejected') {
-              payTag = 'UTR Rejected · Pay Driver';
-            } else if (booking.payment_status === 'pending') {
-              payTag = 'Payment Pending';
-            } else if (booking.payment_mode === 'part_pay' || booking.payment_status === 'partial_paid') {
-              payTag = booking.driver_collected_at ? 'Paid in Full' : `${Number(booking.advance_percentage || 20)}% Adv Paid`;
-            } else if (booking.payment_mode === 'cash') {
-              payTag = booking.driver_collected_at ? 'Paid to Driver' : 'Pay Driver';
-            } else if (booking.payment_mode === 'full_upi' || booking.payment_gateway === 'upi_manual') {
-              payTag = 'UPI Confirmed';
-            }
-            const isBeyondUnconfirmed = Boolean(booking.is_beyond_region) && (status === 'Requested' || status === 'Bidding');
-            const showUpiPanel = (booking.payment_mode === 'full_upi' || booking.payment_gateway === 'upi_manual' || ['pending_upi_verification', 'awaiting_upi_utr', 'upi_rejected'].includes(booking.payment_status))
-              && ['pending_upi_verification', 'awaiting_upi_utr', 'upi_rejected', 'driver_collect'].includes(booking.payment_status)
-              && status !== 'Completed'
-              && status !== 'Cancelled';
-            const upiId = (window.PLATFORM_SETTINGS && window.PLATFORM_SETTINGS.upi_id) ? window.PLATFORM_SETTINGS.upi_id : 'intercitywheels@upi';
-            const cashAllowed = String(window.PLATFORM_SETTINGS?.payment_show_cash ?? '1') === '1';
-            const showDriverCollectBtn = booking.payment_collection_by !== 'driver' && cashAllowed;
-            const upiPayableNow = Number(booking.advance_amount || 0) > 0 ? booking.advance_amount : booking.total_amount;
-            const driverCollectAmt = Number(booking.balance_amount || 0) > 0 ? booking.balance_amount : booking.total_amount;
-            const upiPanelHtml = showUpiPanel ? `
-    <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:10px 12px; font-size:12px; width:100%;">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
-        <span style="font-weight:800; color:#92400e;">
-          ${(booking.payment_status === 'driver_collect' || booking.payment_collection_by === 'driver')
-                ? `Driver will collect ${tripsMoney(driverCollectAmt)} on trip completion`
-                : (booking.payment_status === 'pending_upi_verification'
-                  ? `UPI UTR <code style="font-weight:800;">${tripsEscape(booking.upi_utr || '')}</code> — Waiting Admin Confirmation`
-                  : `Pay ${tripsMoney(upiPayableNow)} to UPI ID: <code>${tripsEscape(upiId)}</code>`)}
-        </span>
-        <span style="font-size:11px; color:#78350f;">UPI ID: <strong>${tripsEscape(upiId)}</strong></span>
-      </div>
-      <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-        <input type="text" id="trip-utr-input-${tripsEscape(ref)}" class="form-control" value="${tripsEscape(booking.upi_utr || '')}" placeholder="Enter 12-digit UTR / Ref No." style="flex:1; min-width:170px; height:32px; font-size:12px; font-family:monospace; text-transform:uppercase;">
-        <button type="button" class="btn btn-xs btn-primary" onclick="submitTripUpiUtr('${tripsEscape(ref)}')">
-          <span>${booking.upi_utr ? 'Update UTR' : 'Submit UTR'}</span>
-        </button>
-        ${showDriverCollectBtn ? `
-        <button type="button" class="btn btn-xs btn-outline" onclick="switchTripToDriverCollect('${tripsEscape(ref)}')">
-          <span>Driver Collects on Completion</span>
-        </button>` : ''}
-      </div>
-    </div>` : '';
-
-            const driverTel = driver && driver.phone ? `tel:${String(driver.phone).replace(/[^0-9+]/g, '') || driver.phone}` : '';
-            const custTel = booking.customer_phone ? `tel:${String(booking.customer_phone).replace(/[^0-9+]/g, '') || booking.customer_phone}` : '';
-            const support = getPlatformSupportContact();
-
-            const driverBlock = driver
-              ? `<div class="trip-tile-line" style="font-weight:700; color:#0f172a;">${tripsEscape(driver.name)} (★${tripsEscape(driver.rating)})</div>
-       <div class="trip-tile-sub">${tripsEscape(driver.vehicle_model)} · <strong>${tripsEscape(driver.vehicle_plate)}</strong>${driver.phone ? ` · <a href="${tripsEscape(driverTel)}" class="trip-driver-tel">${tripsEscape(driver.phone)}</a>` : ''}</div>`
-              : (isBeyondUnconfirmed
-                ? `<div class="trip-tile-line" style="color:#b45309; font-weight:700;">Availability Not Guaranteed</div>
-         <div class="trip-tile-sub">Beyond service region — ride not confirmed until chauffeur accepts</div>`
-                : `<div class="trip-tile-line" style="color:${bucket === 'completed' ? '#475569' : '#92400e'}; font-weight:700;">${bucket === 'completed' ? 'Trip closed' : 'Allotment in progress'}</div>
-         <div class="trip-tile-sub">${bucket === 'completed' ? 'Completed journey' : 'Verified chauffeur assigned prior to pickup'}</div>`);
-
-            const finalBlock = bucket === 'active'
-              ? `<div class="trip-otp-tile" data-booking-part="otp">
-         <div class="trip-otp-label">Ride Start OTP</div>
-         <div class="trip-otp-code">${tripsEscape(booking.start_otp)}</div>
-         <div class="trip-otp-hint">Share with chauffeur</div>
-       </div>`
-              : `<div class="trip-state-tile ${bucket === 'completed' ? 'state-completed' : 'state-cancelled'}" data-booking-part="${bucket === 'completed' ? 'receipt status' : 'status'}">
-         <div class="trip-state-title">${bucket === 'completed' ? '✓ Trip Completed' : 'Cancelled'}</div>
-         <div class="trip-state-sub">${bucket === 'completed' ? 'Thanks for riding with us' : 'No active OTP'}</div>
-       </div>`;
-
-            return `
-    <div class="trip-card-top">
-      <div class="trip-card-title-group" data-booking-part="status summary">
-        <div class="trip-card-badges">
-          <span class="trip-ref-badge">${tripsEscape(ref)}</span>
-          <span class="trip-status-pill status-${tripsEscape(statusSlug)}">${tripsEscape(status)}</span>
-          ${isBeyondUnconfirmed ? '<span class="trip-status-pill" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a;">Out of Region · Unconfirmed</span>' : ''}
-          <span class="trip-service-tag">${tripsEscape(String(booking.service_type || '').toUpperCase())}</span>
-          <span class="trip-new-flag">Just booked</span>
-        </div>
-        <div class="trip-card-route">${tripsEscape(booking.route_summary)}</div>
-        <div class="trip-card-date">
-          <span class="material-symbols-outlined" style="font-size:13px;">schedule</span>
-          <span>${tripsEscape(departure)}</span>
-        </div>
-      </div>
-      <div class="trip-card-fare-col" data-booking-part="payment receipt">
-        <div class="trip-card-fare">${tripsMoney(booking.total_amount)}</div>
-        <div class="trip-card-pay-tag">${tripsEscape(payTag)}</div>
-      </div>
-    </div>
-
-    <div class="trip-card-grid">
-      <div class="trip-info-tile" data-booking-part="route summary">
-        <div class="trip-tile-label">Pickup &amp; Drop</div>
-        <div class="trip-tile-line"><strong>From:</strong> ${tripsEscape(booking.pickup_location)}</div>
-        <div class="trip-tile-line"><strong>To:</strong> ${tripsEscape(booking.drop_location)}</div>
-        ${booking.customer_phone ? `<div class="trip-tile-sub" style="margin-top:4px;">Passenger: <strong>${tripsEscape(booking.customer_name || 'Passenger')}</strong> · <a href="${tripsEscape(custTel)}" class="trip-driver-tel">${tripsEscape(booking.customer_phone)}</a></div>` : ''}
-      </div>
-      <div class="trip-info-tile" data-booking-part="driver">
-        <div class="trip-tile-label">Chauffeur &amp; Vehicle</div>
-        ${driverBlock}
-      </div>
-      ${finalBlock}
-    </div>
-
-    <div class="trip-card-footer" style="flex-direction:column; align-items:stretch; gap:8px;">
-      ${upiPanelHtml ? `<div data-booking-part="payment">${upiPanelHtml}</div>` : ''}
-    const ruleMax = document.getElementById('rule-bidding-max-pct');
-    if (ruleMin) ruleMin.value = String(minPct);
-    if (ruleMax) ruleMax.value = String(maxPct);
-    showToast(data.message || 'Bidding service charge limits updated.', 'success');
-  } catch (err) {
-    console.error('saveBiddingServiceChargeSettings', err);
-    showToast('Network error while saving bidding limits.', 'danger');
-  }
-};
-
-window.awardWinningBid = async function (bidId) {
-  const detail = window.biddingState.detail;
-  if (!detail) return;
-
-  const explicitId = bidId || Number(document.getElementById('bidding-detail-award')?.dataset.bidId) || null;
-
-  const body = explicitId ? { bid_id: explicitId } : {};
-
-  biddingShowError('bidding-detail-error', '');
-
-  try {
-    const res = await fetch(`/ api / admin / biddings / ${ detail.id }/award`, {
-            method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify(body),
-    });
-
-          const data = await res.json().catch(() => ({}));
-
-          if (!res.ok || !data.success) {
-            biddingShowError('bidding-detail-error', data.message || 'Could not award this bid.');
-            return;
-          }
-
-          showToast(`Approved. ${data.driver ? data.driver.name : 'Driver'} assigned — ₹${Number(data.booking.driver_payout_amount).toLocaleString('en-IN')} payout, ₹${Number(data.booking.admin_profit).toLocaleString('en-IN')} margin.`, 'success');
-
-          await window.openBiddingDetail(detail.id);
-          window.renderAdminBiddings();
-
-          if (typeof window.renderAdminBookings === 'function') {
-            window.renderAdminBookings();
-          }
-        } catch (err) {
-          console.error('awardWinningBid', err);
-          biddingShowError('bidding-detail-error', 'Network error while awarding the bid.');
-        }
-      };
-
-      window.closeBiddingSession = async function (sessionId) {
-        const id = sessionId || window.biddingState.detail?.id;
-        if (!id) return;
-
-        try {
-          const res = await fetch(`/api/admin/biddings/${id}/close`, { method: 'POST', headers: { 'Accept': 'application/json' } });
-          const data = await res.json().catch(() => ({}));
-
-          if (!res.ok || !data.success) {
-            const target = sessionId ? 'bidding-detail-error' : 'bidding-open-error';
-            biddingShowError(target, data.message || 'Could not close bidding.');
-            return;
-          }
-
-          showToast('Bidding closed.', 'success');
-
-          if (window.biddingState.detail && window.biddingState.detail.id === id) {
-            await window.openBiddingDetail(id);
-          }
-
-          window.renderAdminBiddings();
-        } catch (err) {
-          console.error('closeBiddingSession', err);
-          showToast('Network error while closing bidding.', 'danger');
-        }
-      };
-
-      window.cancelBiddingSession = async function () {
-        const detail = window.biddingState.detail;
-        if (!detail) return;
-
-        if (!window.confirm('Cancel this auction? The booking returns to the confirmed pool and the driver link stops accepting bids.')) {
-          return;
-        }
-
-        try {
-          const res = await fetch(`/api/admin/biddings/${detail.id}/cancel`, { method: 'POST', headers: { 'Accept': 'application/json' } });
-          const data = await res.json().catch(() => ({}));
-
-          if (!res.ok || !data.success) {
-            biddingShowError('bidding-detail-error', data.message || 'Could not cancel this auction.');
-            return;
-          }
-
-          showToast('Auction cancelled.', 'success');
-          await window.openBiddingDetail(detail.id);
-          window.renderAdminBiddings();
-        } catch (err) {
-          console.error('cancelBiddingSession', err);
-          biddingShowError('bidding-detail-error', 'Network error while cancelling the auction.');
-        }
-      };
-      // ==========================================
-      // MY TRIPS — booking history, filters, guest tracking
-      // ==========================================
 
       let activeTripFilter = 'all';
 
