@@ -125,17 +125,20 @@ class UpiAndDriverCollectionPaymentTest extends TestCase
         $this->assertStringContainsString('pay.intercity@okaxis', $html);
         $this->assertStringContainsString('Intercity Wheels Ops', $html);
         $this->assertStringContainsString('Send exact fare via GPay/PhonePe and submit your 12-digit UTR.', $html);
-        $this->assertStringContainsString('id="checkout-upi-details-box"', $html);
-        $this->assertStringContainsString('id="checkout-upi-utr"', $html);
-        $this->assertStringContainsString('Driver collects on completion', $html);
+        $this->assertStringContainsString('id="checkout-payment-step-modal"', $html);
+        $this->assertStringContainsString('id="step-pay-pane-method"', $html);
+        $this->assertStringContainsString('id="step-pay-pane-qr"', $html);
+        $this->assertStringContainsString('id="step-upi-qr-container"', $html);
+        $this->assertStringContainsString('id="step-modal-upi-utr"', $html);
+        $this->assertStringContainsString('Pay Driver on Completion', $html);
     }
 
-    public function test_when_razorpay_is_active_full_upi_uses_razorpay_and_when_inactive_manual_upi_acts(): void
+    public function test_when_razorpay_is_active_customer_can_choose_razorpay_or_manual_upi_channel(): void
     {
         PlatformSetting::set('upi_id', 'icw.desk@icici');
         PlatformSetting::set('upi_payee_name', 'Intercity Wheels Desk');
 
-        // 1. When Razorpay IS active, full_upi routes through Razorpay Checkout (no manual UPI box).
+        // 1. When Razorpay IS active, both payment_channel=razorpay and payment_channel=manual_upi work.
         PlatformSetting::set('payment_gateway', 'razorpay');
         PlatformSetting::set('razorpay_key_id', 'rzp_test_123');
         PlatformSetting::set('razorpay_key_secret', 'rzp_secret_123');
@@ -150,25 +153,41 @@ class UpiAndDriverCollectionPaymentTest extends TestCase
 
         $rzpHtml = $this->actingAs($this->customer)->get('/')->getContent();
         $this->assertStringContainsString('"razorpay_active":"1"', $rzpHtml);
-        $this->assertStringContainsString('id="checkout-upi-details-box" style="display:none;', $rzpHtml);
+        $this->assertStringContainsString('id="step-method-razorpay-card" style="display:flex;', $rzpHtml);
+        $this->assertStringContainsString('id="step-method-manual-upi-card"', $rzpHtml);
 
         $rzpRes = $this->actingAs($this->customer)->postJson('/api/bookings', $this->baseBookingPayload([
-            'payment_mode' => 'full_upi',
+            'payment_mode' => 'full_online',
+            'payment_channel' => 'razorpay',
         ]));
         $rzpRes->assertOk()
             ->assertJsonPath('requires_razorpay', true)
             ->assertJsonPath('booking.payment_gateway', 'razorpay')
             ->assertJsonPath('booking.payment_status', 'pending');
 
-        // 2. When Razorpay is NOT active, Manual UPI method acts (shows UPI ID + UTR Admin confirmation).
+        // Even with Razorpay active, choosing payment_channel=manual_upi uses Manual UPI + UTR verification
+        $manualWithRzpOn = $this->actingAs($this->customer)->postJson('/api/bookings', $this->baseBookingPayload([
+            'payment_mode' => 'part_pay',
+            'payment_channel' => 'manual_upi',
+            'part_pay_agreed' => true,
+            'upi_utr' => 'RZPBYPASS1234',
+        ]));
+        $manualWithRzpOn->assertOk()
+            ->assertJsonPath('requires_razorpay', false)
+            ->assertJsonPath('booking.payment_gateway', 'upi_manual')
+            ->assertJsonPath('booking.payment_status', 'pending_upi_verification')
+            ->assertJsonPath('booking.upi_utr', 'RZPBYPASS1234');
+
+        // 2. When Razorpay is NOT active, Razorpay method card is hidden and Manual UPI acts.
         PlatformSetting::set('payment_gateway', 'manual');
 
         $manualHtml = $this->actingAs($this->customer)->get('/')->getContent();
         $this->assertStringContainsString('"razorpay_active":"0"', $manualHtml);
-        $this->assertStringContainsString('id="checkout-upi-details-box" style="display:block;', $manualHtml);
+        $this->assertStringContainsString('id="step-method-razorpay-card" style="display:none;', $manualHtml);
 
         $bookRes = $this->actingAs($this->customer)->postJson('/api/bookings', $this->baseBookingPayload([
             'payment_mode' => 'full_upi',
+            'payment_channel' => 'manual_upi',
             'upi_utr' => 'utr432198765432',
             'payment_collection_by' => 'platform',
         ]));
@@ -425,5 +444,48 @@ class UpiAndDriverCollectionPaymentTest extends TestCase
         $this->actingAs($this->customer)->postJson("/api/bookings/{$ref}/upi-utr", [
             'collection_choice' => 'driver_collect',
         ])->assertStatus(422)->assertJsonValidationErrors(['collection_choice']);
+    }
+
+    public function test_admin_can_upload_custom_upi_qr_code_and_clear_it(): void
+    {
+        $fakePng = \Illuminate\Http\UploadedFile::fake()->image('my-upi-qr.png', 300, 300);
+
+        // Non-admin cannot upload QR
+        $this->actingAs($this->customer)
+            ->post('/api/admin/settings/upi-qr', ['qr_image' => $fakePng], ['Accept' => 'application/json'])
+            ->assertStatus(403);
+
+        // Admin uploads custom QR image
+        $uploadRes = $this->actingAs($this->admin)
+            ->post('/api/admin/settings/upi-qr', ['qr_image' => $fakePng], ['Accept' => 'application/json']);
+
+        $uploadRes->assertOk()
+            ->assertJsonPath('success', true);
+
+        $qrUrl = (string) $uploadRes->json('upi_qr_url');
+        $this->assertStringStartsWith('/uploads/upi-qr/upi-qr-', $qrUrl);
+        $this->assertFileExists(public_path(ltrim($qrUrl, '/')));
+
+        try {
+            // Exposed in customer checkout payload (JSON-escaped in window.PLATFORM_SETTINGS) and booking upi_details
+            $html = $this->actingAs($this->customer)->get('/')->getContent();
+            $this->assertStringContainsString(json_encode($qrUrl), $html);
+
+            $bookRes = $this->actingAs($this->customer)->postJson('/api/bookings', $this->baseBookingPayload([
+                'payment_mode' => 'full_upi',
+                'payment_channel' => 'manual_upi',
+                'upi_utr' => 'QRTEST123456',
+            ]));
+            $bookRes->assertOk()
+                ->assertJsonPath('upi_details.upi_qr_url', $qrUrl);
+
+            // Admin clears custom QR back to auto-generated
+            $clearRes = $this->actingAs($this->admin)->postJson('/api/admin/settings/upi-qr', ['remove' => true]);
+            $clearRes->assertOk()
+                ->assertJsonPath('upi_qr_url', '')
+                ->assertJsonPath('settings.upi_qr_url', '');
+        } finally {
+            @unlink(public_path(ltrim($qrUrl, '/')));
+        }
     }
 }

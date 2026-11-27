@@ -228,6 +228,7 @@ class PlatformSettingAdminController extends Controller
             'upi_id' => 'nullable|string|max:120',
             'upi_payee_name' => 'nullable|string|max:120',
             'upi_instructions' => 'nullable|string|max:500',
+            'upi_qr_url' => 'nullable|string|max:2000',
             'payment_gateway' => 'nullable|string|in:manual,razorpay',
             'razorpay_mode' => 'nullable|string|in:test,live',
             'razorpay_key_id' => 'nullable|string|max:120',
@@ -298,6 +299,9 @@ class PlatformSettingAdminController extends Controller
         if ($request->has('upi_instructions')) {
             PlatformSetting::set('upi_instructions', trim((string) ($validated['upi_instructions'] ?? '')));
         }
+        if ($request->has('upi_qr_url')) {
+            PlatformSetting::set('upi_qr_url', trim((string) ($validated['upi_qr_url'] ?? '')));
+        }
 
         if ($request->has('razorpay_mode') && ! empty($validated['razorpay_mode'])) {
             PlatformSetting::set('razorpay_mode', $validated['razorpay_mode']);
@@ -317,6 +321,54 @@ class PlatformSettingAdminController extends Controller
             'message' => $gateway === 'razorpay'
                 ? 'Checkout payment options & Razorpay gateway updated!'
                 : 'Checkout payment options & advance percentage updated!',
+            'settings' => PlatformSetting::allAdminSettings(),
+        ]);
+    }
+
+    /**
+     * Upload or clear a custom UPI QR Code image for checkout.
+     */
+    public function uploadUpiQr(Request $request)
+    {
+        if (! auth()->check() || auth()->user()->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Admin role required.',
+            ], 403);
+        }
+
+        if ($request->boolean('remove')) {
+            PlatformSetting::set('upi_qr_url', '');
+
+            return response()->json([
+                'success' => true,
+                'upi_qr_url' => '',
+                'message' => 'Custom QR cleared. Dynamic QR generated from UPI ID will be used.',
+                'settings' => PlatformSetting::allAdminSettings(),
+            ]);
+        }
+
+        $request->validate([
+            'qr_image' => 'required|file|mimes:png,jpg,jpeg,webp,gif|max:2048',
+        ]);
+
+        $file = $request->file('qr_image');
+        $dir = public_path('uploads/upi-qr');
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        $ext = strtolower($file->getClientOriginalExtension() ?: 'png');
+        $filename = 'upi-qr-'.time().'-'.substr(bin2hex(random_bytes(4)), 0, 8).'.'.$ext;
+        $file->move($dir, $filename);
+
+        $publicUrl = '/uploads/upi-qr/'.$filename;
+        PlatformSetting::set('upi_qr_url', $publicUrl);
+
+        return response()->json([
+            'success' => true,
+            'upi_qr_url' => $publicUrl,
+            'message' => 'Custom UPI QR code uploaded!',
             'settings' => PlatformSetting::allAdminSettings(),
         ]);
     }

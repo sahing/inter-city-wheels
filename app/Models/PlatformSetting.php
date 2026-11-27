@@ -85,6 +85,7 @@ class PlatformSetting extends Model
             'upi_id' => 'intercitywheels@upi',
             'upi_payee_name' => 'Intercity Wheels',
             'upi_instructions' => 'Scan QR or pay to this UPI ID via GPay, PhonePe, Paytm, or BHIM, then enter your 12-digit UTR / Ref ID for Admin confirmation (or choose Driver Collection on completion).',
+            'upi_qr_url' => '',
             'payment_gateway' => 'manual',
             'razorpay_mode' => 'test',
             'razorpay_key_id' => '',

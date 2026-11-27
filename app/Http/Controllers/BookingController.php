@@ -68,6 +68,7 @@ class BookingController extends Controller
             'luggage_carrier' => 'nullable|boolean',
             'coupon_code' => 'nullable|string|max:40',
             'payment_mode' => 'nullable|string|in:full_online,part_pay,full_upi,cash,full,advance',
+            'payment_channel' => 'nullable|string|in:razorpay,manual_upi,driver_collect',
             'upi_utr' => 'nullable|string|min:6|max:40|regex:/^[A-Za-z0-9\-_]+$/',
             'payment_collection_by' => 'nullable|string|in:platform,driver',
             'part_pay_agreed' => 'nullable|boolean',
@@ -178,19 +179,30 @@ class BookingController extends Controller
         $configuredAdvancePct = max(1.0, min(99.0, (float) ($paymentConfig['payment_advance_pct'] ?? 20)));
         $isBeyondRegion = ! $isBus && (bool) ($trip['beyond_region'] ?? false);
         $upiUtr = ! empty($validated['upi_utr']) ? strtoupper(trim((string) $validated['upi_utr'])) : null;
+        $paymentChannel = $validated['payment_channel'] ?? null;
         $requestedCollectionBy = $validated['payment_collection_by'] ?? null;
-        if ($requestedCollectionBy === 'driver' && ($paymentConfig['payment_show_cash'] ?? '1') !== '1') {
+        $wantsDriverCollect = $paymentMode === 'cash'
+            || $paymentChannel === 'driver_collect'
+            || $requestedCollectionBy === 'driver';
+
+        if (($paymentChannel === 'driver_collect' || $requestedCollectionBy === 'driver') && ($paymentConfig['payment_show_cash'] ?? '1') !== '1') {
             throw ValidationException::withMessages([
                 'payment_collection_by' => 'Driver collection on completion is currently disabled by platform settings.',
             ]);
         }
 
-        // When Razorpay is active and configured, all non-cash online/UPI modes
-        // route through Razorpay Checkout. When Razorpay is NOT active, the
-        // Manual UPI method acts (UPI ID + Admin UTR confirmation / Driver collection).
+        if ($paymentChannel === 'razorpay' && ! $this->razorpay->isReady()) {
+            throw ValidationException::withMessages([
+                'payment_channel' => 'Razorpay gateway is currently inactive. Please use Manual UPI.',
+            ]);
+        }
+
+        // Customer may choose Razorpay Gateway OR Manual UPI when both are available.
         // Never capture upfront online payment or pre-confirm a ride whose availability
         // outside our regional area is not guaranteed.
-        $useRazorpay = $paymentMode !== 'cash'
+        $useRazorpay = ! $wantsDriverCollect
+            && $paymentChannel !== 'manual_upi'
+            && $upiUtr === null
             && ! $isBeyondRegion
             && $this->razorpay->isReady();
 
@@ -208,10 +220,11 @@ class BookingController extends Controller
                 $isBeyondRegion,
                 $selectedUnits,
                 $paymentMode,
+                $paymentChannel,
                 $configuredAdvancePct,
                 $useRazorpay,
                 $upiUtr,
-                $requestedCollectionBy
+                $wantsDriverCollect
             ) {
                 $berths = new Collection;
 
@@ -231,12 +244,12 @@ class BookingController extends Controller
                 // P0-5: every booking starts Requested; nothing may be created
                 // already Confirmed or Completed.
                 $totalAmount = (float) $quote['total_amount'];
-                $isManualUpiActive = ! $useRazorpay && $paymentMode !== 'cash' && (
-                    $paymentMode === 'full_upi'
+                $isManualUpiActive = ! $useRazorpay && ! $wantsDriverCollect && (
+                    $paymentChannel === 'manual_upi'
+                    || $paymentMode === 'full_upi'
                     || $upiUtr !== null
-                    || $requestedCollectionBy === 'driver'
                 );
-                $isDriverCollectOverride = ! $useRazorpay && $paymentMode !== 'cash' && $requestedCollectionBy === 'driver';
+                $isDriverCollectOverride = ! $useRazorpay && $paymentMode !== 'cash' && $wantsDriverCollect;
 
                 [$advancePct, $advanceAmount, $balanceAmount] = match (true) {
                     $paymentMode === 'cash' || $isDriverCollectOverride => [0.0, 0.0, $totalAmount],
@@ -428,6 +441,7 @@ class BookingController extends Controller
                 'upi_id' => $paymentConfig['upi_id'] ?? 'intercitywheels@upi',
                 'upi_payee_name' => $paymentConfig['upi_payee_name'] ?? 'Intercity Wheels',
                 'upi_instructions' => $paymentConfig['upi_instructions'] ?? '',
+                'upi_qr_url' => $paymentConfig['upi_qr_url'] ?? '',
                 'amount' => (float) ($booking->advance_amount > 0 ? $booking->advance_amount : $booking->total_amount),
                 'upi_utr' => $booking->upi_utr,
                 'payment_status' => $booking->payment_status,

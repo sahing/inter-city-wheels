@@ -331,6 +331,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::post('/admin/settings/pricing-conditions', [PlatformSettingAdminController::class, 'updatePricingConditions'])->name('api.admin.settings.pricingConditions');
     Route::post('/admin/settings/bidding', [PlatformSettingAdminController::class, 'updateBiddingSettings'])->name('api.admin.settings.bidding');
     Route::post('/admin/settings/payment-options', [PlatformSettingAdminController::class, 'updatePaymentSettings'])->name('api.admin.settings.paymentOptions');
+    Route::post('/admin/settings/upi-qr', [PlatformSettingAdminController::class, 'uploadUpiQr'])->name('api.admin.settings.upiQr');
     Route::post('/admin/settings/invoice-template', [PlatformSettingAdminController::class, 'updateInvoiceSettings'])->name('api.admin.settings.invoiceTemplate');
     Route::post('/admin/settings/legal-pages', [PlatformSettingAdminController::class, 'updateLegalPages'])->name('api.admin.settings.legalPages');
 
