@@ -82,6 +82,9 @@ class PlatformSetting extends Model
             'payment_show_full_upi' => '1',
             'payment_show_cash' => '1',
             'payment_default_option' => 'full_online',
+            'upi_id' => 'intercitywheels@upi',
+            'upi_payee_name' => 'Intercity Wheels',
+            'upi_instructions' => 'Scan QR or pay to this UPI ID via GPay, PhonePe, Paytm, or BHIM, then enter your 12-digit UTR / Ref ID for Admin confirmation (or choose Driver Collection on completion).',
             'payment_gateway' => 'manual',
             'razorpay_mode' => 'test',
             'razorpay_key_id' => '',
@@ -108,6 +111,9 @@ class PlatformSetting extends Model
 
         $secret = static::get('razorpay_key_secret', '');
         $resolved['razorpay_secret_configured'] = ($secret !== null && trim($secret) !== '') ? '1' : '0';
+
+        $rzpCreds = static::razorpayCredentials();
+        $resolved['razorpay_active'] = ($rzpCreds['enabled'] && $rzpCreds['key_id'] !== '' && $rzpCreds['key_secret'] !== '') ? '1' : '0';
 
         return $resolved;
     }

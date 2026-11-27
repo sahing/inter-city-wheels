@@ -12,6 +12,7 @@ use App\Services\BookingReferenceGenerator;
 use App\Services\BookingWorkflow;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class BookingAdminController extends Controller
@@ -334,6 +335,105 @@ class BookingAdminController extends Controller
     }
 
     /**
+     * Admin verifies a customer's UPI UTR or assigns collection responsibility to the driver.
+     */
+    public function verifyPayment(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'action' => 'required|string|in:confirm_utr,reject_assign_driver,mark_paid',
+            'upi_utr' => 'nullable|string|min:6|max:40|regex:/^[A-Za-z0-9\-_]+$/',
+            'payment_notes' => 'nullable|string|max:255',
+        ]);
+
+        $booking = Booking::findOrFail($id);
+        $action = $validated['action'];
+        $submittedUtr = ! empty($validated['upi_utr'])
+            ? strtoupper(trim((string) $validated['upi_utr']))
+            : null;
+        $effectiveUtr = $submittedUtr ?: ($booking->upi_utr ?: null);
+
+        if ($action === 'confirm_utr' && $effectiveUtr === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Enter or verify the UPI UTR reference number before confirming.',
+            ], 422);
+        }
+
+        $updated = DB::transaction(function () use ($booking, $action, $effectiveUtr, $validated, $request) {
+            $locked = Booking::whereKey($booking->id)->lockForUpdate()->firstOrFail();
+
+            if ($action === 'reject_assign_driver') {
+                $note = trim((string) ($validated['payment_notes'] ?? ''))
+                    ?: 'UPI UTR not confirmed — Driver will collect ₹'.number_format((float) $locked->total_amount).' on trip completion';
+
+                $attrs = [
+                    'payment_status' => 'driver_collect',
+                    'payment_collection_by' => 'driver',
+                    'advance_amount' => 0.0,
+                    'balance_amount' => (float) $locked->total_amount,
+                    'upi_verified_at' => null,
+                    'upi_verified_by' => $request->user()?->id,
+                    'payment_notes' => $note,
+                ];
+                if ($effectiveUtr !== null) {
+                    $attrs['upi_utr'] = $effectiveUtr;
+                }
+
+                $targetStatus = ($locked->status === BookingWorkflow::REQUESTED && ! $locked->is_beyond_region)
+                    ? BookingWorkflow::CONFIRMED
+                    : (string) $locked->status;
+
+                return $this->workflow->forceTransition($locked, $targetStatus, $attrs);
+            }
+
+            $note = trim((string) ($validated['payment_notes'] ?? ''))
+                ?: ($effectiveUtr ? "UPI UTR {$effectiveUtr} confirmed by Admin" : 'Payment confirmed by Admin');
+
+            $isPartPay = $locked->payment_mode === 'part_pay';
+            $advPct = max(1.0, min(99.0, (float) ($locked->advance_percentage ?: 20)));
+            $advAmt = $isPartPay
+                ? ((float) $locked->advance_amount > 0 ? (float) $locked->advance_amount : round(((float) $locked->total_amount) * ($advPct / 100), 2))
+                : (float) $locked->total_amount;
+            $balAmt = $isPartPay
+                ? round(max(0.0, ((float) $locked->total_amount) - $advAmt), 2)
+                : 0.0;
+
+            $attrs = [
+                'payment_status' => $isPartPay && $balAmt > 0 ? 'partial_paid' : 'paid',
+                'payment_collection_by' => $isPartPay && $balAmt > 0 ? 'driver' : 'platform',
+                'advance_amount' => $advAmt,
+                'balance_amount' => $balAmt,
+                'upi_verified_at' => now(),
+                'upi_verified_by' => $request->user()?->id,
+                'payment_notes' => $note,
+            ];
+            if ($effectiveUtr !== null) {
+                $attrs['upi_utr'] = $effectiveUtr;
+            }
+
+            $targetStatus = ($locked->status === BookingWorkflow::REQUESTED && ! $locked->is_beyond_region)
+                ? BookingWorkflow::CONFIRMED
+                : (string) $locked->status;
+
+            return $this->workflow->forceTransition($locked, $targetStatus, $attrs);
+        });
+
+        $updated->load('driver');
+        if ($updated->service_type !== 'bus' && $updated->status === BookingWorkflow::CONFIRMED) {
+            $this->bidding->openForNewBooking($updated);
+        }
+        $this->notifications->paymentVerificationUpdated($updated, $action);
+
+        return response()->json([
+            'success' => true,
+            'message' => $action === 'reject_assign_driver'
+                ? 'Collection assigned to Driver upon trip completion.'
+                : 'UPI payment confirmed by Admin!',
+            'booking' => $updated->fresh('driver'),
+        ]);
+    }
+
+    /**
      * Stage to keep or move to after a driver change when the caller did not
      * name one explicitly. Pre-pickup bookings advance to "Driver Assigned";
      * a started, completed or cancelled trip keeps its stage so a correction
@@ -437,25 +537,35 @@ class BookingAdminController extends Controller
             'payment' => [
                 'method' => match ($booking->payment_mode) {
                     'part_pay' => 'Part Pay ('.((float) $booking->advance_percentage).'% Advance Online + Balance to Driver)',
-                    'full_upi' => 'Full UPI Payment',
+                    'full_upi' => $booking->payment_collection_by === 'driver'
+                        ? 'Full UPI (Driver to Collect on Completion)'
+                        : 'Full UPI Payment (Direct UPI / UTR)',
                     'cash' => 'Pay Cash / UPI to Chauffeur',
                     default => 'Online Escrow (Prepaid UPI / Card)',
                 },
                 'payment_mode' => $booking->payment_mode ?? 'full_online',
                 'payment_gateway' => $booking->payment_gateway ?? 'manual',
                 'payment_status' => $booking->payment_status ?? 'paid',
+                'payment_collection_by' => $booking->payment_collection_by ?? 'platform',
+                'upi_utr' => $booking->upi_utr,
+                'upi_verified_at' => $booking->upi_verified_at?->toIso8601String(),
+                'driver_collected_amount' => $booking->driver_collected_amount,
                 'advance_percentage' => $booking->advance_percentage ?? 100.0,
                 'advance_amount' => $booking->advance_amount ?? (float) $booking->total_amount,
                 'balance_amount' => $booking->balance_amount ?? 0.0,
                 'transaction_ref' => $booking->razorpay_payment_id
-                    ?: ('TXN-'.strtoupper(substr(md5($booking->booking_reference), 0, 10))),
+                    ?: ($booking->upi_utr ? 'UTR-'.$booking->upi_utr : ('TXN-'.strtoupper(substr(md5($booking->booking_reference), 0, 10)))),
                 'status' => match ($booking->payment_status) {
                     'pending' => 'PAYMENT PENDING',
+                    'pending_upi_verification' => 'UPI UTR PENDING ADMIN CONFIRMATION',
+                    'awaiting_upi_utr' => 'AWAITING UPI UTR',
+                    'driver_collect' => 'DRIVER TO COLLECT ON COMPLETION',
+                    'upi_rejected' => 'UTR REJECTED · DRIVER COLLECTS',
                     'partial_paid' => 'PARTIAL ADVANCE ('.((float) $booking->advance_percentage).'%)',
                     'pay_on_pickup' => 'PAY TO CHAUFFEUR',
                     default => match ($booking->payment_mode) {
-                        'part_pay' => 'PARTIAL ADVANCE ('.((float) $booking->advance_percentage).'%)',
-                        'cash' => 'PAY TO CHAUFFEUR',
+                        'part_pay' => $booking->driver_collected_at ? 'PAID IN FULL (DRIVER SETTLED)' : 'PARTIAL ADVANCE ('.((float) $booking->advance_percentage).'%)',
+                        'cash' => $booking->driver_collected_at ? 'COLLECTED BY CHAUFFEUR' : 'PAY TO CHAUFFEUR',
                         default => 'PAID IN FULL',
                     },
                 },

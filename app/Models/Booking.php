@@ -22,6 +22,8 @@ class Booking extends Model
         'selected_units' => 'array',
         'dynamic_fields_data' => 'array',
         'departure_time' => 'datetime',
+        'upi_verified_at' => 'datetime',
+        'driver_collected_at' => 'datetime',
         'is_beyond_region' => 'boolean',
         'base_fare' => 'float',
         'toll_fare' => 'float',
@@ -32,6 +34,7 @@ class Booking extends Model
         'advance_amount' => 'float',
         'balance_amount' => 'float',
         'driver_payout_amount' => 'float',
+        'driver_collected_amount' => 'float',
     ];
 
     public function driver()

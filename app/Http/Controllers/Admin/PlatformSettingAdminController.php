@@ -225,6 +225,9 @@ class PlatformSettingAdminController extends Controller
             'payment_show_full_upi' => 'required|boolean',
             'payment_show_cash' => 'required|boolean',
             'payment_default_option' => 'nullable|string|in:full_online,part_pay,full_upi,cash',
+            'upi_id' => 'nullable|string|max:120',
+            'upi_payee_name' => 'nullable|string|max:120',
+            'upi_instructions' => 'nullable|string|max:500',
             'payment_gateway' => 'nullable|string|in:manual,razorpay',
             'razorpay_mode' => 'nullable|string|in:test,live',
             'razorpay_key_id' => 'nullable|string|max:120',
@@ -278,6 +281,23 @@ class PlatformSettingAdminController extends Controller
         PlatformSetting::set('payment_show_cash', $enabledMap['cash'] ? '1' : '0');
         PlatformSetting::set('payment_default_option', $defaultOption);
         PlatformSetting::set('payment_gateway', $gateway);
+
+        if ($request->has('upi_id')) {
+            $upiId = trim((string) ($validated['upi_id'] ?? ''));
+            if ($enabledMap['full_upi'] && $upiId === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Enter a valid UPI ID when Full UPI payment is enabled.',
+                ], 422);
+            }
+            PlatformSetting::set('upi_id', $upiId ?: 'intercitywheels@upi');
+        }
+        if ($request->has('upi_payee_name')) {
+            PlatformSetting::set('upi_payee_name', trim((string) ($validated['upi_payee_name'] ?? '')) ?: 'Intercity Wheels');
+        }
+        if ($request->has('upi_instructions')) {
+            PlatformSetting::set('upi_instructions', trim((string) ($validated['upi_instructions'] ?? '')));
+        }
 
         if ($request->has('razorpay_mode') && ! empty($validated['razorpay_mode'])) {
             PlatformSetting::set('razorpay_mode', $validated['razorpay_mode']);

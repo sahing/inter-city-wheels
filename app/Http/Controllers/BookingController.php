@@ -68,6 +68,9 @@ class BookingController extends Controller
             'luggage_carrier' => 'nullable|boolean',
             'coupon_code' => 'nullable|string|max:40',
             'payment_mode' => 'nullable|string|in:full_online,part_pay,full_upi,cash,full,advance',
+            'upi_utr' => 'nullable|string|min:6|max:40|regex:/^[A-Za-z0-9\-_]+$/',
+            'payment_collection_by' => 'nullable|string|in:platform,driver',
+            'part_pay_agreed' => 'nullable|boolean',
             'dynamic_fields' => 'nullable|array',
             'from_lat' => 'nullable|numeric|between:-90,90',
             'from_lng' => 'nullable|numeric|between:-180,180',
@@ -174,12 +177,26 @@ class BookingController extends Controller
         );
         $configuredAdvancePct = max(1.0, min(99.0, (float) ($paymentConfig['payment_advance_pct'] ?? 20)));
         $isBeyondRegion = ! $isBus && (bool) ($trip['beyond_region'] ?? false);
+        $upiUtr = ! empty($validated['upi_utr']) ? strtoupper(trim((string) $validated['upi_utr'])) : null;
+        $requestedCollectionBy = $validated['payment_collection_by'] ?? null;
+        if ($requestedCollectionBy === 'driver' && ($paymentConfig['payment_show_cash'] ?? '1') !== '1') {
+            throw ValidationException::withMessages([
+                'payment_collection_by' => 'Driver collection on completion is currently disabled by platform settings.',
+            ]);
+        }
+
+        // When Razorpay is active and configured, all non-cash online/UPI modes
+        // route through Razorpay Checkout. When Razorpay is NOT active, the
+        // Manual UPI method acts (UPI ID + Admin UTR confirmation / Driver collection).
         // Never capture upfront online payment or pre-confirm a ride whose availability
         // outside our regional area is not guaranteed.
-        $useRazorpay = $paymentMode !== 'cash' && ! $isBeyondRegion && $this->razorpay->isReady();
+        $useRazorpay = $paymentMode !== 'cash'
+            && ! $isBeyondRegion
+            && $this->razorpay->isReady();
 
         try {
             [$booking, $quote] = DB::transaction(function () use (
+                $request,
                 $validated,
                 $trip,
                 $tripType,
@@ -192,7 +209,9 @@ class BookingController extends Controller
                 $selectedUnits,
                 $paymentMode,
                 $configuredAdvancePct,
-                $useRazorpay
+                $useRazorpay,
+                $upiUtr,
+                $requestedCollectionBy
             ) {
                 $berths = new Collection;
 
@@ -212,21 +231,65 @@ class BookingController extends Controller
                 // P0-5: every booking starts Requested; nothing may be created
                 // already Confirmed or Completed.
                 $totalAmount = (float) $quote['total_amount'];
-                [$advancePct, $advanceAmount, $balanceAmount] = match ($paymentMode) {
-                    'part_pay' => [
+                $isManualUpiActive = ! $useRazorpay && $paymentMode !== 'cash' && (
+                    $paymentMode === 'full_upi'
+                    || $upiUtr !== null
+                    || $requestedCollectionBy === 'driver'
+                );
+                $isDriverCollectOverride = ! $useRazorpay && $paymentMode !== 'cash' && $requestedCollectionBy === 'driver';
+
+                [$advancePct, $advanceAmount, $balanceAmount] = match (true) {
+                    $paymentMode === 'cash' || $isDriverCollectOverride => [0.0, 0.0, $totalAmount],
+                    $paymentMode === 'part_pay' => [
                         $configuredAdvancePct,
                         $adv = round($totalAmount * ($configuredAdvancePct / 100), 2),
                         round(max(0.0, $totalAmount - $adv), 2),
                     ],
-                    'cash' => [0.0, 0.0, $totalAmount],
                     default => [100.0, $totalAmount, 0.0],
                 };
 
-                $initialPaymentStatus = $paymentMode === 'cash'
-                    ? 'pay_on_pickup'
-                    : ($isBeyondRegion
-                        ? 'pending_availability'
-                        : ($useRazorpay ? 'pending' : ($paymentMode === 'part_pay' ? 'partial_paid' : 'paid')));
+                $collectionBy = match (true) {
+                    $paymentMode === 'cash' || $isDriverCollectOverride || $paymentMode === 'part_pay' => 'driver',
+                    default => 'platform',
+                };
+
+                $paymentGateway = match (true) {
+                    $paymentMode === 'cash' => 'manual',
+                    $useRazorpay => 'razorpay',
+                    $isManualUpiActive => 'upi_manual',
+                    default => 'manual',
+                };
+
+                if ($isBeyondRegion) {
+                    $initialPaymentStatus = 'pending_availability';
+                } elseif ($paymentMode === 'cash') {
+                    $initialPaymentStatus = 'pay_on_pickup';
+                } elseif ($isDriverCollectOverride) {
+                    $initialPaymentStatus = 'driver_collect';
+                } elseif ($isManualUpiActive) {
+                    $initialPaymentStatus = $upiUtr !== null ? 'pending_upi_verification' : 'awaiting_upi_utr';
+                } elseif ($useRazorpay) {
+                    $initialPaymentStatus = 'pending';
+                } elseif ($paymentMode === 'part_pay') {
+                    $initialPaymentStatus = 'partial_paid';
+                } else {
+                    $initialPaymentStatus = 'paid';
+                }
+
+                $partPayAgreementNote = ($paymentMode === 'part_pay' && $request->boolean('part_pay_agreed'))
+                    ? 'Customer agreed to pay remaining balance & additional charges (if any) on trip completion'
+                    : null;
+
+                $paymentNotes = match (true) {
+                    $isDriverCollectOverride => 'Customer chose driver collection on trip completion',
+                    $isManualUpiActive && $upiUtr !== null => 'UPI UTR submitted — awaiting Admin confirmation',
+                    $isManualUpiActive => 'Awaiting UPI UTR submission or driver collection',
+                    default => null,
+                };
+
+                if ($partPayAgreementNote !== null) {
+                    $paymentNotes = $paymentNotes ? "{$paymentNotes} | {$partPayAgreementNote}" : $partPayAgreementNote;
+                }
 
                 $booking = $this->workflow->create([
                     'booking_reference' => $this->references->generate(),
@@ -256,8 +319,11 @@ class BookingController extends Controller
                     'advance_percentage' => $advancePct,
                     'advance_amount' => $advanceAmount,
                     'balance_amount' => $balanceAmount,
-                    'payment_gateway' => $useRazorpay ? 'razorpay' : 'manual',
+                    'payment_gateway' => $paymentGateway,
                     'payment_status' => $initialPaymentStatus,
+                    'upi_utr' => $upiUtr,
+                    'payment_collection_by' => $collectionBy,
+                    'payment_notes' => $paymentNotes,
                     'start_otp' => $this->references->startOtp(),
                     'dynamic_fields_data' => $validated['dynamic_fields'] ?? [],
                 ]);
@@ -347,11 +413,26 @@ class BookingController extends Controller
                 ? 'Complete Razorpay payment to confirm your trip.'
                 : ($isBeyondRegion
                     ? 'Booking request recorded (Beyond Service Region). Ride is NOT confirmed and vehicle availability is NOT guaranteed until dispatch confirms.'
-                    : 'Trip booked successfully!'),
+                    : ($booking->payment_gateway === 'upi_manual'
+                        ? ($booking->payment_collection_by === 'driver' && $booking->payment_status === 'driver_collect'
+                            ? 'Booking created! Driver will collect ₹'.number_format((float) $booking->total_amount).' on trip completion.'
+                            : ($booking->upi_utr
+                                ? 'Booking created! Your UPI UTR ('.$booking->upi_utr.') has been submitted for Admin confirmation.'
+                                : 'Booking created! Pay to the UPI ID and submit your UTR in My Trips, or pay the driver on completion.'))
+                        : 'Trip booked successfully!')),
             'is_beyond_region' => $isBeyondRegion,
             'availability_guaranteed' => ! $isBeyondRegion,
             'region_note' => $booking->region_note,
             'requires_razorpay' => $useRazorpay,
+            'upi_details' => $booking->payment_gateway === 'upi_manual' ? [
+                'upi_id' => $paymentConfig['upi_id'] ?? 'intercitywheels@upi',
+                'upi_payee_name' => $paymentConfig['upi_payee_name'] ?? 'Intercity Wheels',
+                'upi_instructions' => $paymentConfig['upi_instructions'] ?? '',
+                'amount' => (float) ($booking->advance_amount > 0 ? $booking->advance_amount : $booking->total_amount),
+                'upi_utr' => $booking->upi_utr,
+                'payment_status' => $booking->payment_status,
+                'payment_collection_by' => $booking->payment_collection_by,
+            ] : null,
             'razorpay' => $razorpayOrder ? [
                 'key' => $razorpayOrder['key_id'],
                 'order_id' => $razorpayOrder['order_id'],
@@ -373,6 +454,99 @@ class BookingController extends Controller
                 now()->addDays(7),
                 ['reference' => $booking->booking_reference]
             ),
+        ]);
+    }
+
+    /**
+     * Submit or update a UPI UTR for Admin verification, or switch to driver collection on completion.
+     */
+    public function submitUpiUtr(Request $request, string $reference)
+    {
+        $validated = $request->validate([
+            'collection_choice' => 'nullable|string|in:utr,driver_collect',
+            'upi_utr' => 'nullable|string|min:6|max:40|regex:/^[A-Za-z0-9\-_]+$/',
+        ]);
+
+        $booking = Booking::where('booking_reference', strtoupper(trim($reference)))->firstOrFail();
+
+        if (! $booking->isOwnedBy($request->user())) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not authorized to update payment details for this booking.',
+            ], 403);
+        }
+
+        if ($booking->payment_status === 'paid' && $booking->upi_verified_at !== null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This UPI payment has already been verified by Admin.',
+            ], 422);
+        }
+
+        $choice = $validated['collection_choice'] ?? 'utr';
+
+        if ($choice === 'driver_collect') {
+            if (PlatformSetting::get('payment_show_cash', '1') !== '1') {
+                throw ValidationException::withMessages([
+                    'collection_choice' => 'Driver collection on completion is currently disabled by platform settings.',
+                ]);
+            }
+
+            $booking->forceFill([
+                'payment_collection_by' => 'driver',
+                'payment_status' => 'driver_collect',
+                'advance_amount' => 0.0,
+                'balance_amount' => (float) $booking->total_amount,
+                'upi_verified_at' => null,
+                'upi_verified_by' => null,
+                'payment_notes' => 'Customer selected driver collection on trip completion',
+            ])->save();
+
+            $fresh = $booking->fresh(['driver']);
+            $this->notifications->upiUtrSubmitted($fresh);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Updated! Your assigned driver will collect ₹'.number_format((float) $fresh->total_amount).' when the drive is completed.',
+                'booking' => $fresh,
+            ]);
+        }
+
+        $utr = strtoupper(trim((string) ($validated['upi_utr'] ?? '')));
+        if ($utr === '') {
+            throw ValidationException::withMessages([
+                'upi_utr' => 'Please enter your UPI UTR / Transaction Reference number.',
+            ]);
+        }
+
+        $isPartPay = $booking->payment_mode === 'part_pay';
+        $advAmt = $isPartPay && (float) $booking->advance_amount > 0
+            ? (float) $booking->advance_amount
+            : (float) $booking->total_amount;
+        $balAmt = $isPartPay
+            ? round(max(0.0, ((float) $booking->total_amount) - $advAmt), 2)
+            : 0.0;
+
+        $booking->forceFill([
+            'payment_mode' => $isPartPay ? 'part_pay' : ($booking->payment_mode ?: 'full_upi'),
+            'payment_gateway' => 'upi_manual',
+            'upi_utr' => $utr,
+            'payment_collection_by' => ($isPartPay && $balAmt > 0) ? 'driver' : 'platform',
+            'payment_status' => 'pending_upi_verification',
+            'advance_amount' => $advAmt,
+            'balance_amount' => $balAmt,
+            'upi_verified_at' => null,
+            'upi_verified_by' => null,
+            'payment_notes' => 'UTR submitted by customer — pending Admin verification',
+        ])->save();
+
+        $fresh = $booking->fresh(['driver']);
+        $this->notifications->upiUtrSubmitted($fresh);
+
+        return response()->json([
+            'success' => true,
+            'message' => "UTR {$utr} submitted! Admin will confirm your UPI payment shortly.",
+            'booking' => $fresh,
         ]);
     }
 

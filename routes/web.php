@@ -153,6 +153,7 @@ Route::prefix('api')->middleware(['auth'])->group(function () {
     // Confirming a booking requires a signed-in customer, so every trip is
     // owned by an account. Guests are sent to the one-tap login gate.
     Route::post('/bookings', [BookingController::class, 'store'])->name('api.bookings.store');
+    Route::post('/bookings/{reference}/upi-utr', [BookingController::class, 'submitUpiUtr'])->name('api.bookings.upiUtr');
     Route::post('/bookings/{reference}/razorpay/order', [BookingController::class, 'createRazorpayOrder'])->name('api.bookings.razorpay.order');
     Route::post('/bookings/{reference}/razorpay/verify', [BookingController::class, 'verifyRazorpayPayment'])->name('api.bookings.razorpay.verify');
 });
@@ -232,6 +233,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::get('/admin/bookings/{id}', [BookingAdminController::class, 'show'])->name('api.admin.bookings.show');
     Route::put('/admin/bookings/{id}', [BookingAdminController::class, 'update'])->name('api.admin.bookings.update');
     Route::post('/admin/bookings/{id}/allot-driver', [BookingAdminController::class, 'allotDriver'])->name('api.admin.bookings.allotDriver');
+    Route::post('/admin/bookings/{id}/verify-payment', [BookingAdminController::class, 'verifyPayment'])->name('api.admin.bookings.verifyPayment');
     Route::get('/admin/bookings/{id}/invoice', [BookingAdminController::class, 'invoice'])->name('api.admin.bookings.invoice');
 
     // Users & Drivers Directory

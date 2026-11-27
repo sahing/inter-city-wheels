@@ -817,6 +817,8 @@
                             $defaultPayMode = in_array($paySettings['payment_default_option'] ?? '', $enabledPayList, true)
                                 ? $paySettings['payment_default_option']
                                 : $enabledPayList[0];
+                            $isRazorpayActive = ($paySettings['razorpay_active'] ?? '0') === '1';
+                            $showInitialUpiBox = ! $isRazorpayActive && $defaultPayMode !== 'cash';
                         @endphp
                         <!-- Payment Method Radios -->
                         <div id="checkout-payment-modes-box" style="margin-top:14px; background:#f8fafc; border-radius:8px; padding:10px 12px; border:1px solid #e2e8f0;">
@@ -825,7 +827,7 @@
                                 @if($showFullOnline)
                                 <label class="checkout-pay-opt" data-mode="full_online" style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12.5px; cursor:pointer;">
                                     <span style="display:flex; align-items:center; gap:8px;">
-                                        <input type="radio" name="rental_pay_mode" value="full_online" {{ $defaultPayMode === 'full_online' ? 'checked' : '' }} onchange="updateTotalCabFare()">
+                                        <input type="radio" name="rental_pay_mode" value="full_online" {{ $defaultPayMode === 'full_online' ? 'checked' : '' }} onchange="onCheckoutPayModeChange(this.value)">
                                         <span>Pay Full Online (Card / NetBanking / UPI)</span>
                                     </span>
                                     <strong class="checkout-pay-amt" data-amt-for="full_online" style="color:#0f172a; font-size:12px;"></strong>
@@ -834,16 +836,20 @@
                                 @if($showPartPay)
                                 <label class="checkout-pay-opt" data-mode="part_pay" style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12.5px; cursor:pointer;">
                                     <span style="display:flex; align-items:center; gap:8px;">
-                                        <input type="radio" name="rental_pay_mode" value="part_pay" {{ $defaultPayMode === 'part_pay' ? 'checked' : '' }} onchange="updateTotalCabFare()">
+                                        <input type="radio" name="rental_pay_mode" value="part_pay" {{ $defaultPayMode === 'part_pay' ? 'checked' : '' }} onchange="onCheckoutPayModeChange(this.value)">
                                         <span>Part Pay ({{ $payAdvLabel }}% Advance, Balance to Driver)</span>
                                     </span>
                                     <strong class="checkout-pay-amt" data-amt-for="part_pay" style="color:#0284c7; font-size:12px;"></strong>
                                 </label>
+                                <div id="checkout-part-pay-agreed-badge" style="display:none; font-size:11px; color:#15803d; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:4px 8px; margin-left:20px;">
+                                    ✓ Agreed to pay remaining balance &amp; additional charges (if any) on trip completion.
+                                    <a href="javascript:void(0)" onclick="openCheckoutPaymentStepModal(1)" style="color:#0284c7; font-weight:700; margin-left:4px;">Review</a>
+                                </div>
                                 @endif
                                 @if($showFullUpi)
                                 <label class="checkout-pay-opt" data-mode="full_upi" style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12.5px; cursor:pointer;">
                                     <span style="display:flex; align-items:center; gap:8px;">
-                                        <input type="radio" name="rental_pay_mode" value="full_upi" {{ $defaultPayMode === 'full_upi' ? 'checked' : '' }} onchange="updateTotalCabFare()">
+                                        <input type="radio" name="rental_pay_mode" value="full_upi" {{ $defaultPayMode === 'full_upi' ? 'checked' : '' }} onchange="onCheckoutPayModeChange(this.value)">
                                         <span>Full UPI (Instant Zero-Fee UPI)</span>
                                     </span>
                                     <strong class="checkout-pay-amt" data-amt-for="full_upi" style="color:#0f172a; font-size:12px;"></strong>
@@ -852,13 +858,64 @@
                                 @if($showCash)
                                 <label class="checkout-pay-opt" data-mode="cash" style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12.5px; cursor:pointer;">
                                     <span style="display:flex; align-items:center; gap:8px;">
-                                        <input type="radio" name="rental_pay_mode" value="cash" {{ $defaultPayMode === 'cash' ? 'checked' : '' }} onchange="updateTotalCabFare()">
+                                        <input type="radio" name="rental_pay_mode" value="cash" {{ $defaultPayMode === 'cash' ? 'checked' : '' }} onchange="onCheckoutPayModeChange(this.value)">
                                         <span>Pay Later to Chauffeur (Cash / UPI)</span>
                                     </span>
                                     <strong class="checkout-pay-amt" data-amt-for="cash" style="color:#16a34a; font-size:12px;">₹0 now</strong>
                                 </label>
                                 @endif
                             </div>
+
+                            <!-- Direct UPI ID, QR & UTR / Driver Collection Box (acts whenever Razorpay is NOT active for non-cash modes) -->
+                            <div id="checkout-upi-details-box" style="display:{{ $showInitialUpiBox ? 'block' : 'none' }}; margin-top:10px; padding:12px; background:#ffffff; border:1px solid #cbd5e1; border-left:4px solid #d49b4c; border-radius:8px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                                    <div>
+                                        <div style="font-size:11px; font-weight:800; color:#92400e; text-transform:uppercase; letter-spacing:0.04em;">Direct UPI Payment Details</div>
+                                        <div style="font-size:12px; color:#334155;">Payee: <strong id="checkout-upi-payee-text">{{ $paySettings['upi_payee_name'] ?? 'Intercity Wheels' }}</strong></div>
+                                    </div>
+                                    <div style="text-align:right;">
+                                        <div style="font-size:10.5px; color:#64748b;">Amount to Pay</div>
+                                        <strong id="checkout-upi-amount-text" style="font-size:15px; color:#0f172a;">₹2,550</strong>
+                                    </div>
+                                </div>
+
+                                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:#f8fafc; border:1px dashed #94a3b8; border-radius:6px; padding:8px 10px; margin-bottom:8px; flex-wrap:wrap;">
+                                    <div style="min-width:0;">
+                                        <div style="font-size:10.5px; color:#64748b; font-weight:700;">UPI ID (VPA)</div>
+                                        <code id="checkout-upi-id-text" style="font-size:13px; font-weight:800; color:#0f172a; word-break:break-all;">{{ $paySettings['upi_id'] ?? 'intercitywheels@upi' }}</code>
+                                    </div>
+                                    <div style="display:flex; gap:6px; flex-shrink:0;">
+                                        <button type="button" class="btn btn-xs btn-outline" onclick="copyCheckoutUpiId()" style="font-size:11px; padding:4px 8px;">
+                                            <span class="material-symbols-outlined" style="font-size:13px;">content_copy</span>
+                                            <span>Copy UPI ID</span>
+                                        </button>
+                                        <a id="checkout-upi-app-link" href="upi://pay?pa={{ urlencode($paySettings['upi_id'] ?? 'intercitywheels@upi') }}&pn={{ urlencode($paySettings['upi_payee_name'] ?? 'Intercity Wheels') }}&cu=INR" class="btn btn-xs btn-primary" style="font-size:11px; padding:4px 8px; text-decoration:none;">
+                                            <span class="material-symbols-outlined" style="font-size:13px;">qr_code_2</span>
+                                            <span>Open UPI App</span>
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <div id="checkout-upi-instructions-text" style="font-size:11.5px; color:#475569; line-height:1.45; margin-bottom:10px;">
+                                    {{ $paySettings['upi_instructions'] ?? 'Scan QR or pay to this UPI ID via any UPI app, then enter your 12-digit UTR / Ref ID for Admin confirmation (or choose Driver Collection on completion).' }}
+                                </div>
+
+                                <div style="display:flex; flex-direction:column; gap:6px; border-top:1px solid #e2e8f0; padding-top:8px;">
+                                    <label style="display:flex; align-items:flex-start; gap:7px; font-size:12px; color:#0f172a; cursor:pointer;">
+                                        <input type="radio" name="upi_settlement_choice" value="submit_utr" checked onchange="toggleUpiSettlementChoice()" style="margin-top:2px;">
+                                        <span><strong>I have paid via UPI</strong> — Submit UTR for Admin confirmation</span>
+                                    </label>
+                                    <div id="checkout-upi-utr-row" style="padding-left:20px;">
+                                        <input type="text" id="checkout-upi-utr" class="form-control" maxlength="40" placeholder="Enter 12-digit UTR / UPI Ref No. (e.g. 432198765432)" style="font-size:12px; height:34px; font-family:monospace; text-transform:uppercase;">
+                                        <div style="font-size:10.5px; color:#64748b; margin-top:3px;">Admin will verify this UTR and confirm your payment.</div>
+                                    </div>
+                                    <label id="checkout-driver-collect-opt" style="display:{{ $showCash ? 'flex' : 'none' }}; align-items:flex-start; gap:7px; font-size:12px; color:#0f172a; cursor:pointer;">
+                                        <input type="radio" name="upi_settlement_choice" value="driver_collect" onchange="toggleUpiSettlementChoice()" style="margin-top:2px;">
+                                        <span><strong>Driver collects on completion</strong> — Pay chauffeur when the drive is completed</span>
+                                    </label>
+                                </div>
+                            </div>
+
                             <div id="checkout-payable-now-bar" style="margin-top:8px; padding-top:8px; border-top:1px dashed #cbd5e1; display:flex; justify-content:space-between; font-size:12px; color:#334155;">
                                 <span>Payable Now to Confirm:</span>
                                 <strong id="checkout-payable-now-amount" style="color:#0f172a;">₹2,550</strong>
@@ -1254,12 +1311,23 @@
                                 : ($cb->status === 'Cancelled' ? 'cancelled' : 'active');
                             $isHighlighted = $bookedHighlight !== null && strtoupper((string) $cb->booking_reference) === $bookedHighlight;
                             $payBadgeLabel = match($cb->payment_mode) {
-                                'part_pay' => ((float) $cb->advance_percentage).'% Adv Paid',
-                                'cash' => 'Pay Driver',
-                                'full_upi' => 'Paid UPI',
+                                'part_pay' => $cb->driver_collected_at ? 'Paid in Full' : (((float) $cb->advance_percentage).'% Adv Paid'),
+                                'cash' => $cb->driver_collected_at ? 'Paid to Driver' : 'Pay Driver',
+                                'full_upi' => match($cb->payment_status) {
+                                    'paid' => 'UPI Confirmed',
+                                    'pending_upi_verification' => 'UTR Pending Admin',
+                                    'awaiting_upi_utr' => 'Awaiting UPI UTR',
+                                    'driver_collect' => 'Driver Collects',
+                                    'upi_rejected' => 'UTR Rejected · Pay Driver',
+                                    default => $cb->payment_collection_by === 'driver' ? 'Driver Collects' : 'UPI Confirmed',
+                                },
                                 default => 'Prepaid',
                             };
-                        @endphp
+                            $showCustomerUpiPanel = ($cb->payment_mode === 'full_upi' || $cb->payment_gateway === 'upi_manual' || in_array($cb->payment_status, ['pending_upi_verification', 'awaiting_upi_utr', 'upi_rejected'], true))
+                                && in_array($cb->payment_status, ['pending_upi_verification', 'awaiting_upi_utr', 'upi_rejected', 'driver_collect'], true)
+                                && ! in_array($cb->status, ['Completed', 'Cancelled'], true);
+                            $custPaySettings = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
+@endphp
                         <div class="customer-trip-card{{ $isHighlighted ? ' is-new' : '' }}" id="trip-card-{{ $cb->booking_reference }}" data-bucket="{{ $bucket }}" data-status="{{ $cb->status }}">
                             <div class="trip-card-top">
                                 <div class="trip-card-title-group">
@@ -1329,16 +1397,48 @@
                                 @endif
                             </div>
 
-                            <div class="trip-card-footer">
+                            <div class="trip-card-footer" style="flex-direction:column; align-items:stretch; gap:8px;">
+                                @if($showCustomerUpiPanel)
+                                <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:10px 12px; font-size:12px;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+                                        <span style="font-weight:800; color:#92400e;">
+                                            @if($cb->payment_status === 'driver_collect' || $cb->payment_collection_by === 'driver')
+                                                Driver will collect ₹{{ number_format($cb->total_amount) }} on trip completion
+                                            @elseif($cb->payment_status === 'pending_upi_verification')
+                                                UPI UTR <code style="font-weight:800;">{{ $cb->upi_utr }}</code> — Waiting Admin Confirmation
+                                            @else
+                                                Pay ₹{{ number_format($cb->total_amount) }} to UPI ID: <code>{{ $custPaySettings['upi_id'] ?? 'intercitywheels@upi' }}</code>
+                                            @endif
+                                        </span>
+                                        <span style="font-size:11px; color:#78350f;">UPI ID: <strong>{{ $custPaySettings['upi_id'] ?? 'intercitywheels@upi' }}</strong></span>
+                                    </div>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                                        <input type="text" id="trip-utr-input-{{ $cb->booking_reference }}" class="form-control" value="{{ $cb->upi_utr }}" placeholder="Enter 12-digit UTR / Ref No." style="flex:1; min-width:170px; height:32px; font-size:12px; font-family:monospace; text-transform:uppercase;">
+                                        <button type="button" class="btn btn-xs btn-primary" onclick="submitTripUpiUtr('{{ $cb->booking_reference }}')">
+                                            <span>{{ $cb->upi_utr ? 'Update UTR' : 'Submit UTR' }}</span>
+                                        </button>
+                                        @if($cb->payment_collection_by !== 'driver' && ($custPaySettings['payment_show_cash'] ?? '1') === '1')
+                                        <button type="button" class="btn btn-xs btn-outline" onclick="switchTripToDriverCollect('{{ $cb->booking_reference }}')">
+                                            <span>Driver Collects on Completion</span>
+                                        </button>
+                                        @endif
+                                    </div>
+                                </div>
+                                @endif
+                                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                                 <span class="trip-footer-meta">
                                     @if($cb->is_beyond_region && in_array($cb->status, ['Requested', 'Bidding'], true))
                                         Pending Availability Check (Beyond Region)
-                                    @elseif($cb->payment_mode === 'part_pay' && $cb->balance_amount > 0)
+                                    @elseif($cb->payment_mode === 'part_pay' && $cb->balance_amount > 0 && !$cb->driver_collected_at)
                                         Balance to driver: <strong>₹{{ number_format($cb->balance_amount) }}</strong>
+                                    @elseif($cb->payment_collection_by === 'driver' && !$cb->driver_collected_at)
+                                        Driver collects on completion: <strong>₹{{ number_format($cb->balance_amount > 0 ? $cb->balance_amount : $cb->total_amount) }}</strong>
+                                    @elseif($cb->payment_mode === 'full_upi' && $cb->payment_status === 'pending_upi_verification')
+                                        UTR {{ $cb->upi_utr }} pending Admin confirmation
                                     @elseif(is_array($cb->passengers) && count($cb->passengers) > 0)
                                         {{ count($cb->passengers) }} passenger(s)
                                     @else
-                                        Escrow Verified
+                                        {{ $cb->payment_status === 'paid' && $cb->upi_utr ? 'UPI Verified ('.$cb->upi_utr.')' : 'Escrow Verified' }}
                                     @endif
                                 </span>
                                 <div class="trip-card-actions">
@@ -1356,6 +1456,7 @@
                                         <span class="material-symbols-outlined" style="font-size:14px;">confirmation_number</span>
                                         <span>{{ $bucket === 'active' ? 'Digital Boarding Pass' : 'View Trip Ticket' }}</span>
                                     </button>
+                                </div>
                                 </div>
                             </div>
                         </div>
@@ -1594,7 +1695,19 @@
                                             $tripBucket = $dt->status === 'Started'
                                                 ? 'started'
                                                 : ($dt->status === 'Completed' ? 'completed' : 'assigned');
-                                        @endphp
+                                            $driverCollectDue = 0.0;
+                                            if ($dt->driver_collected_at === null) {
+                                                if ($dt->payment_mode === 'part_pay' && (float) $dt->balance_amount > 0) {
+                                                    $driverCollectDue = (float) $dt->balance_amount;
+                                                } elseif (
+                                                    $dt->payment_collection_by === 'driver'
+                                                    || in_array($dt->payment_status, ['pay_on_pickup', 'driver_collect', 'upi_rejected', 'pending_upi_verification', 'awaiting_upi_utr'], true)
+                                                ) {
+                                                    $driverCollectDue = (float) ($dt->balance_amount > 0 ? $dt->balance_amount : $dt->total_amount);
+                                                }
+                                            }
+                                            $isUpiPendingAdmin = in_array($dt->payment_status, ['pending_upi_verification', 'awaiting_upi_utr'], true);
+                @endphp
                                         <tr class="driver-trip-row" id="driver-trip-box-{{ $dt->id }}" data-trip-bucket="{{ $tripBucket }}">
                                             <td>
                                                 <span class="booking-ref-link">{{ $dt->booking_reference }}</span>
@@ -1629,6 +1742,15 @@
                                                     <div class="cell-primary-text text-tabular" style="color:var(--success);">₹{{ number_format($dt->total_amount) }}</div>
                                                     <div class="cell-subtext">All-inclusive</div>
                                                 @endif
+                                                @if($dt->driver_collected_at !== null)
+                                                    <div class="cell-subtext" style="color:#16a34a; font-weight:700;">Collected ₹{{ number_format((float) $dt->driver_collected_amount) }}</div>
+                                                @elseif($driverCollectDue > 0)
+                                                    <div class="cell-subtext" style="color:{{ $isUpiPendingAdmin ? '#b45309' : '#d97706' }}; font-weight:700;">
+                                                        {{ $isUpiPendingAdmin ? 'UPI Unconfirmed · Collect ₹'.number_format($driverCollectDue).' if unpaid' : 'Collect ₹'.number_format($driverCollectDue).' on Completion' }}
+                                                    </div>
+                                                @else
+                                                    <div class="cell-subtext" style="color:#15803d; font-weight:700;">Prepaid (Confirmed)</div>
+                                                @endif
                                             </td>
                                             <td>
                                                 <div id="driver-trip-actions-{{ $dt->id }}" style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
@@ -1642,14 +1764,14 @@
                                                             </button>
                                                         </div>
                                                     @elseif($dt->status === 'Started')
-                                                        <button type="button" class="btn btn-sm btn-accent" style="height:28px; padding:0 10px; font-size:11px;" onclick="completeDriverTrip({{ $dt->id }})">
+                                                        <button type="button" class="btn btn-sm btn-accent" style="height:28px; padding:0 10px; font-size:11px;" onclick="completeDriverTrip({{ $dt->id }}, {{ $driverCollectDue }}, '{{ $dt->payment_status ?? '' }}')">
                                                             <span class="material-symbols-outlined" style="font-size:14px;">flag</span>
-                                                            <span>Complete Trip &amp; Settle</span>
+                                                            <span>{{ $driverCollectDue > 0 ? 'Collect ₹'.number_format($driverCollectDue).' & Complete' : 'Complete Trip & Settle' }}</span>
                                                         </button>
                                                     @else
                                                         <span style="color:var(--success); font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;">
                                                             <span class="material-symbols-outlined" style="font-size:15px;">verified</span>
-                                                            <span>Trip completed &amp; payout credited.</span>
+                                                            <span>Trip completed &amp; payout settled.</span>
                                                         </span>
                                                     @endif
                                                 </div>
@@ -2072,7 +2194,7 @@
                             </li>
                             @php
                                 $pendingDiscoveredCount = ($discoveredLocations ?? collect())->where('approval_status', 'pending')->count();
-                            @endphp
+    @endphp
                             <li class="admin-nav-item">
                                 <a href="javascript:void(0)" class="admin-nav-link" data-section="locations" onclick="switchAdminSection('locations')">
                                     <span class="material-symbols-outlined admin-nav-icon">pin_drop</span>
@@ -2562,9 +2684,29 @@
                                                     <div class="cell-primary-text text-tabular" style="font-weight:800; color:#0f172a;">
                                                         ₹{{ number_format($b->total_amount) }}
                                                     </div>
+                                                    @php
+                                                        $adminPayDot = $b->status === 'Cancelled'
+                                                            ? 'bg-danger'
+                                                            : (in_array($b->payment_status, ['pending_availability', 'pending_upi_verification', 'awaiting_upi_utr', 'pending', 'driver_collect', 'pay_on_pickup', 'upi_rejected'], true)
+                                                                ? 'bg-warning'
+                                                                : 'bg-success');
+                                                        $adminPayLabel = match($b->payment_status) {
+                                                            'pending_availability' => 'Unconfirmed / Out of Region',
+                                                            'pending_upi_verification' => 'UPI Pending Admin'.($b->upi_utr ? ' (UTR: '.$b->upi_utr.')' : ''),
+                                                            'awaiting_upi_utr' => 'Awaiting UPI UTR',
+                                                            'driver_collect' => 'Driver Collects ₹'.number_format($b->balance_amount > 0 ? $b->balance_amount : $b->total_amount),
+                                                            'upi_rejected' => 'UTR Rejected · Driver Collects',
+                                                            'pay_on_pickup' => 'Pay Driver ₹'.number_format($b->balance_amount > 0 ? $b->balance_amount : $b->total_amount),
+                                                            'partial_paid' => 'Part Paid (Bal ₹'.number_format($b->balance_amount).' Driver)',
+                                                            'pending' => 'Online Payment Pending',
+                                                            default => $b->payment_mode === 'full_upi'
+                                                                ? ($b->driver_collected_at ? 'Collected by Driver' : 'UPI Confirmed'.($b->upi_utr ? ' ('.$b->upi_utr.')' : ''))
+                                                                : ($b->driver_collected_at ? 'Driver Collected ₹'.number_format((float) $b->driver_collected_amount) : 'Prepaid (Escrow)'),
+                                                        };
+                            @endphp
                                                     <div class="cell-subtext">
-                                                        <span class="status-indicator-dot {{ $b->status === 'Cancelled' ? 'bg-danger' : ($b->payment_status === 'pending_availability' ? 'bg-warning' : 'bg-success') }}"></span>
-                                                        <span>{{ $b->payment_status === 'pending_availability' ? 'Unconfirmed / Out of Region' : ($b->payment_status === 'pay_on_pickup' ? 'Pay on Pickup' : 'Prepaid (Escrow)') }}</span>
+                                                        <span class="status-indicator-dot {{ $adminPayDot }}"></span>
+                                                        <span>{{ $adminPayLabel }}</span>
                                                     </div>
                                                 </td>
                                                 <td id="booking-driver-cell-{{ $b->id }}">
@@ -2699,7 +2841,7 @@
                                                     $trips = $driver->trips_count;
                                                 }
                                                 $isSelfAdmin = Auth::id() === $u->id && $u->role === 'admin';
-                                            @endphp
+                    @endphp
                                             <tr id="user-row-{{ $u->id }}" data-id="{{ $u->id }}" data-role="{{ $u->role }}" data-search="{{ strtolower($u->name . ' ' . $u->email . ' ' . $u->phone . ' ' . $u->role . ' ' . ($driver ? $driver->vehicle_plate . ' ' . $driver->vehicle_model : '')) }}">
                                                 <td>
                                                     <div style="display:flex; align-items:center; gap:8px;">
@@ -3204,7 +3346,7 @@
                             if ($activeRouteCarTypes->isEmpty()) {
                                 $activeRouteCarTypes = ($allCarTypes ?? collect())->values();
                             }
-                        @endphp
+@endphp
                         <div class="admin-section" id="admin-sec-booking-types">
                             <div class="card" style="margin-bottom:20px;">
                                 <div class="card-header" style="flex-wrap:wrap; gap:12px;">
@@ -3419,7 +3561,7 @@
                                                 @forelse($allCabRoutes as $cr)
                                                 @php
                                                     $discFactor = max(0, 1 - (($cr->roundtrip_discount_pct ?? 0) / 100));
-                                                @endphp
+                        @endphp
                                                 <tr id="admin-bt-rt-route-row-{{ $cr->id }}" data-route-id="{{ $cr->id }}" data-status="{{ $cr->is_active ? 'active' : 'inactive' }}" data-search="{{ strtolower($cr->from_city . ' ' . $cr->to_city) }}">
                                                     <td>
                                                         <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
@@ -3446,7 +3588,7 @@
                                                                 @php
                                                                     $ctOneWay = $cr->getFareForCarType($ct->category_key, (float) $ct->rate_per_km);
                                                                     $ctRtFare = round(($ctOneWay * 2) * $discFactor);
-                                                                @endphp
+                                        @endphp
                                                                 <span>{{ $ct->name }}: <strong>₹{{ number_format($ctRtFare) }}</strong></span>
                                                             @endforeach
                                                         </div>
@@ -3797,7 +3939,7 @@
                                     }
                                 }
                             }
-                        @endphp
+@endphp
                         <div class="admin-section" id="admin-sec-fleet">
                             <div class="card">
                                 <div class="card-header" style="flex-wrap:wrap; gap:12px;">
@@ -3864,7 +4006,7 @@
                                                     $plateCompact,
                                                     $driver->fleet_category,
                                                 ]))));
-                                            @endphp
+                    @endphp
                                             <tr class="admin-fleet-row" data-search="{{ $fleetSearchBlob }}" data-category="{{ strtolower((string) $driver->fleet_category) }}">
                                                 <td>
                                                     <div style="display:flex; align-items:center; gap:10px;">
@@ -4028,7 +4170,7 @@
                                 $adminPaySettings = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
                                 $adminAdvPct = $adminPaySettings['payment_advance_pct'] ?? '20';
                                 $adminPayDefault = $adminPaySettings['payment_default_option'] ?? 'full_online';
-                            @endphp
+    @endphp
                             <div class="card" style="margin-top:20px;" id="admin-payment-options-card">
                                 <div class="card-header" style="flex-wrap:wrap; gap:10px;">
                                     <div>
@@ -4088,6 +4230,36 @@
                                         </label>
                                     </div>
 
+                                    <!-- Direct UPI ID & Admin UTR Verification Configuration -->
+                                    @php
+                                        $adminUpiId = $adminPaySettings['upi_id'] ?? 'intercitywheels@upi';
+                                        $adminUpiPayee = $adminPaySettings['upi_payee_name'] ?? 'Intercity Wheels';
+                                        $adminUpiInstructions = $adminPaySettings['upi_instructions'] ?? 'Scan QR or pay to this UPI ID via GPay, PhonePe, Paytm, or BHIM, then enter your 12-digit UTR / Ref ID for Admin confirmation (or choose Driver Collection on completion).';
+            @endphp
+                                    <div style="border-top:1px dashed #cbd5e1; padding-top:16px; margin-bottom:16px;" id="admin-upi-settings-box">
+                                        <div style="margin-bottom:10px;">
+                                            <div style="font-size:13.5px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                                                <span class="material-symbols-outlined" style="color:#d49b4c; font-size:19px;">qr_code_2</span>
+                                                <span>Direct UPI Payment Details (Shown to Customer at Checkout)</span>
+                                            </div>
+                                            <div style="font-size:11.5px; color:#64748b; margin-top:2px;">Customers who choose Full UPI see this UPI ID, submit their UTR for Admin confirmation, or choose Driver collection on trip completion.</div>
+                                        </div>
+                                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label class="form-label" for="setting-upi-id">Platform UPI ID (VPA)</label>
+                                                <input type="text" id="setting-upi-id" class="form-control" value="{{ $adminUpiId }}" placeholder="intercitywheels@upi">
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label class="form-label" for="setting-upi-payee-name">UPI Payee / Account Name</label>
+                                                <input type="text" id="setting-upi-payee-name" class="form-control" value="{{ $adminUpiPayee }}" placeholder="Intercity Wheels">
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:0; grid-column:1 / -1;">
+                                                <label class="form-label" for="setting-upi-instructions">UPI Checkout Instructions</label>
+                                                <input type="text" id="setting-upi-instructions" class="form-control" value="{{ $adminUpiInstructions }}" placeholder="Pay to this UPI ID and enter your 12-digit UTR...">
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <!-- Razorpay Payment Gateway Configuration -->
                                     @php
                                         $rzpGateway = $adminPaySettings['payment_gateway'] ?? 'manual';
@@ -4095,7 +4267,7 @@
                                         $rzpKeyId = $adminPaySettings['razorpay_key_id'] ?? '';
                                         $rzpDisplayName = $adminPaySettings['razorpay_display_name'] ?? 'Intercity Wheels';
                                         $rzpSecretSet = ($adminPaySettings['razorpay_secret_configured'] ?? '0') === '1';
-                                    @endphp
+            @endphp
                                     <div style="border-top:1px dashed #cbd5e1; padding-top:16px; margin-bottom:16px;" id="admin-razorpay-gateway-box">
                                         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
                                             <div>
@@ -4106,7 +4278,7 @@
                                                         {{ $rzpGateway === 'razorpay' ? 'RAZORPAY ACTIVE' : 'MANUAL / ESCROW' }}
                                                     </span>
                                                 </div>
-                                                <div style="font-size:11.5px; color:#64748b; margin-top:2px;">Enable Razorpay Checkout for Part Pay, Full Pay Online, and Full UPI bookings.</div>
+                                                <div style="font-size:11.5px; color:#64748b; margin-top:2px;">Enable Razorpay Checkout for online payments. When Razorpay is OFF, the Manual UPI method (UPI ID + Admin UTR Confirmation / Driver Collection) acts automatically.</div>
                                             </div>
 
                                             <label style="display:flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid #bae6fd; background:#f0f9ff; border-radius:8px; cursor:pointer; font-size:12.5px; font-weight:700; color:#0369a1;">
@@ -4168,7 +4340,7 @@
                                 $invCfg = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
                                 $invStyle = $invCfg['invoice_template_style'] ?? 'classic_gst';
                                 $invAccent = $invCfg['invoice_accent_color'] ?? '#d49b4c';
-                            @endphp
+    @endphp
                             <div class="card" style="margin-top:20px;" id="admin-invoice-template-card">
                                 <div class="card-header" style="flex-wrap:wrap; gap:10px;">
                                     <div>
@@ -4403,7 +4575,7 @@
                             <!-- Editable Privacy Policy & Terms & Conditions Page Content -->
                             @php
                                 $legalCfg = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
-                            @endphp
+    @endphp
                             <div class="card" style="margin-top:20px;" id="admin-legal-pages-card">
                                 <div class="card-header" style="flex-wrap:wrap; gap:10px;">
                                     <div>
@@ -4488,7 +4660,7 @@
                                 $clerkEnabled = ($clerkCfg['clerk_login_enabled'] ?? '0') === '1';
                                 $clerkPubKey = $clerkCfg['clerk_publishable_key'] ?? '';
                                 $clerkSecretSet = ($clerkCfg['clerk_secret_configured'] ?? '0') === '1';
-                            @endphp
+    @endphp
                             <div class="card" style="margin-top:20px;" id="admin-clerk-auth-card">
                                 <div class="card-header" style="flex-wrap:wrap; gap:10px;">
                                     <div>
@@ -4580,7 +4752,7 @@
                                                     'dismissed' => 'Dismissed',
                                                     default => ($disc->is_beyond_region ? 'Beyond Region · Cached' : 'OSM Cached'),
                                                 };
-                                            @endphp
+                    @endphp
                                             <tr id="admin-discovered-row-{{ $disc->id }}">
                                                 <td>
                                                     <strong>{{ $disc->name }}</strong>
@@ -4952,7 +5124,7 @@
                                             <option value="all">All Vehicles & Coaches</option>
                                             @php
                                                 $coaches = $allSeatLayouts->pluck('coach_code')->unique();
-                                            @endphp
+                    @endphp
                                             @foreach($coaches as $cc)
                                                 <option value="{{ $cc }}">Coach / Vehicle #{{ $cc }}</option>
                                             @endforeach
@@ -5317,6 +5489,131 @@
             @endif
         </nav>
 </main>
+
+<!-- ======================================================== -->
+<!-- MODAL: STEP-BY-STEP PARTIAL PAY AGREEMENT & UPI UTR FLOW -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="checkout-payment-step-modal">
+    <div class="modal-dialog" style="max-width: 500px;">
+        <div class="modal-header">
+            <div>
+                <h3 class="modal-title" style="display:flex; align-items:center; gap:8px;">
+                    <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">verified_user</span>
+                    <span id="step-pay-modal-title">Step-by-Step Payment Confirmation</span>
+                </h3>
+            </div>
+            <button type="button" class="modal-close-btn" onclick="closeModal('checkout-payment-step-modal')">×</button>
+        </div>
+
+        <div class="modal-body" style="padding:16px 20px;">
+            <!-- Step Progress Bar -->
+            <div id="step-pay-progress" style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
+                <span id="step-pill-1" style="flex:1; text-align:center; padding:6px 10px; border-radius:999px; font-size:11.5px; font-weight:800; background:#fef3c7; color:#92400e; border:1px solid #f59e0b;">
+                    1. Balance Agreement
+                </span>
+                <span id="step-progress-arrow" class="material-symbols-outlined" style="font-size:16px; color:#94a3b8;">arrow_forward</span>
+                <span id="step-pill-2" style="flex:1; text-align:center; padding:6px 10px; border-radius:999px; font-size:11.5px; font-weight:700; background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1;">
+                    2. UPI Payment &amp; UTR
+                </span>
+            </div>
+
+            <!-- STEP 1: PARTIAL PAY BALANCE & ADDITIONAL CHARGES AGREEMENT -->
+            <div id="step-pay-pane-agree">
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+                    <div style="font-size:11px; font-weight:800; color:#64748b; text-transform:uppercase; margin-bottom:8px;">Part Pay Breakdown</div>
+                    <div style="display:flex; justify-content:space-between; font-size:13px; color:#334155; margin-bottom:4px;">
+                        <span>Total Trip Fare:</span>
+                        <strong id="step-agree-total">₹0</strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:13px; color:#0284c7; margin-bottom:4px;">
+                        <span>Advance Payable Now (<span id="step-agree-adv-pct">20</span>%):</span>
+                        <strong id="step-agree-adv">₹0</strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:13.5px; color:#b45309; border-top:1px dashed #cbd5e1; padding-top:6px; margin-top:4px;">
+                        <span>Remaining Balance on Completion:</span>
+                        <strong id="step-agree-bal">₹0</strong>
+                    </div>
+                </div>
+
+                <div style="background:#fffbeb; border:1px solid #f59e0b; border-left:4px solid #d97706; border-radius:8px; padding:12px 14px;">
+                    <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; font-size:12.5px; color:#0f172a; line-height:1.5; margin:0;">
+                        <input type="checkbox" id="step-part-pay-agree-checkbox" style="margin-top:3px; width:16px; height:16px; flex-shrink:0;">
+                        <span>
+                            <strong>I agree to pay the remaining balance (<span id="step-agree-bal-inline">₹0</span>) and additional charges if any</strong> (such as extra km, waiting charges, state tolls, parking, or night stay) to the driver/platform during the completion of the trip.
+                        </span>
+                    </label>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('checkout-payment-step-modal')">Cancel</button>
+                    <button type="button" id="step-agree-next-btn" class="btn btn-primary btn-sm" onclick="proceedFromPartPayAgreement()">
+                        <span id="step-agree-next-label">I Agree &amp; Continue to UTR Entry</span>
+                        <span class="material-symbols-outlined" style="font-size:16px;">arrow_forward</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- STEP 2: PAY VIA UPI ID & ENTER UTR -->
+            <div id="step-pay-pane-utr" style="display:none;">
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div>
+                            <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Payee</div>
+                            <strong id="step-utr-payee" style="font-size:13px; color:#0f172a;">Intercity Wheels</strong>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">Payable Now</div>
+                            <strong id="step-utr-amount-now" style="font-size:18px; color:var(--primary);">₹0</strong>
+                        </div>
+                    </div>
+
+                    <div id="step-utr-balance-note" style="display:none; font-size:11.5px; color:#15803d; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:6px 8px; margin-bottom:8px;"></div>
+
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:#ffffff; border:1px dashed #94a3b8; border-radius:6px; padding:8px 10px; flex-wrap:wrap;">
+                        <div>
+                            <div style="font-size:10.5px; color:#64748b; font-weight:700;">UPI ID (VPA)</div>
+                            <code id="step-utr-upi-id" style="font-size:13.5px; font-weight:800; color:#0f172a;">intercitywheels@upi</code>
+                        </div>
+                        <div style="display:flex; gap:6px;">
+                            <button type="button" class="btn btn-xs btn-outline" onclick="copyCheckoutUpiId()">
+                                <span class="material-symbols-outlined" style="font-size:13px;">content_copy</span>
+                                <span>Copy</span>
+                            </button>
+                            <a id="step-utr-upi-link" href="#" class="btn btn-xs btn-primary" style="text-decoration:none;">
+                                <span class="material-symbols-outlined" style="font-size:13px;">qr_code_2</span>
+                                <span>Open UPI App</span>
+                            </a>
+                        </div>
+                    </div>
+                    <div id="step-utr-instructions" style="font-size:11.5px; color:#475569; margin-top:8px; line-height:1.45;"></div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    <label style="display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:#0f172a; cursor:pointer;">
+                        <input type="radio" name="step_modal_upi_choice" value="submit_utr" checked onchange="toggleStepModalUpiChoice()" style="margin-top:2px;">
+                        <span><strong>I have paid via UPI</strong> — Enter UTR for Admin Confirmation</span>
+                    </label>
+                    <div id="step-modal-utr-input-wrap" style="padding-left:22px;">
+                        <input type="text" id="step-modal-upi-utr" class="form-control" maxlength="40" placeholder="Enter 12-digit UTR / UPI Ref No. (e.g. 432198765432)" style="font-size:13px; height:36px; font-family:monospace; text-transform:uppercase;">
+                        <div style="font-size:11px; color:#64748b; margin-top:3px;">Admin will verify your UTR and confirm payment.</div>
+                    </div>
+                    <label id="step-modal-driver-collect-opt" style="display:{{ ($paySettings['payment_show_cash'] ?? '1') === '1' ? 'flex' : 'none' }}; align-items:flex-start; gap:8px; font-size:12.5px; color:#0f172a; cursor:pointer;">
+                        <input type="radio" name="step_modal_upi_choice" value="driver_collect" onchange="toggleStepModalUpiChoice()" style="margin-top:2px;">
+                        <span><strong>Driver collects on completion</strong> — Pay full amount when the drive completes</span>
+                    </label>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; gap:8px; margin-top:16px;">
+                    <button type="button" id="step-utr-back-btn" class="btn btn-secondary btn-sm" onclick="goBackStepModal()">Back</button>
+                    <button type="button" id="step-utr-process-btn" class="btn btn-primary btn-sm" onclick="confirmStepModalUpiAndProcess()">
+                        <span class="material-symbols-outlined" style="font-size:16px;">check_circle</span>
+                        <span>Confirm &amp; Process Booking</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- ======================================================== -->
 <!-- MODAL: PAYMENT GATEWAY                                   -->
@@ -5828,7 +6125,7 @@
                         <span class="material-symbols-outlined" style="font-size:14px; color:var(--primary);">payments</span>
                         <span>Payment Breakdown & Financial Audit</span>
                     </span>
-                    <span class="admin-badge badge-success" style="font-size:10px;">ESCROW VERIFIED</span>
+                    <span id="view-booking-payment-badge" class="admin-badge badge-success" style="font-size:10px;">ESCROW VERIFIED</span>
                 </div>
 
                 <div style="font-size:12px; display:flex; flex-direction:column; gap:6px;">
@@ -5849,14 +6146,39 @@
                         <span style="font-weight:700;" id="view-booking-discount-fare">-₹0</span>
                     </div>
                     <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:800; color:#0f172a; border-top:1px solid #e2e8f0; padding-top:8px; margin-top:2px;">
-                        <span>Total Paid by Passenger:</span>
+                        <span>Total Fare:</span>
                         <span style="color:var(--primary);" id="view-booking-total-fare">₹0</span>
                     </div>
                 </div>
 
-                <div style="margin-top:10px; padding:8px 10px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; font-size:11px; color:#64748b; display:flex; justify-content:space-between; align-items:center;">
-                    <span><strong>Payment Mode:</strong> Online Escrow (Prepaid)</span>
-                    <span><strong>Transaction ID:</strong> <span id="view-booking-txnid" style="font-family:monospace; font-weight:700; color:#0f172a;">TXN-1029384</span></span>
+                <div style="margin-top:10px; padding:8px 10px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; font-size:11px; color:#64748b; display:flex; flex-direction:column; gap:4px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                        <span><strong>Payment Mode:</strong> <span id="view-booking-payment-mode">Online Escrow (Prepaid)</span></span>
+                        <span><strong>UTR / Ref:</strong> <span id="view-booking-txnid" style="font-family:monospace; font-weight:700; color:#0f172a;">TXN-1029384</span></span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                        <span><strong>Collection By:</strong> <span id="view-booking-collection-by" style="font-weight:700; color:#0f172a;">Platform</span></span>
+                        <span id="view-booking-payment-note" style="color:#475569;"></span>
+                    </div>
+                </div>
+
+                <!-- Admin UPI / Payment Confirmation Controls -->
+                <div id="view-booking-admin-verify-box" style="display:none; margin-top:10px; padding:10px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:6px;">
+                    <div style="font-size:11.5px; font-weight:800; color:#92400e; margin-bottom:6px;">Admin UPI UTR Verification &amp; Collection Control</div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+                        <input type="text" id="view-verify-utr-input" class="form-control" placeholder="Customer UPI UTR / Ref No." style="font-size:12px; height:32px; font-family:monospace; text-transform:uppercase;">
+                        <input type="text" id="view-verify-notes-input" class="form-control" placeholder="Admin verification note (optional)" style="font-size:12px; height:32px;">
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button type="button" class="btn btn-xs btn-primary" onclick="verifyAdminBookingPayment('confirm_utr')">
+                            <span class="material-symbols-outlined" style="font-size:14px;">verified</span>
+                            <span>Confirm UTR &amp; Mark Paid</span>
+                        </button>
+                        <button type="button" class="btn btn-xs btn-outline" onclick="verifyAdminBookingPayment('reject_assign_driver')">
+                            <span class="material-symbols-outlined" style="font-size:14px;">local_taxi</span>
+                            <span>Assign Collection to Driver</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -7050,7 +7372,7 @@
                     <div class="avatar-picker-grid">
                         @php
                             $avatars = ['👨🏽‍✈️', '👨🏻‍✈️', '👩🏽‍✈️', '👩🏻‍✈️', '🚗', '🚘', '🚙', '⭐'];
-                        @endphp
+@endphp
                         @foreach($avatars as $av)
                             <div class="avatar-option {{ ($driverProfile->avatar ?? '👨🏽‍✈️') === $av ? 'active' : '' }}" onclick="selectDriverAvatar('{{ $av }}')">
                                 {{ $av }}

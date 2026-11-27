@@ -26,7 +26,11 @@ class NotificationService
             : 'Scheduled Departure';
         $paymentLine = match ($booking->payment_mode) {
             'part_pay' => 'Payment: '.((float) $booking->advance_percentage).'% Advance (₹'.number_format((float) $booking->advance_amount).') • Balance ₹'.number_format((float) $booking->balance_amount).' to Driver',
-            'full_upi' => "Payment: Full UPI ({$fare})",
+            'full_upi' => $booking->payment_collection_by === 'driver'
+                ? "Payment: Full UPI ({$fare}) — Driver to collect on completion"
+                : ($booking->upi_utr
+                    ? "Payment: Full UPI ({$fare}) — UTR {$booking->upi_utr} (Pending Admin Confirmation)"
+                    : "Payment: Full UPI ({$fare}) — Awaiting UTR / Admin Confirmation"),
             'cash' => "Payment: Pay Cash / UPI to Chauffeur ({$fare})",
             default => "Payment: Full Online ({$fare})",
         };
@@ -412,6 +416,108 @@ class NotificationService
             ],
             sendEmail: false,
         ));
+    }
+
+    public function upiUtrSubmitted(Booking $booking): void
+    {
+        $booking->loadMissing('customer', 'driver');
+        $fare = '₹'.number_format((float) $booking->total_amount);
+
+        if ($booking->payment_collection_by === 'driver') {
+            $this->notifyAdmins(new PlatformAlertNotification(
+                event: 'booking.payment_driver_collect',
+                title: "Driver Collection Selected: {$booking->booking_reference}",
+                message: "{$booking->customer_name} chose driver collection ({$fare}) on trip completion.",
+                category: 'booking',
+                meta: [
+                    'booking_id' => $booking->id,
+                    'booking_reference' => $booking->booking_reference,
+                    'tab' => 'admin',
+                    'section' => 'bookings',
+                ],
+                sendEmail: false,
+            ));
+
+            return;
+        }
+
+        $this->notifyAdmins(new PlatformAlertNotification(
+            event: 'booking.upi_utr_submitted',
+            title: "UPI UTR Submitted: {$booking->booking_reference} ({$fare})",
+            message: "{$booking->customer_name} submitted UTR {$booking->upi_utr} for {$fare}. Verify and confirm in Admin Bookings.",
+            category: 'booking',
+            meta: [
+                'booking_id' => $booking->id,
+                'booking_reference' => $booking->booking_reference,
+                'upi_utr' => $booking->upi_utr,
+                'tab' => 'admin',
+                'section' => 'bookings',
+            ],
+            lines: [
+                "Reference: {$booking->booking_reference}",
+                "Amount: {$fare}",
+                "UTR: {$booking->upi_utr}",
+            ],
+            actionLabel: 'Verify UPI UTR',
+            actionUrl: url('/?tab=admin&section=bookings'),
+            sendEmail: true,
+        ));
+    }
+
+    public function paymentVerificationUpdated(Booking $booking, string $action): void
+    {
+        $booking->loadMissing('customer', 'driver');
+        $fare = '₹'.number_format((float) $booking->total_amount);
+        $isDriverCollect = $action === 'reject_assign_driver';
+
+        $customerTitle = $isDriverCollect
+            ? "Pay Driver on Completion: {$booking->booking_reference}"
+            : "UPI Payment Confirmed: {$booking->booking_reference}";
+        $customerMsg = $isDriverCollect
+            ? "Your UPI UTR could not be confirmed by Admin. Please pay {$fare} directly to your chauffeur when the drive is completed."
+            : "Admin confirmed your UPI payment ({$fare}".($booking->upi_utr ? " · UTR {$booking->upi_utr}" : '').").";
+
+        $this->notifyBookingCustomer($booking, new PlatformAlertNotification(
+            event: $isDriverCollect ? 'booking.payment_driver_collect' : 'booking.payment_verified',
+            title: $customerTitle,
+            message: $customerMsg,
+            category: 'booking',
+            meta: [
+                'booking_id' => $booking->id,
+                'booking_reference' => $booking->booking_reference,
+                'payment_status' => $booking->payment_status,
+                'payment_collection_by' => $booking->payment_collection_by,
+                'upi_utr' => $booking->upi_utr,
+                'tab' => 'my-bookings',
+            ],
+            actionLabel: 'View My Trip',
+            actionUrl: url('/#my-bookings'),
+            sendEmail: true,
+        ));
+
+        if ($booking->driver) {
+            $driverUser = $this->resolveDriverUser($booking->driver);
+            if ($driverUser) {
+                $this->notifyUser($driverUser, new PlatformAlertNotification(
+                    event: $isDriverCollect ? 'trip.collect_required' : 'trip.payment_verified',
+                    title: $isDriverCollect
+                        ? "Collect {$fare} on Completion: {$booking->booking_reference}"
+                        : "Prepaid Confirmed: {$booking->booking_reference}",
+                    message: $isDriverCollect
+                        ? "Collect {$fare} from {$booking->customer_name} when the drive is completed."
+                        : "Admin confirmed customer's UPI payment ({$fare}). No cash collection needed.",
+                    category: 'trip',
+                    meta: [
+                        'booking_id' => $booking->id,
+                        'booking_reference' => $booking->booking_reference,
+                        'payment_status' => $booking->payment_status,
+                        'payment_collection_by' => $booking->payment_collection_by,
+                        'tab' => 'driver-trips',
+                    ],
+                    sendEmail: false,
+                ));
+            }
+        }
     }
 
     public function tripCompleted(Booking $booking, float $payout = 0.0): void

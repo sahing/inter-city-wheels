@@ -209,6 +209,11 @@ class DriverBiddingController extends Controller
 
     public function completeTrip(Request $request, $id)
     {
+        $validated = $request->validate([
+            'collected_by_driver' => 'nullable|boolean',
+            'collected_amount' => 'nullable|numeric|min:0',
+        ]);
+
         $booking = Booking::findOrFail($id);
 
         $authorization = $this->authorizeTrip($request->user(), $booking);
@@ -218,13 +223,45 @@ class DriverBiddingController extends Controller
         }
 
         try {
-            $result = DB::transaction(function () use ($booking) {
+            $result = DB::transaction(function () use ($booking, $validated, $request) {
                 $locked = Booking::whereKey($booking->id)->lockForUpdate()->firstOrFail();
 
+                $collectDue = 0.0;
+                if ($locked->driver_collected_at === null) {
+                    if ($locked->payment_mode === 'part_pay' && (float) $locked->balance_amount > 0) {
+                        $collectDue = round((float) $locked->balance_amount, 2);
+                    } elseif (
+                        $locked->payment_collection_by === 'driver'
+                        || in_array($locked->payment_status, ['pay_on_pickup', 'driver_collect', 'upi_rejected', 'pending_upi_verification', 'awaiting_upi_utr'], true)
+                    ) {
+                        $collectDue = round((float) ($locked->balance_amount > 0 ? $locked->balance_amount : $locked->total_amount), 2);
+                    }
+                }
+
+                if ($collectDue > 0 && $request->has('collected_by_driver') && ! $validated['collected_by_driver']) {
+                    throw ValidationException::withMessages([
+                        'collected_by_driver' => 'Please collect ₹'.number_format($collectDue, 2).' from the customer before completing this trip.',
+                    ]);
+                }
+
+                $completionAttrs = [];
+                if ($collectDue > 0) {
+                    $existingNote = trim((string) ($locked->payment_notes ?? ''));
+                    $collectionNote = 'Collected ₹'.number_format($collectDue, 2).' by driver on trip completion';
+                    $completionAttrs = [
+                        'payment_collection_by' => 'driver',
+                        'driver_collected_amount' => $collectDue,
+                        'driver_collected_at' => now(),
+                        'payment_status' => 'paid',
+                        'payment_notes' => $existingNote !== '' ? "{$existingNote} | {$collectionNote}" : $collectionNote,
+                    ];
+                }
+
                 // Rejects a second completion, which would pay the driver twice.
-                $this->workflow->transition($locked, BookingWorkflow::COMPLETED, [], allowSameStatus: false);
+                $this->workflow->transition($locked, BookingWorkflow::COMPLETED, $completionAttrs, allowSameStatus: false);
 
                 $payout = 0.0;
+                $netWalletDelta = 0.0;
 
                 if ($locked->assigned_driver_id) {
                     $driver = Driver::whereKey($locked->assigned_driver_id)->lockForUpdate()->first();
@@ -237,21 +274,41 @@ class DriverBiddingController extends Controller
                             ? round((float) $locked->driver_payout_amount, 2)
                             : round(((float) $locked->total_amount) * (1 - self::PLATFORM_FEE_RATE), 2);
 
-                        $this->creditDriver(
-                            $driver,
-                            $payout,
-                            WalletTransaction::REASON_TRIP_PAYOUT,
-                            $locked,
-                            'Trip payout for '.$locked->booking_reference
-                        );
+                        $netWalletDelta = round($payout - $collectDue, 2);
+
+                        if ($netWalletDelta > 0) {
+                            $this->creditDriver(
+                                $driver,
+                                $netWalletDelta,
+                                WalletTransaction::REASON_TRIP_PAYOUT,
+                                $locked,
+                                $collectDue > 0
+                                    ? 'Trip payout balance after ₹'.number_format($collectDue, 2).' driver collection for '.$locked->booking_reference
+                                    : 'Trip payout for '.$locked->booking_reference
+                            );
+                        } elseif ($netWalletDelta < 0) {
+                            $this->debitDriver(
+                                $driver,
+                                abs($netWalletDelta),
+                                WalletTransaction::REASON_ADJUSTMENT,
+                                $locked,
+                                'Platform fee settled from driver-collected fare (₹'.number_format($collectDue, 2).') on '.$locked->booking_reference
+                            );
+                        }
 
                         $driver->trips_count = (int) $driver->trips_count + 1;
                         $driver->save();
                     }
                 }
 
-                return [$locked, $payout];
+                return [$locked, $payout, $collectDue, $netWalletDelta];
             });
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
         } catch (InvalidBookingTransition $e) {
             return response()->json([
                 'success' => false,
@@ -260,14 +317,20 @@ class DriverBiddingController extends Controller
             ], 422);
         }
 
-        [$completed, $payout] = $result;
+        [$completed, $payout, $collectDue, $netWalletDelta] = $result;
         $completedFresh = $completed->fresh(['driver', 'customer']);
         $this->notifications->tripCompleted($completedFresh, (float) $payout);
 
+        $msg = $collectDue > 0
+            ? 'Trip completed! Recorded ₹'.number_format($collectDue).' collected from customer and settled driver wallet.'
+            : 'Trip marked as completed! Payout credited to your driver wallet.';
+
         return response()->json([
             'success' => true,
-            'message' => 'Trip marked as completed! Payout credited to your driver wallet.',
+            'message' => $msg,
             'payout' => $payout,
+            'driver_collected_amount' => $collectDue,
+            'net_wallet_delta' => $netWalletDelta,
             'booking' => $completedFresh,
         ]);
     }

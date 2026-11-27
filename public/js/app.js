@@ -2297,6 +2297,32 @@ async function handleConfirmCabBooking() {
   const fromCoords = readInputCoords(fromEl);
   const toCoords = (state.cab.tripType === 'oneway' || state.cab.tripType === 'roundtrip') ? readInputCoords(toEl) : null;
 
+  const selectedPayMode = document.querySelector('input[name="rental_pay_mode"]:checked')?.value || (window.PLATFORM_SETTINGS?.payment_default_option || 'full_online');
+  const isRzpActive = String(window.PLATFORM_SETTINGS?.razorpay_active || '0') === '1';
+  const cashAllowed = String(window.PLATFORM_SETTINGS?.payment_show_cash ?? '1') === '1';
+  const usesManualUpi = !isRzpActive && selectedPayMode !== 'cash';
+  const rawUpiChoice = document.querySelector('input[name="upi_settlement_choice"]:checked')?.value || 'submit_utr';
+  const upiSettlementChoice = cashAllowed ? rawUpiChoice : 'submit_utr';
+  const upiUtrInput = document.getElementById('checkout-upi-utr');
+  const upiUtrVal = upiUtrInput ? upiUtrInput.value.trim().toUpperCase() : '';
+
+  if (selectedPayMode === 'part_pay' && !state.cab.partPayAgreed) {
+    window.openCheckoutPaymentStepModal(1, true);
+    return;
+  }
+
+  if (usesManualUpi && upiSettlementChoice === 'submit_utr') {
+    if (!upiUtrVal || !/^[A-Za-z0-9\-_]{6,40}$/.test(upiUtrVal)) {
+      window.openCheckoutPaymentStepModal(2, true);
+      return;
+    }
+  }
+
+  const origBtnContent = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+  }
+
   const payload = {
     service_type: 'cab',
     trip_type: state.cab.tripType || 'oneway',
@@ -2322,7 +2348,10 @@ async function handleConfirmCabBooking() {
     night_allowance: Boolean(state.cab.nightAllowance),
     luggage_carrier: Boolean(state.cab.luggageCarrier),
     coupon_code: state.cab.appliedCoupon || '',
-    payment_mode: document.querySelector('input[name="rental_pay_mode"]:checked')?.value || (window.PLATFORM_SETTINGS?.payment_default_option || 'full_online'),
+    payment_mode: selectedPayMode,
+    part_pay_agreed: selectedPayMode === 'part_pay' ? Boolean(state.cab.partPayAgreed) : undefined,
+    upi_utr: (usesManualUpi && upiSettlementChoice === 'submit_utr' && upiUtrVal) ? upiUtrVal : undefined,
+    payment_collection_by: usesManualUpi ? (upiSettlementChoice === 'driver_collect' ? 'driver' : 'platform') : undefined,
     dynamic_fields: dynamicFieldsData
   };
 
@@ -2415,6 +2444,16 @@ function handleCityChange() {
 }
 
 function finalizeCabBookingUi(b, fromCityName, toCityName, customerName) {
+  state.cab.partPayAgreed = false;
+  const agreedBadge = document.getElementById('checkout-part-pay-agreed-badge');
+  if (agreedBadge) agreedBadge.style.display = 'none';
+  const utrIn = document.getElementById('checkout-upi-utr');
+  if (utrIn) utrIn.value = '';
+  const modalUtrIn = document.getElementById('step-modal-upi-utr');
+  if (modalUtrIn) modalUtrIn.value = '';
+  const agreeCb = document.getElementById('step-part-pay-agree-checkbox');
+  if (agreeCb) agreeCb.checked = false;
+
   const localBooking = {
     id: b.booking_reference,
     type: 'Outstation Cab',
@@ -3458,16 +3497,37 @@ function openDriverVehicleDetails(v) {
   ], v.admin_notes ? 'Admin Note: ' + v.admin_notes : '');
 }
 
+function computeDriverCollectDue(dt) {
+  if (!dt || dt.driver_collected_at) return 0;
+  if (dt.payment_mode === 'part_pay' && Number(dt.balance_amount || 0) > 0) {
+    return Number(dt.balance_amount);
+  }
+  const collectStatuses = ['pay_on_pickup', 'driver_collect', 'upi_rejected', 'pending_upi_verification', 'awaiting_upi_utr'];
+  if (dt.payment_collection_by === 'driver' || collectStatuses.includes(dt.payment_status)) {
+    const bal = Number(dt.balance_amount || 0);
+    return bal > 0 ? bal : Number(dt.total_amount || 0);
+  }
+  return 0;
+}
+
 function openDriverTripDetails(dt) {
   if (!dt) return;
+  const due = computeDriverCollectDue(dt);
+  const collectionText = dt.driver_collected_at
+    ? `Collected ₹${Number(dt.driver_collected_amount || 0).toLocaleString('en-IN')} on completion`
+    : (due > 0
+      ? `Collect ₹${due.toLocaleString('en-IN')} from passenger when drive completes`
+      : 'Prepaid (Confirmed by Platform — Collect ₹0)');
   showDriverDetailsScreen('Trip ' + (dt.booking_reference || ''), 'local_taxi', [
     { label: 'Status', value: dt.status || '—' },
     { label: 'Route', value: dt.route_summary || '—' },
     { label: 'Passenger', value: (dt.customer_name || '—') + (dt.customer_phone ? ' (' + dt.customer_phone + ')' : '') },
     { label: 'Pickup Location', value: dt.pickup_location || '—' },
     { label: 'Drop Location', value: dt.drop_location || '—' },
-    { label: 'Total Fare', value: '₹' + Number(dt.total_amount || 0).toLocaleString('en-IN') + ' (Tolls & taxes included)' }
-  ], '');
+    { label: 'Total Fare', value: '₹' + Number(dt.total_amount || 0).toLocaleString('en-IN') + ' (Tolls & taxes included)' },
+    { label: 'Payment Status', value: `${(dt.payment_mode || 'full_online').toUpperCase()} · ${(dt.payment_status || 'paid').replace(/_/g, ' ')}` },
+    { label: 'Collection Duty', value: collectionText }
+  ], due > 0 ? 'Take responsibility for collecting the due fare from the passenger before marking the drive completed.' : '');
 }
 
 function openDriverAuctionDetails(auctionId) {
@@ -5311,12 +5371,33 @@ function renderAdminBookingsTable(bookings) {
     const outOfRegionBadge = b.is_beyond_region
       ? `<span class="admin-badge badge-warning" style="font-size:9px; padding:1px 5px;" title="Beyond service region — availability not guaranteed">OUT OF REGION</span>`
       : '';
-    const payLabel = b.payment_status === 'pending_availability'
-      ? 'Unconfirmed / Out of Region'
-      : (b.payment_status === 'pay_on_pickup' ? 'Pay on Pickup' : 'Prepaid (Escrow)');
+    const dueAmt = Number(b.balance_amount || 0) > 0 ? Number(b.balance_amount) : Number(b.total_amount || 0);
+    let payLabel = 'Prepaid (Escrow)';
+    if (b.payment_status === 'pending_availability') {
+      payLabel = 'Unconfirmed / Out of Region';
+    } else if (b.payment_status === 'pending_upi_verification') {
+      payLabel = `UPI Pending Admin${b.upi_utr ? ' (UTR: ' + b.upi_utr + ')' : ''}`;
+    } else if (b.payment_status === 'awaiting_upi_utr') {
+      payLabel = 'Awaiting UPI UTR';
+    } else if (b.payment_status === 'driver_collect') {
+      payLabel = `Driver Collects ₹${dueAmt.toLocaleString('en-IN')}`;
+    } else if (b.payment_status === 'upi_rejected') {
+      payLabel = 'UTR Rejected · Driver Collects';
+    } else if (b.payment_status === 'pay_on_pickup') {
+      payLabel = `Pay Driver ₹${dueAmt.toLocaleString('en-IN')}`;
+    } else if (b.payment_status === 'partial_paid') {
+      payLabel = `Part Paid (Bal ₹${Number(b.balance_amount || 0).toLocaleString('en-IN')} Driver)`;
+    } else if (b.payment_status === 'pending') {
+      payLabel = 'Online Payment Pending';
+    } else if (b.payment_mode === 'full_upi') {
+      payLabel = b.driver_collected_at ? 'Collected by Driver' : `UPI Confirmed${b.upi_utr ? ' (' + b.upi_utr + ')' : ''}`;
+    } else if (b.driver_collected_at) {
+      payLabel = `Driver Collected ₹${Number(b.driver_collected_amount || 0).toLocaleString('en-IN')}`;
+    }
+    const warningStatuses = ['pending_availability', 'pending_upi_verification', 'awaiting_upi_utr', 'pending', 'driver_collect', 'pay_on_pickup', 'upi_rejected'];
     const payDotClass = b.status === 'Cancelled'
       ? 'bg-danger'
-      : (b.payment_status === 'pending_availability' ? 'bg-warning' : 'bg-success');
+      : (warningStatuses.includes(b.payment_status) ? 'bg-warning' : 'bg-success');
     const searchStr = `${b.booking_reference} ${b.customer_name} ${b.customer_phone} ${b.route_summary} ${b.pickup_location} ${b.drop_location} ${cabType}`.toLowerCase();
 
     return `
@@ -5558,13 +5639,108 @@ window.openViewBookingModal = async function (bookingId) {
       discRow.style.display = 'none';
     }
     document.getElementById('view-booking-total-fare').textContent = `₹${Number(b.total_amount || 0).toLocaleString('en-IN')}`;
-    document.getElementById('view-booking-txnid').textContent = `TXN-${(b.booking_reference || '').replace('ICW-', 'ESC')}`;
+    const txnDisplay = b.razorpay_payment_id || (b.upi_utr ? `UTR: ${b.upi_utr}` : `TXN-${(b.booking_reference || '').replace('ICW-', 'ESC')}`);
+    document.getElementById('view-booking-txnid').textContent = txnDisplay;
+
+    const modeLabels = {
+      full_online: 'Full Pay Online',
+      part_pay: `Part Pay (${Number(b.advance_percentage || 20)}% Adv + Balance to Driver)`,
+      full_upi: 'Direct UPI (Admin UTR / Driver Collect)',
+      cash: 'Pay Cash / UPI to Chauffeur',
+    };
+    const modeEl = document.getElementById('view-booking-payment-mode');
+    if (modeEl) modeEl.textContent = modeLabels[b.payment_mode] || 'Online Escrow (Prepaid)';
+
+    const payBadge = document.getElementById('view-booking-payment-badge');
+    if (payBadge) {
+      const pStatus = b.payment_status || 'paid';
+      const statusBadges = {
+        paid: ['UPI / PAYMENT CONFIRMED', 'admin-badge badge-success'],
+        partial_paid: ['PART ADVANCE PAID', 'admin-badge badge-info'],
+        pending_upi_verification: ['UPI UTR PENDING ADMIN', 'admin-badge badge-warning'],
+        awaiting_upi_utr: ['AWAITING UPI UTR', 'admin-badge badge-warning'],
+        driver_collect: ['DRIVER TO COLLECT', 'admin-badge badge-gold'],
+        pay_on_pickup: ['PAY DRIVER ON COMPLETION', 'admin-badge badge-gold'],
+        upi_rejected: ['UTR REJECTED · DRIVER COLLECTS', 'admin-badge badge-danger'],
+        pending: ['ONLINE PAYMENT PENDING', 'admin-badge badge-warning'],
+        pending_availability: ['UNCONFIRMED / OUT OF REGION', 'admin-badge badge-warning'],
+      };
+      const [label, cls] = statusBadges[pStatus] || ['ESCROW VERIFIED', 'admin-badge badge-success'];
+      payBadge.textContent = label;
+      payBadge.className = cls;
+    }
+
+    const collEl = document.getElementById('view-booking-collection-by');
+    if (collEl) {
+      if (b.driver_collected_at) {
+        collEl.textContent = `Driver Collected ₹${Number(b.driver_collected_amount || 0).toLocaleString('en-IN')}`;
+      } else if (b.payment_collection_by === 'driver') {
+        const due = Number(b.balance_amount || 0) > 0 ? Number(b.balance_amount) : Number(b.total_amount || 0);
+        collEl.textContent = `Driver collects ₹${due.toLocaleString('en-IN')} on completion`;
+      } else {
+        collEl.textContent = b.upi_verified_at ? 'Platform (Admin Confirmed UTR)' : 'Platform';
+      }
+    }
+
+    const noteEl = document.getElementById('view-booking-payment-note');
+    if (noteEl) noteEl.textContent = b.payment_notes || '';
+
+    const verifyBox = document.getElementById('view-booking-admin-verify-box');
+    if (verifyBox) {
+      const needsAdminAction = b.payment_mode === 'full_upi' || ['pending_upi_verification', 'awaiting_upi_utr', 'driver_collect', 'pay_on_pickup', 'pending'].includes(b.payment_status);
+      verifyBox.style.display = (needsAdminAction && b.status !== 'Cancelled') ? 'block' : 'none';
+      const utrIn = document.getElementById('view-verify-utr-input');
+      const notesIn = document.getElementById('view-verify-notes-input');
+      if (utrIn) utrIn.value = b.upi_utr || '';
+      if (notesIn) notesIn.value = '';
+    }
 
     const modal = document.getElementById('admin-view-booking-modal');
     if (modal) modal.classList.add('active');
   } catch (err) {
     console.error('Failed to view booking:', err);
     showToast('Failed to load booking details.', 'warning');
+  }
+};
+
+window.verifyAdminBookingPayment = async function (action) {
+  const bookingId = window.currentViewingBookingId;
+  if (!bookingId) return;
+
+  const utr = document.getElementById('view-verify-utr-input')?.value?.trim().toUpperCase() || '';
+  const notes = document.getElementById('view-verify-notes-input')?.value?.trim() || '';
+
+  if (action === 'confirm_utr' && !utr) {
+    showToast('Enter the customer\'s UPI UTR before confirming.', 'warning');
+    document.getElementById('view-verify-utr-input')?.focus();
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/admin/bookings/${bookingId}/verify-payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify({
+        action,
+        upi_utr: utr || undefined,
+        payment_notes: notes || undefined,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(data.message || 'Payment updated!', 'success');
+      if (typeof reloadAdminBookings === 'function') reloadAdminBookings();
+      window.openViewBookingModal(bookingId);
+    } else {
+      showToast(data.message || 'Could not update payment verification.', 'danger');
+    }
+  } catch (err) {
+    console.error('verifyAdminBookingPayment', err);
+    showToast('Network error while verifying payment.', 'warning');
   }
 };
 
@@ -5955,14 +6131,17 @@ window.verifyDriverStartOtp = async function (bookingId) {
       }
       const actionsBox = document.getElementById(`driver-trip-actions-${bookingId}`);
       if (actionsBox) {
+        const due = data.booking ? computeDriverCollectDue(data.booking) : 0;
+        const pStatus = data.booking?.payment_status || '';
+        const completeBtnLabel = due > 0 ? `Collect ₹${due.toLocaleString('en-IN')} & Complete` : 'Complete Trip & Settle Payout';
         actionsBox.innerHTML = `
             <div style="display:flex; align-items:center; gap:6px; color:#0284c7; font-size:12px; font-weight:700;">
                 <span class="material-symbols-outlined" style="font-size:18px;">local_shipping</span>
                 <span>Ride in progress. Drive safely.</span>
             </div>
-            <button type="button" class="btn btn-sm btn-accent" onclick="completeDriverTrip(${bookingId})">
+            <button type="button" class="btn btn-sm btn-accent" onclick="completeDriverTrip(${bookingId}, ${due}, '${pStatus}')">
                 <span class="material-symbols-outlined" style="font-size:15px;">flag</span>
-                <span>Complete Trip & Settle Payout</span>
+                <span>${completeBtnLabel}</span>
             </button>
             <button type="button" class="btn btn-sm btn-outline" onclick="openInvoiceModal(${bookingId})">
                 <span class="material-symbols-outlined" style="font-size:14px;">receipt</span>
@@ -5979,8 +6158,15 @@ window.verifyDriverStartOtp = async function (bookingId) {
   }
 };
 
-window.completeDriverTrip = async function (bookingId) {
-  if (!confirm('Confirm passenger drop-off and complete trip? Fare will be credited to your driver wallet.')) {
+window.completeDriverTrip = async function (bookingId, collectDue = 0, paymentStatus = '') {
+  const due = Number(collectDue || 0);
+  const confirmMsg = due > 0
+    ? (paymentStatus === 'pending_upi_verification' || paymentStatus === 'awaiting_upi_utr'
+      ? `Admin has NOT confirmed the customer's UPI UTR yet. Confirm you have collected ₹${due.toLocaleString('en-IN')} from the passenger (Cash/UPI) and complete this trip?`
+      : `Payment Collection Duty: Confirm you have collected ₹${due.toLocaleString('en-IN')} from the passenger and complete this trip?`)
+    : 'Confirm passenger drop-off and complete trip? Fare will be credited to your driver wallet.';
+
+  if (!confirm(confirmMsg)) {
     return;
   }
 
@@ -5993,12 +6179,16 @@ window.completeDriverTrip = async function (bookingId) {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         'X-CSRF-TOKEN': csrfToken
-      }
+      },
+      body: JSON.stringify({
+        collected_by_driver: due > 0,
+        collected_amount: due > 0 ? due : 0,
+      })
     });
 
     const data = await res.json();
     if (res.ok && data.success) {
-      showToast(data.message || 'Trip completed! Payout credited to your wallet.', 'success');
+      showToast(data.message || 'Trip completed! Payout settled.', 'success');
       const badge = document.getElementById(`driver-trip-status-badge-${bookingId}`);
       if (badge) {
         badge.className = 'admin-badge badge-primary';
@@ -6006,10 +6196,13 @@ window.completeDriverTrip = async function (bookingId) {
       }
       const actionsBox = document.getElementById(`driver-trip-actions-${bookingId}`);
       if (actionsBox) {
+        const collectedInfo = Number(data.driver_collected_amount || 0) > 0
+          ? `Collected ₹${Number(data.driver_collected_amount).toLocaleString('en-IN')} & settled.`
+          : 'Trip completed & payout credited.';
         actionsBox.innerHTML = `
             <div style="color:#16a34a; font-size:12px; font-weight:700; display:flex; align-items:center; gap:4px;">
                 <span class="material-symbols-outlined" style="font-size:16px;">verified</span>
-                <span>Trip completed & payout credited.</span>
+                <span>${collectedInfo}</span>
             </div>
             <button type="button" class="btn btn-sm btn-outline" onclick="openInvoiceModal(${bookingId})">
                 <span class="material-symbols-outlined" style="font-size:14px;">receipt</span>
@@ -6017,7 +6210,16 @@ window.completeDriverTrip = async function (bookingId) {
             </button>
           `;
       }
-      if (data.booking && data.booking.total_amount) {
+      if (data.net_wallet_delta !== undefined) {
+        const delta = Math.round(Number(data.net_wallet_delta) || 0);
+        const walletEl = document.getElementById('driver-header-wallet-bal');
+        const walletPanelEl = document.getElementById('driver-wallet-bal-display');
+        const currentRaw = (walletEl || walletPanelEl)?.textContent || '0';
+        const curVal = parseInt(currentRaw.replace(/[^0-9-]/g, ''), 10) || 0;
+        const nextFormatted = `₹${(curVal + delta).toLocaleString('en-IN')}`;
+        if (walletEl) walletEl.textContent = nextFormatted;
+        if (walletPanelEl) walletPanelEl.textContent = nextFormatted;
+      } else if (data.booking && data.booking.total_amount) {
         const payout = Math.round(data.booking.total_amount * 0.9);
         const walletEl = document.getElementById('driver-header-wallet-bal');
         const walletPanelEl = document.getElementById('driver-wallet-bal-display');
@@ -10408,10 +10610,50 @@ function buildTripCardHtml(booking) {
   const passengers = Array.isArray(booking.passengers) ? booking.passengers.length : 0;
   const statusSlug = String(status).toLowerCase().replace(/\s+/g, '-');
 
-  const payTag = booking.payment_mode === 'part_pay'
-    ? `${Number(booking.advance_percentage || 20)}% Adv Paid`
-    : (booking.payment_mode === 'cash' ? 'Pay Driver' : (booking.payment_mode === 'full_upi' ? 'Paid UPI' : 'Prepaid'));
+  let payTag = 'Prepaid';
+  if (booking.payment_mode === 'part_pay') {
+    payTag = booking.driver_collected_at ? 'Paid in Full' : `${Number(booking.advance_percentage || 20)}% Adv Paid`;
+  } else if (booking.payment_mode === 'cash') {
+    payTag = booking.driver_collected_at ? 'Paid to Driver' : 'Pay Driver';
+  } else if (booking.payment_mode === 'full_upi') {
+    if (booking.payment_status === 'paid') payTag = 'UPI Confirmed';
+    else if (booking.payment_status === 'pending_upi_verification') payTag = 'UTR Pending Admin';
+    else if (booking.payment_status === 'awaiting_upi_utr') payTag = 'Awaiting UPI UTR';
+    else if (booking.payment_status === 'driver_collect' || booking.payment_collection_by === 'driver') payTag = 'Driver Collects';
+    else if (booking.payment_status === 'upi_rejected') payTag = 'UTR Rejected · Pay Driver';
+    else payTag = 'UPI Confirmed';
+  }
   const isBeyondUnconfirmed = Boolean(booking.is_beyond_region) && (status === 'Requested' || status === 'Bidding');
+  const showUpiPanel = (booking.payment_mode === 'full_upi' || booking.payment_gateway === 'upi_manual' || ['pending_upi_verification', 'awaiting_upi_utr', 'upi_rejected'].includes(booking.payment_status))
+    && ['pending_upi_verification', 'awaiting_upi_utr', 'upi_rejected', 'driver_collect'].includes(booking.payment_status)
+    && status !== 'Completed'
+    && status !== 'Cancelled';
+  const upiId = (window.PLATFORM_SETTINGS && window.PLATFORM_SETTINGS.upi_id) ? window.PLATFORM_SETTINGS.upi_id : 'intercitywheels@upi';
+  const cashAllowed = String(window.PLATFORM_SETTINGS?.payment_show_cash ?? '1') === '1';
+  const showDriverCollectBtn = booking.payment_collection_by !== 'driver' && cashAllowed;
+  const upiPanelHtml = showUpiPanel ? `
+    <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:10px 12px; font-size:12px; width:100%;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+        <span style="font-weight:800; color:#92400e;">
+          ${(booking.payment_status === 'driver_collect' || booking.payment_collection_by === 'driver')
+            ? `Driver will collect ${tripsMoney(booking.total_amount)} on trip completion`
+            : (booking.payment_status === 'pending_upi_verification'
+              ? `UPI UTR <code style="font-weight:800;">${tripsEscape(booking.upi_utr || '')}</code> — Waiting Admin Confirmation`
+              : `Pay ${tripsMoney(booking.total_amount)} to UPI ID: <code>${tripsEscape(upiId)}</code>`)}
+        </span>
+        <span style="font-size:11px; color:#78350f;">UPI ID: <strong>${tripsEscape(upiId)}</strong></span>
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+        <input type="text" id="trip-utr-input-${tripsEscape(ref)}" class="form-control" value="${tripsEscape(booking.upi_utr || '')}" placeholder="Enter 12-digit UTR / Ref No." style="flex:1; min-width:170px; height:32px; font-size:12px; font-family:monospace; text-transform:uppercase;">
+        <button type="button" class="btn btn-xs btn-primary" onclick="submitTripUpiUtr('${tripsEscape(ref)}')">
+          <span>${booking.upi_utr ? 'Update UTR' : 'Submit UTR'}</span>
+        </button>
+        ${showDriverCollectBtn ? `
+        <button type="button" class="btn btn-xs btn-outline" onclick="switchTripToDriverCollect('${tripsEscape(ref)}')">
+          <span>Driver Collects on Completion</span>
+        </button>` : ''}
+      </div>
+    </div>` : '';
 
   const driverBlock = driver
     ? `<div class="trip-tile-line" style="font-weight:700; color:#0f172a;">${tripsEscape(driver.name)} (★${tripsEscape(driver.rating)})</div>
@@ -10468,20 +10710,80 @@ function buildTripCardHtml(booking) {
       ${finalBlock}
     </div>
 
-    <div class="trip-card-footer">
-      <span class="trip-footer-meta">${isBeyondUnconfirmed ? 'Pending Availability Check (Beyond Region)' : (passengers ? passengers + ' passenger(s)' : 'Escrow Verified')}</span>
-      <div class="trip-card-actions">
-        <button type="button" class="btn btn-xs trip-btn-secondary" onclick="copyTripReference('${tripsEscape(ref)}')">
-          <span class="material-symbols-outlined" style="font-size:14px;">content_copy</span>
-          <span>Reference</span>
-        </button>
-        <button type="button" class="btn btn-xs trip-btn-primary" onclick="openTicketModal('${tripsEscape(ref)}')">
-          <span class="material-symbols-outlined" style="font-size:14px;">confirmation_number</span>
-          <span>${bucket === 'active' ? 'Digital Boarding Pass' : 'View Trip Ticket'}</span>
-        </button>
+    <div class="trip-card-footer" style="flex-direction:column; align-items:stretch; gap:8px;">
+      ${upiPanelHtml}
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <span class="trip-footer-meta">${isBeyondUnconfirmed ? 'Pending Availability Check (Beyond Region)' : (booking.payment_collection_by === 'driver' && !booking.driver_collected_at ? `Driver collects on completion: <strong>${tripsMoney(Number(booking.balance_amount || 0) > 0 ? booking.balance_amount : booking.total_amount)}</strong>` : (booking.payment_mode === 'full_upi' && booking.payment_status === 'pending_upi_verification' ? `UTR ${tripsEscape(booking.upi_utr || '')} pending Admin confirmation` : (passengers ? passengers + ' passenger(s)' : 'Escrow Verified')))}</span>
+        <div class="trip-card-actions">
+          <button type="button" class="btn btn-xs trip-btn-secondary" onclick="copyTripReference('${tripsEscape(ref)}')">
+            <span class="material-symbols-outlined" style="font-size:14px;">content_copy</span>
+            <span>Reference</span>
+          </button>
+          <button type="button" class="btn btn-xs trip-btn-primary" onclick="openTicketModal('${tripsEscape(ref)}')">
+            <span class="material-symbols-outlined" style="font-size:14px;">confirmation_number</span>
+            <span>${bucket === 'active' ? 'Digital Boarding Pass' : 'View Trip Ticket'}</span>
+          </button>
+        </div>
       </div>
     </div>`;
 }
+
+window.submitTripUpiUtr = async function (reference) {
+  const input = document.getElementById(`trip-utr-input-${reference}`);
+  const utr = input ? input.value.trim().toUpperCase() : '';
+  if (!utr || !/^[A-Za-z0-9\-_]{6,40}$/.test(utr)) {
+    showToast('Please enter a valid 6–40 character UPI UTR / Ref ID.', 'warning');
+    if (input) input.focus();
+    return;
+  }
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  try {
+    const res = await fetch(`/api/bookings/${encodeURIComponent(reference)}/upi-utr`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': csrfToken,
+      },
+      body: JSON.stringify({ collection_choice: 'utr', upi_utr: utr }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success && data.booking) {
+      showToast(data.message || 'UTR submitted for Admin verification!', 'success');
+      window.showBookingInHistory(data.booking);
+    } else {
+      showToast(data.message || 'Could not submit UTR.', 'danger');
+    }
+  } catch (err) {
+    console.error('submitTripUpiUtr', err);
+    showToast('Network error while submitting UTR.', 'warning');
+  }
+};
+
+window.switchTripToDriverCollect = async function (reference) {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  try {
+    const res = await fetch(`/api/bookings/${encodeURIComponent(reference)}/upi-utr`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': csrfToken,
+      },
+      body: JSON.stringify({ collection_choice: 'driver_collect' }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success && data.booking) {
+      showToast(data.message || 'Updated! Driver will collect payment on completion.', 'success');
+      window.showBookingInHistory(data.booking);
+    } else {
+      showToast(data.message || 'Could not update collection mode.', 'danger');
+    }
+  } catch (err) {
+    console.error('switchTripToDriverCollect', err);
+    showToast('Network error while updating collection mode.', 'warning');
+  }
+};
 
 /**
  * Put a booking at the top of the history list (signed-in users) or into the
@@ -11092,6 +11394,252 @@ window.refreshAdminRouteFareDisplays = function () {
 })();
 
 // ===== CHECKOUT PAYMENT OPTIONS & ADVANCE PERCENTAGE =====
+window._checkoutStepModalAutoProcess = false;
+
+window.onCheckoutPayModeChange = function (mode) {
+  if (typeof updateTotalCabFare === 'function') {
+    updateTotalCabFare();
+  }
+  if (mode === 'part_pay' && !state.cab.partPayAgreed) {
+    window.openCheckoutPaymentStepModal(1, false);
+  }
+};
+
+function getCheckoutFareSnapshot() {
+  const settings = window.PLATFORM_SETTINGS || {};
+  const advPct = Math.max(1, Math.min(99, parseFloat(settings.payment_advance_pct ?? 20) || 20));
+  const totalText = document.getElementById('fare-grand-total')?.textContent || '0';
+  const roundedTotal = Math.max(0, parseInt(totalText.replace(/[^0-9]/g, ''), 10) || 0);
+  const advAmount = Math.round(roundedTotal * (advPct / 100));
+  const balAmount = Math.max(0, roundedTotal - advAmount);
+  const checkedMode = document.querySelector('input[name="rental_pay_mode"]:checked')?.value || 'full_online';
+  const isRzpActive = String(settings.razorpay_active || '0') === '1';
+
+  return {
+    settings,
+    advPct,
+    roundedTotal,
+    advAmount,
+    balAmount,
+    checkedMode,
+    isRzpActive,
+    usesManualUpi: !isRzpActive && checkedMode !== 'cash',
+  };
+}
+
+window.openCheckoutPaymentStepModal = function (startStep = 1, autoProcess = false) {
+  const modal = document.getElementById('checkout-payment-step-modal');
+  if (!modal) return;
+
+  window._checkoutStepModalAutoProcess = Boolean(autoProcess);
+  const snap = getCheckoutFareSnapshot();
+  const isPartPay = snap.checkedMode === 'part_pay';
+  const step = (!isPartPay && startStep === 1) ? 2 : startStep;
+
+  // Populate Step 1 (Part Pay Balance Agreement)
+  const elTotal = document.getElementById('step-agree-total');
+  const elAdvPct = document.getElementById('step-agree-adv-pct');
+  const elAdv = document.getElementById('step-agree-adv');
+  const elBal = document.getElementById('step-agree-bal');
+  const elBalInline = document.getElementById('step-agree-bal-inline');
+  const elCb = document.getElementById('step-part-pay-agree-checkbox');
+  const elNextLbl = document.getElementById('step-agree-next-label');
+
+  if (elTotal) elTotal.textContent = `₹${snap.roundedTotal.toLocaleString('en-IN')}`;
+  if (elAdvPct) elAdvPct.textContent = Number.isInteger(snap.advPct) ? String(snap.advPct) : String(snap.advPct);
+  if (elAdv) elAdv.textContent = `₹${snap.advAmount.toLocaleString('en-IN')}`;
+  if (elBal) elBal.textContent = `₹${snap.balAmount.toLocaleString('en-IN')}`;
+  if (elBalInline) elBalInline.textContent = `₹${snap.balAmount.toLocaleString('en-IN')}`;
+  if (elCb) elCb.checked = Boolean(state.cab.partPayAgreed);
+  if (elNextLbl) {
+    elNextLbl.textContent = snap.isRzpActive
+      ? 'I Agree & Proceed to Razorpay'
+      : 'I Agree & Continue to UTR Entry';
+  }
+
+  // Populate Step 2 (UPI Payment & UTR)
+  const upiId = (snap.settings.upi_id || 'intercitywheels@upi').trim();
+  const upiPayee = (snap.settings.upi_payee_name || 'Intercity Wheels').trim();
+  const upiInstr = snap.settings.upi_instructions || 'Scan QR or pay to this UPI ID via any UPI app, then enter your 12-digit UTR / Ref ID for Admin confirmation.';
+  const payableNow = isPartPay ? snap.advAmount : snap.roundedTotal;
+
+  const elPayee = document.getElementById('step-utr-payee');
+  const elAmt = document.getElementById('step-utr-amount-now');
+  const elUpiId = document.getElementById('step-utr-upi-id');
+  const elUpiLink = document.getElementById('step-utr-upi-link');
+  const elInstr = document.getElementById('step-utr-instructions');
+  const elBalNote = document.getElementById('step-utr-balance-note');
+  const elModalUtr = document.getElementById('step-modal-upi-utr');
+  const inlineUtrVal = document.getElementById('checkout-upi-utr')?.value?.trim().toUpperCase() || '';
+  const inlineChoice = document.querySelector('input[name="upi_settlement_choice"]:checked')?.value || 'submit_utr';
+
+  if (elPayee) elPayee.textContent = upiPayee;
+  if (elAmt) elAmt.textContent = `₹${payableNow.toLocaleString('en-IN')}`;
+  if (elUpiId) elUpiId.textContent = upiId;
+  if (elUpiLink) {
+    elUpiLink.href = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiPayee)}&am=${encodeURIComponent(String(payableNow))}&cu=INR&tn=${encodeURIComponent('Intercity Wheels Booking')}`;
+  }
+  if (elInstr) elInstr.textContent = upiInstr;
+  if (elBalNote) {
+    if (isPartPay) {
+      elBalNote.style.display = 'block';
+      elBalNote.textContent = `✓ Balance ₹${snap.balAmount.toLocaleString('en-IN')} + additional charges (if any) agreed for payment on trip completion.`;
+    } else {
+      elBalNote.style.display = 'none';
+    }
+  }
+  if (elModalUtr && inlineUtrVal) {
+    elModalUtr.value = inlineUtrVal;
+  }
+  const cashAllowed = String(snap.settings.payment_show_cash ?? '1') === '1';
+  const driverCollectOpt = document.getElementById('step-modal-driver-collect-opt');
+  if (driverCollectOpt) {
+    driverCollectOpt.style.display = cashAllowed ? 'flex' : 'none';
+  }
+  const effectiveChoice = cashAllowed ? inlineChoice : 'submit_utr';
+  const modalChoiceRadio = document.querySelector(`input[name="step_modal_upi_choice"][value="${effectiveChoice}"]`);
+  if (modalChoiceRadio) modalChoiceRadio.checked = true;
+  window.toggleStepModalUpiChoice();
+
+  // Switch active step pane & pills
+  const agreePane = document.getElementById('step-pay-pane-agree');
+  const utrPane = document.getElementById('step-pay-pane-utr');
+  const pill1 = document.getElementById('step-pill-1');
+  const pill2 = document.getElementById('step-pill-2');
+  const arrow = document.getElementById('step-progress-arrow');
+  const backBtn = document.getElementById('step-utr-back-btn');
+  const titleEl = document.getElementById('step-pay-modal-title');
+
+  if (pill1) pill1.style.display = isPartPay ? 'inline-block' : 'none';
+  if (arrow) arrow.style.display = isPartPay ? 'inline-block' : 'none';
+  if (backBtn) backBtn.textContent = isPartPay ? 'Back' : 'Cancel';
+
+  if (step === 1) {
+    if (agreePane) agreePane.style.display = 'block';
+    if (utrPane) utrPane.style.display = 'none';
+    if (titleEl) titleEl.textContent = 'Step 1: Remaining Balance & Charges Agreement';
+    if (pill1) {
+      pill1.style.background = '#fef3c7';
+      pill1.style.color = '#92400e';
+      pill1.style.borderColor = '#f59e0b';
+    }
+    if (pill2) {
+      pill2.style.background = '#f1f5f9';
+      pill2.style.color = '#64748b';
+      pill2.style.borderColor = '#cbd5e1';
+      pill2.textContent = snap.isRzpActive ? '2. Online Payment' : '2. UPI Payment & UTR';
+    }
+  } else {
+    if (agreePane) agreePane.style.display = 'none';
+    if (utrPane) utrPane.style.display = 'block';
+    if (titleEl) titleEl.textContent = isPartPay ? 'Step 2: Pay Advance via UPI & Enter UTR' : 'Pay via UPI & Enter UTR';
+    if (pill1) {
+      pill1.style.background = '#dcfce7';
+      pill1.style.color = '#15803d';
+      pill1.style.borderColor = '#22c55e';
+    }
+    if (pill2) {
+      pill2.style.background = '#fef3c7';
+      pill2.style.color = '#92400e';
+      pill2.style.borderColor = '#f59e0b';
+      pill2.textContent = isPartPay ? '2. UPI Payment & UTR' : '1. UPI Payment & UTR';
+    }
+  }
+
+  modal.classList.add('active');
+};
+
+window.toggleStepModalUpiChoice = function () {
+  const choice = document.querySelector('input[name="step_modal_upi_choice"]:checked')?.value || 'submit_utr';
+  const wrap = document.getElementById('step-modal-utr-input-wrap');
+  if (wrap) wrap.style.display = choice === 'submit_utr' ? 'block' : 'none';
+};
+
+window.goBackStepModal = function () {
+  const snap = getCheckoutFareSnapshot();
+  if (snap.checkedMode === 'part_pay') {
+    window.openCheckoutPaymentStepModal(1, window._checkoutStepModalAutoProcess);
+  } else {
+    closeModal('checkout-payment-step-modal');
+  }
+};
+
+window.proceedFromPartPayAgreement = function () {
+  const cb = document.getElementById('step-part-pay-agree-checkbox');
+  if (!cb || !cb.checked) {
+    showToast('Please check the box agreeing to pay the remaining balance and any additional charges on trip completion.', 'warning');
+    if (cb) cb.focus();
+    return;
+  }
+
+  state.cab.partPayAgreed = true;
+  const agreedBadge = document.getElementById('checkout-part-pay-agreed-badge');
+  if (agreedBadge) agreedBadge.style.display = 'block';
+
+  const snap = getCheckoutFareSnapshot();
+  if (snap.isRzpActive) {
+    closeModal('checkout-payment-step-modal');
+    if (window._checkoutStepModalAutoProcess) {
+      handleConfirmCabBooking();
+    }
+    return;
+  }
+
+  // Advance cleanly to Step 2: UPI Payment & UTR Entry
+  window.openCheckoutPaymentStepModal(2, true);
+};
+
+window.confirmStepModalUpiAndProcess = function () {
+  const cashAllowed = String(window.PLATFORM_SETTINGS?.payment_show_cash ?? '1') === '1';
+  const rawChoice = document.querySelector('input[name="step_modal_upi_choice"]:checked')?.value || 'submit_utr';
+  const choice = cashAllowed ? rawChoice : 'submit_utr';
+  const modalUtrInput = document.getElementById('step-modal-upi-utr');
+  const utrVal = modalUtrInput ? modalUtrInput.value.trim().toUpperCase() : '';
+
+  if (choice === 'submit_utr' && (!utrVal || !/^[A-Za-z0-9\-_]{6,40}$/.test(utrVal))) {
+    showToast(
+      cashAllowed
+        ? 'Please enter a valid 6–40 character UPI UTR / Ref ID, or select "Driver collects on completion".'
+        : 'Please enter a valid 6–40 character UPI UTR / Ref ID.',
+      'warning'
+    );
+    if (modalUtrInput) modalUtrInput.focus();
+    return;
+  }
+
+  // Sync modal choice & UTR back into checkout form fields
+  const inlineRadio = document.querySelector(`input[name="upi_settlement_choice"][value="${choice}"]`);
+  if (inlineRadio) inlineRadio.checked = true;
+  const inlineUtrInput = document.getElementById('checkout-upi-utr');
+  if (inlineUtrInput && choice === 'submit_utr') inlineUtrInput.value = utrVal;
+  if (typeof toggleUpiSettlementChoice === 'function') toggleUpiSettlementChoice();
+
+  closeModal('checkout-payment-step-modal');
+  handleConfirmCabBooking();
+};
+
+window.copyCheckoutUpiId = async function () {
+  const upiId = document.getElementById('checkout-upi-id-text')?.textContent?.trim() || '';
+  if (!upiId) return;
+  try {
+    await navigator.clipboard.writeText(upiId);
+    showToast(`UPI ID ${upiId} copied!`, 'success');
+  } catch (err) {
+    showToast(`UPI ID: ${upiId}`, 'info');
+  }
+};
+
+window.toggleUpiSettlementChoice = function () {
+  const choice = document.querySelector('input[name="upi_settlement_choice"]:checked')?.value || 'submit_utr';
+  const utrRow = document.getElementById('checkout-upi-utr-row');
+  if (utrRow) {
+    utrRow.style.display = choice === 'submit_utr' ? 'block' : 'none';
+  }
+  if (typeof updateTotalCabFare === 'function') {
+    updateTotalCabFare();
+  }
+};
+
 window.updateCheckoutPaymentDisplay = function (totalAmount) {
   const settings = window.PLATFORM_SETTINGS || {};
   const advPct = Math.max(1, Math.min(99, parseFloat(settings.payment_advance_pct ?? 20) || 20));
@@ -11110,13 +11658,58 @@ window.updateCheckoutPaymentDisplay = function (totalAmount) {
   });
 
   const checkedMode = document.querySelector('input[name="rental_pay_mode"]:checked')?.value || 'full_online';
+  const isRzpActive = String(settings.razorpay_active || '0') === '1';
+  const cashAllowed = String(settings.payment_show_cash ?? '1') === '1';
+  const inlineDriverOpt = document.getElementById('checkout-driver-collect-opt');
+  if (inlineDriverOpt) {
+    inlineDriverOpt.style.display = cashAllowed ? 'flex' : 'none';
+  }
+  if (!cashAllowed) {
+    const submitUtrRadio = document.querySelector('input[name="upi_settlement_choice"][value="submit_utr"]');
+    if (submitUtrRadio && !submitUtrRadio.checked) {
+      submitUtrRadio.checked = true;
+      const utrRow = document.getElementById('checkout-upi-utr-row');
+      if (utrRow) utrRow.style.display = 'block';
+    }
+  }
+  const usesManualUpi = !isRzpActive && checkedMode !== 'cash';
+  const upiChoice = cashAllowed ? (document.querySelector('input[name="upi_settlement_choice"]:checked')?.value || 'submit_utr') : 'submit_utr';
+  const upiDueNow = checkedMode === 'part_pay' ? advAmount : roundedTotal;
+  const upiBox = document.getElementById('checkout-upi-details-box');
+  if (upiBox) {
+    upiBox.style.display = usesManualUpi ? 'block' : 'none';
+    const upiId = (settings.upi_id || 'intercitywheels@upi').trim();
+    const upiPayee = (settings.upi_payee_name || 'Intercity Wheels').trim();
+    const upiInstr = settings.upi_instructions || 'Scan QR or pay to this UPI ID via any UPI app, then enter your 12-digit UTR / Ref ID for Admin confirmation (or choose Driver Collection on completion).';
+
+    const idEl = document.getElementById('checkout-upi-id-text');
+    const payeeEl = document.getElementById('checkout-upi-payee-text');
+    const amtEl = document.getElementById('checkout-upi-amount-text');
+    const instrEl = document.getElementById('checkout-upi-instructions-text');
+    const appLink = document.getElementById('checkout-upi-app-link');
+
+    if (idEl) idEl.textContent = upiId;
+    if (payeeEl) payeeEl.textContent = upiPayee;
+    if (amtEl) amtEl.textContent = `₹${upiDueNow.toLocaleString('en-IN')}`;
+    if (instrEl) instrEl.textContent = upiInstr;
+    if (appLink) {
+      appLink.href = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiPayee)}&am=${encodeURIComponent(String(upiDueNow))}&cu=INR&tn=${encodeURIComponent('Intercity Wheels Booking')}`;
+    }
+  }
+
   const payableNowEl = document.getElementById('checkout-payable-now-amount');
   if (payableNowEl) {
-    if (checkedMode === 'part_pay') {
+    if (checkedMode === 'cash') {
+      payableNowEl.textContent = `₹0 now (Driver collects ₹${roundedTotal.toLocaleString('en-IN')} on completion)`;
+    } else if (usesManualUpi && upiChoice === 'driver_collect') {
+      payableNowEl.textContent = `₹0 now (Driver collects ₹${roundedTotal.toLocaleString('en-IN')} on completion)`;
+    } else if (checkedMode === 'part_pay') {
       const bal = Math.max(0, roundedTotal - advAmount);
-      payableNowEl.textContent = `₹${advAmount.toLocaleString('en-IN')} (+ ₹${bal.toLocaleString('en-IN')} to Driver)`;
-    } else if (checkedMode === 'cash') {
-      payableNowEl.textContent = `₹0 now (₹${roundedTotal.toLocaleString('en-IN')} to Driver)`;
+      payableNowEl.textContent = usesManualUpi
+        ? `₹${advAmount.toLocaleString('en-IN')} via UPI (Admin confirms UTR + ₹${bal.toLocaleString('en-IN')} to Driver)`
+        : `₹${advAmount.toLocaleString('en-IN')} (+ Driver collects ₹${bal.toLocaleString('en-IN')} on completion)`;
+    } else if (usesManualUpi) {
+      payableNowEl.textContent = `₹${roundedTotal.toLocaleString('en-IN')} via UPI (Admin confirms UTR)`;
     } else {
       payableNowEl.textContent = `₹${roundedTotal.toLocaleString('en-IN')}`;
     }
@@ -11149,11 +11742,12 @@ window.renderCheckoutPaymentOptionsFromSettings = function () {
   listEl.innerHTML = opts.map(o => `
     <label class="checkout-pay-opt" data-mode="${o.mode}" style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12.5px; cursor:pointer;">
       <span style="display:flex; align-items:center; gap:8px;">
-        <input type="radio" name="rental_pay_mode" value="${o.mode}" ${o.mode === def ? 'checked' : ''} onchange="updateTotalCabFare()">
+        <input type="radio" name="rental_pay_mode" value="${o.mode}" ${o.mode === def ? 'checked' : ''} onchange="onCheckoutPayModeChange(this.value)">
         <span>${o.label}</span>
       </span>
       <strong class="checkout-pay-amt" data-amt-for="${o.mode}" style="color:${o.color}; font-size:12px;"></strong>
     </label>
+    ${o.mode === 'part_pay' ? `<div id="checkout-part-pay-agreed-badge" style="display:${state.cab.partPayAgreed ? 'block' : 'none'}; font-size:11px; color:#15803d; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:4px 8px; margin-left:20px;">✓ Agreed to pay remaining balance &amp; additional charges (if any) on trip completion. <a href="javascript:void(0)" onclick="openCheckoutPaymentStepModal(1)" style="color:#0284c7; font-weight:700; margin-left:4px;">Review</a></div>` : ''}
   `).join('');
 
   const promoCopy = document.getElementById('promo-advance-copy');
@@ -11192,6 +11786,9 @@ window.saveAdminPaymentOptions = async function (e) {
   const showUpi = Boolean(document.getElementById('setting-pay-show-upi')?.checked);
   const showCash = Boolean(document.getElementById('setting-pay-show-cash')?.checked);
   const defaultOpt = document.getElementById('setting-payment-default-option')?.value || 'full_online';
+  const upiId = document.getElementById('setting-upi-id')?.value?.trim() || '';
+  const upiPayeeName = document.getElementById('setting-upi-payee-name')?.value?.trim() || 'Intercity Wheels';
+  const upiInstructions = document.getElementById('setting-upi-instructions')?.value?.trim() || '';
   const rzpEnabled = Boolean(document.getElementById('setting-razorpay-enabled')?.checked);
   const rzpMode = document.getElementById('setting-razorpay-mode')?.value || 'test';
   const rzpKeyId = document.getElementById('setting-razorpay-key-id')?.value?.trim() || '';
@@ -11200,6 +11797,12 @@ window.saveAdminPaymentOptions = async function (e) {
 
   if (!showPart && !showFull && !showUpi && !showCash) {
     showToast('Enable at least one checkout payment option.', 'warning');
+    return;
+  }
+
+  if (showUpi && !upiId) {
+    showToast('Enter a valid UPI ID (VPA) when Full UPI payment is enabled.', 'warning');
+    document.getElementById('setting-upi-id')?.focus();
     return;
   }
 
@@ -11223,6 +11826,9 @@ window.saveAdminPaymentOptions = async function (e) {
         payment_show_full_upi: showUpi,
         payment_show_cash: showCash,
         payment_default_option: defaultOpt,
+        upi_id: upiId,
+        upi_payee_name: upiPayeeName,
+        upi_instructions: upiInstructions,
         payment_gateway: rzpEnabled ? 'razorpay' : 'manual',
         razorpay_mode: rzpMode,
         razorpay_key_id: rzpKeyId,
