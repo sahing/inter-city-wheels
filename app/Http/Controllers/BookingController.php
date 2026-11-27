@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\BerthUnavailable;
 use App\Exceptions\DistanceUnresolvable;
 use App\Models\Booking;
+use App\Models\PaymentAttempt;
 use App\Models\PlatformSetting;
 use App\Models\SeatLayout;
 use App\Services\BiddingService;
@@ -420,6 +421,31 @@ class BookingController extends Controller
             $this->notifications->bookingCreated($booking, 'customer', $beyondCities ?? []);
         }
 
+        // Track payment attempt under the authenticated user
+        $initialAttemptChannel = $useRazorpay
+            ? 'razorpay'
+            : ($booking->payment_gateway === 'upi_manual' ? 'manual_upi' : 'driver_collect');
+        $initialAttemptStatus = match (true) {
+            $useRazorpay => 'initiated',
+            $booking->payment_status === 'pending_upi_verification' => 'utr_submitted',
+            $booking->payment_status === 'driver_collect' || $booking->payment_status === 'pay_on_pickup' => 'driver_collect',
+            $booking->payment_status === 'paid' || $booking->payment_status === 'partial_paid' => 'verified',
+            default => 'initiated',
+        };
+        PaymentAttempt::create([
+            'booking_id' => $booking->id,
+            'user_id' => auth()->id(),
+            'payment_mode' => (string) $booking->payment_mode,
+            'payment_channel' => $initialAttemptChannel,
+            'amount' => (float) ($booking->advance_amount > 0 ? $booking->advance_amount : $booking->total_amount),
+            'status' => $initialAttemptStatus,
+            'gateway_order_id' => $razorpayOrder['order_id'] ?? null,
+            'upi_utr' => $booking->upi_utr,
+            'notes' => $booking->payment_notes,
+            'attempted_at' => now(),
+            'resolved_at' => $initialAttemptStatus === 'verified' ? now() : null,
+        ]);
+
         return response()->json([
             'success' => true,
             'message' => $useRazorpay
@@ -517,6 +543,16 @@ class BookingController extends Controller
             ])->save();
 
             $fresh = $booking->fresh(['driver']);
+            PaymentAttempt::create([
+                'booking_id' => $fresh->id,
+                'user_id' => $request->user()?->id,
+                'payment_mode' => (string) $fresh->payment_mode,
+                'payment_channel' => 'driver_collect',
+                'amount' => (float) $fresh->total_amount,
+                'status' => 'driver_collect',
+                'notes' => 'Customer switched to driver collection on trip completion',
+                'attempted_at' => now(),
+            ]);
             $this->notifications->upiUtrSubmitted($fresh);
 
             return response()->json([
@@ -555,6 +591,17 @@ class BookingController extends Controller
         ])->save();
 
         $fresh = $booking->fresh(['driver']);
+        PaymentAttempt::create([
+            'booking_id' => $fresh->id,
+            'user_id' => $request->user()?->id,
+            'payment_mode' => (string) $fresh->payment_mode,
+            'payment_channel' => 'manual_upi',
+            'amount' => $advAmt,
+            'status' => 'utr_submitted',
+            'upi_utr' => $utr,
+            'notes' => 'Customer submitted UTR for Admin verification',
+            'attempted_at' => now(),
+        ]);
         $this->notifications->upiUtrSubmitted($fresh);
 
         return response()->json([
@@ -594,6 +641,18 @@ class BookingController extends Controller
                 'payment_status' => 'pending',
                 'razorpay_order_id' => $order['order_id'],
             ])->save();
+
+            PaymentAttempt::create([
+                'booking_id' => $booking->id,
+                'user_id' => $request->user()?->id,
+                'payment_mode' => (string) ($booking->payment_mode ?: 'full_online'),
+                'payment_channel' => 'razorpay',
+                'amount' => $payable,
+                'status' => 'initiated',
+                'gateway_order_id' => $order['order_id'],
+                'notes' => 'Razorpay order created / retry attempt',
+                'attempted_at' => now(),
+            ]);
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -683,6 +742,31 @@ class BookingController extends Controller
                 'razorpay_signature' => $validated['razorpay_signature'],
             ]);
         });
+
+        $attempt = PaymentAttempt::where('booking_id', $confirmedBooking->id)
+            ->where('gateway_order_id', $validated['razorpay_order_id'])
+            ->latest('id')
+            ->first();
+        if ($attempt) {
+            $attempt->forceFill([
+                'status' => 'verified',
+                'gateway_payment_id' => $validated['razorpay_payment_id'],
+                'resolved_at' => now(),
+            ])->save();
+        } else {
+            PaymentAttempt::create([
+                'booking_id' => $confirmedBooking->id,
+                'user_id' => $request->user()?->id,
+                'payment_mode' => (string) ($confirmedBooking->payment_mode ?: 'full_online'),
+                'payment_channel' => 'razorpay',
+                'amount' => (float) ($confirmedBooking->advance_amount ?? $confirmedBooking->total_amount),
+                'status' => 'verified',
+                'gateway_order_id' => $validated['razorpay_order_id'],
+                'gateway_payment_id' => $validated['razorpay_payment_id'],
+                'attempted_at' => now(),
+                'resolved_at' => now(),
+            ]);
+        }
 
         if ($confirmedBooking->service_type !== 'bus') {
             $this->bidding->openForNewBooking($confirmedBooking);

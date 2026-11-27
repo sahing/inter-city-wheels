@@ -6,6 +6,7 @@ use App\Exceptions\InvalidBookingTransition;
 use App\Models\Booking;
 use App\Models\Driver;
 use App\Models\DriverBid;
+use App\Models\PaymentAttempt;
 use App\Models\User;
 use App\Models\WalletTransaction;
 use App\Services\BookingReferenceGenerator;
@@ -319,6 +320,19 @@ class DriverBiddingController extends Controller
 
         [$completed, $payout, $collectDue, $netWalletDelta] = $result;
         $completedFresh = $completed->fresh(['driver', 'customer']);
+        if ($collectDue > 0) {
+            PaymentAttempt::create([
+                'booking_id' => $completedFresh->id,
+                'user_id' => $completedFresh->customer_user_id,
+                'payment_mode' => (string) ($completedFresh->payment_mode ?: 'cash'),
+                'payment_channel' => 'driver_collect',
+                'amount' => (float) $collectDue,
+                'status' => 'collected_by_driver',
+                'notes' => 'Collected by driver upon trip completion',
+                'attempted_at' => now(),
+                'resolved_at' => now(),
+            ]);
+        }
         $this->notifications->tripCompleted($completedFresh, (float) $payout);
 
         $msg = $collectDue > 0

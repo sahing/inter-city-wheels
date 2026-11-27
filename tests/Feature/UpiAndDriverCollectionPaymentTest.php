@@ -488,4 +488,124 @@ class UpiAndDriverCollectionPaymentTest extends TestCase
             @unlink(public_path(ltrim($qrUrl, '/')));
         }
     }
+
+    public function test_login_is_required_before_payment_and_every_payment_attempt_is_tracked_under_user(): void
+    {
+        // Guest receives login gate UI and cannot create booking or log payment attempts
+        $guestHtml = $this->get('/')->getContent();
+        $this->assertStringContainsString('id="booking-login-gate-modal"', $guestHtml);
+        $this->assertStringContainsString('Sign in before payment', $guestHtml);
+
+        $this->postJson('/api/bookings', $this->baseBookingPayload([
+            'payment_mode' => 'full_upi',
+            'upi_utr' => 'GUESTTRY999',
+        ]))->assertStatus(401);
+
+        $this->assertDatabaseCount('payment_attempts', 0);
+
+        // Configure Razorpay and initiate + retry + verify a booking as signed-in customer
+        PlatformSetting::set('payment_gateway', 'razorpay');
+        PlatformSetting::set('razorpay_mode', 'test');
+        PlatformSetting::set('razorpay_key_id', 'rzp_test_track123');
+        PlatformSetting::set('razorpay_key_secret', 'rzp_secret_track_xyz');
+
+        \Illuminate\Support\Facades\Http::fake([
+            'https://api.razorpay.com/v1/orders' => \Illuminate\Support\Facades\Http::sequence()
+                ->push(['id' => 'order_attempt_001', 'amount' => 100000, 'currency' => 'INR', 'status' => 'created'], 200)
+                ->push(['id' => 'order_attempt_002', 'amount' => 100000, 'currency' => 'INR', 'status' => 'created'], 200),
+        ]);
+
+        $rzpBookRes = $this->actingAs($this->customer)->postJson('/api/bookings', $this->baseBookingPayload([
+            'payment_mode' => 'full_online',
+            'payment_channel' => 'razorpay',
+        ]));
+        $rzpBookRes->assertOk()->assertJsonPath('requires_razorpay', true);
+        $rzpRef = (string) $rzpBookRes->json('booking.booking_reference');
+        $rzpId = (int) $rzpBookRes->json('booking.id');
+
+        $this->assertDatabaseHas('payment_attempts', [
+            'booking_id' => $rzpId,
+            'user_id' => $this->customer->id,
+            'payment_channel' => 'razorpay',
+            'status' => 'initiated',
+            'gateway_order_id' => 'order_attempt_001',
+        ]);
+
+        // Retry order creation generates a second tracked attempt
+        $retryRes = $this->actingAs($this->customer)->postJson("/api/bookings/{$rzpRef}/razorpay/order");
+        $retryRes->assertOk()->assertJsonPath('razorpay.order_id', 'order_attempt_002');
+
+        $sig = hash_hmac('sha256', 'order_attempt_002|pay_track_verified_99', 'rzp_secret_track_xyz');
+        $this->actingAs($this->customer)->postJson("/api/bookings/{$rzpRef}/razorpay/verify", [
+            'razorpay_order_id' => 'order_attempt_002',
+            'razorpay_payment_id' => 'pay_track_verified_99',
+            'razorpay_signature' => $sig,
+        ])->assertOk();
+
+        $this->assertDatabaseHas('payment_attempts', [
+            'booking_id' => $rzpId,
+            'user_id' => $this->customer->id,
+            'status' => 'verified',
+            'gateway_order_id' => 'order_attempt_002',
+            'gateway_payment_id' => 'pay_track_verified_99',
+        ]);
+
+        // Manual UPI -> UTR submission -> Admin rejection -> Driver collection on completion
+        $upiBookRes = $this->actingAs($this->customer)->postJson('/api/bookings', $this->baseBookingPayload([
+            'payment_mode' => 'full_upi',
+            'payment_channel' => 'manual_upi',
+        ]))->assertOk();
+
+        $upiIdBooking = (int) $upiBookRes->json('booking.id');
+        $upiRef = (string) $upiBookRes->json('booking.booking_reference');
+
+        $this->actingAs($this->customer)->postJson("/api/bookings/{$upiRef}/upi-utr", [
+            'collection_choice' => 'utr',
+            'upi_utr' => 'UTRTRACK778899',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('payment_attempts', [
+            'booking_id' => $upiIdBooking,
+            'user_id' => $this->customer->id,
+            'payment_channel' => 'manual_upi',
+            'status' => 'utr_submitted',
+            'upi_utr' => 'UTRTRACK778899',
+        ]);
+
+        $this->actingAs($this->admin)->postJson("/api/admin/bookings/{$upiIdBooking}/verify-payment", [
+            'action' => 'reject_assign_driver',
+            'payment_notes' => 'UTR not credited yet',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('payment_attempts', [
+            'booking_id' => $upiIdBooking,
+            'status' => 'rejected',
+            'upi_utr' => 'UTRTRACK778899',
+        ]);
+
+        // Allot & start trip, then complete via driver -> logs collected_by_driver attempt
+        $this->actingAs($this->admin)->postJson("/api/admin/bookings/{$upiIdBooking}/allot-driver", [
+            'driver_id' => $this->driver->id,
+            'status' => 'Started',
+        ])->assertOk();
+
+        $this->actingAs($this->driverUser)->postJson("/api/driver/trips/{$upiIdBooking}/complete", [
+            'collected_by_driver' => true,
+        ])->assertOk();
+
+        $this->assertDatabaseHas('payment_attempts', [
+            'booking_id' => $upiIdBooking,
+            'user_id' => $this->customer->id,
+            'payment_channel' => 'driver_collect',
+            'status' => 'collected_by_driver',
+        ]);
+
+        // Admin booking view endpoint returns chronological payment_attempts + UI box exists
+        $adminViewRes = $this->actingAs($this->admin)->getJson("/api/admin/bookings/{$rzpId}");
+        $adminViewRes->assertOk();
+        $this->assertGreaterThanOrEqual(2, count($adminViewRes->json('booking.payment_attempts')));
+
+        $adminHtml = $this->actingAs($this->admin)->get('/')->getContent();
+        $this->assertStringContainsString('id="view-booking-attempts-box"', $adminHtml);
+    }
 }

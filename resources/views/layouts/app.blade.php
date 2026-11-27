@@ -573,17 +573,17 @@
     <!-- MODAL: ALTERNATE AUTHENTICATION (FIREBASE / CLERK)       -->
     <!-- ======================================================== -->
     <!-- ======================================================== -->
-    <!-- MODAL: BOOKING LOGIN GATE (one-tap sign-in to confirm)   -->
+    <!-- MODAL: BOOKING LOGIN GATE (required before payment)      -->
     <!-- ======================================================== -->
     <div class="modal-overlay" id="booking-login-gate-modal">
         <div class="modal-dialog" style="max-width: 420px;">
             <div class="modal-header">
-                <h3 class="modal-title">Sign in to confirm your booking</h3>
+                <h3 class="modal-title">Sign in before payment</h3>
                 <button type="button" class="modal-close-btn" onclick="closeModal('booking-login-gate-modal')">×</button>
             </div>
             <div class="modal-body">
                 <p style="font-size:12.5px; color:#475569; margin:0 0 14px;">
-                    Your trip details are saved. Sign in to lock your fare, link the trip to your account and receive your ride OTP.
+                    Your trip details are saved. Sign in to track your payment attempts, lock your fare, link the booking to your account and receive your ride OTP.
                 </p>
                 @if(config('demo.enabled'))
                 <button type="button" class="btn btn-primary btn-block" onclick="oneTapBookingLogin()" style="height:44px; font-size:13.5px; margin-bottom:10px;">
@@ -596,7 +596,7 @@
                     <span>Sign in with mobile or email</span>
                 </button>
                 <p style="font-size:11px; color:#94a3b8; text-align:center; margin:12px 0 0;">
-                    Your pending booking is restored automatically once you are signed in.
+                    Your checkout &amp; selected payment step will resume automatically once you are signed in.
                 </p>
             </div>
         </div>

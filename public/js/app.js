@@ -357,6 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
   initCabsModule();
   if (typeof applySearchQueryFromUrl === 'function') applySearchQueryFromUrl();
+  if (typeof window.restorePendingPaymentDraft === 'function') window.restorePendingPaymentDraft();
   initSchedulesModule();
   initBiddingModule();
   initAdminModule();
@@ -2437,6 +2438,15 @@ async function handleConfirmCabBooking() {
   const selectedPayMode = document.querySelector('input[name="rental_pay_mode"]:checked')?.value || (window.PLATFORM_SETTINGS?.payment_default_option || 'full_online');
   const cashAllowed = String(window.PLATFORM_SETTINGS?.payment_show_cash ?? '1') === '1';
 
+  // Require login BEFORE entering any payment modal or confirmation flow so payment attempts are tracked per user
+  if (typeof window.isUserLoggedInForPayment === 'function' && !window.isUserLoggedInForPayment()) {
+    const resumeStep = selectedPayMode === 'cash'
+      ? 0
+      : (selectedPayMode === 'part_pay' && !state.cab.partPayAgreed ? 1 : 2);
+    window.promptLoginBeforePayment(resumeStep);
+    return;
+  }
+
   if (selectedPayMode !== 'cash' && !state.cab._stepModalReadyToSubmit) {
     if (selectedPayMode === 'part_pay' && !state.cab.partPayAgreed) {
       window.openCheckoutPaymentStepModal(1, true);
@@ -4017,6 +4027,11 @@ window.confirmMockPayment = async function (method) {
 
     let booked = null;
 
+    if (typeof window.isUserLoggedInForPayment === 'function' && !window.isUserLoggedInForPayment()) {
+      beginBookingLoginGate(busPayload);
+      return;
+    }
+
     try {
       const res = await fetch('/api/bookings', {
         method: 'POST',
@@ -4678,6 +4693,91 @@ window.quickDemoLogin = async function (role) {
 /* BOOKING LOGIN GATE — sign-in required before confirming   */
 /* ======================================================== */
 const PENDING_BOOKING_KEY = 'intercityPendingBooking';
+const PENDING_PAYMENT_DRAFT_KEY = 'intercityPendingPaymentDraft';
+
+window.isUserLoggedInForPayment = function () {
+  return Boolean((window.INTERCITY_AUTH && window.INTERCITY_AUTH.authenticated) || window.CURRENT_USER);
+};
+
+window.promptLoginBeforePayment = function (targetStep = 2) {
+  try {
+    const selectedPayMode = document.querySelector('input[name="rental_pay_mode"]:checked')?.value
+      || (window.PLATFORM_SETTINGS?.payment_default_option || 'full_online');
+    const draft = {
+      targetStep: Number(targetStep) || 0,
+      payMode: selectedPayMode,
+      tripType: state.cab.tripType || 'oneway',
+      fromCity: state.cab.fromCity || '',
+      toCity: state.cab.toCity || '',
+      customerName: document.getElementById('cab-customer-name')?.value || '',
+      customerPhone: document.getElementById('cab-customer-phone')?.value || '',
+      pickupLoc: document.getElementById('cab-pickup-address')?.value || '',
+      dropLoc: document.getElementById('cab-drop-address')?.value || '',
+      pickupDate: document.getElementById('cab-pickup-date')?.value || '',
+      pickupTime: document.getElementById('cab-pickup-time')?.value || '',
+      returnDate: document.getElementById('cab-return-date')?.value || '',
+      savedAt: Date.now(),
+    };
+    sessionStorage.setItem(PENDING_PAYMENT_DRAFT_KEY, JSON.stringify(draft));
+  } catch (err) {
+    console.warn('Could not persist payment draft:', err);
+  }
+
+  const modal = document.getElementById('booking-login-gate-modal');
+  if (modal) {
+    modal.classList.add('active');
+    return;
+  }
+  showToast('Please sign in before payment so your payment attempts can be tracked.', 'warning');
+};
+
+window.restorePendingPaymentDraft = function () {
+  if (!window.isUserLoggedInForPayment()) return;
+  let raw = null;
+  try {
+    raw = sessionStorage.getItem(PENDING_PAYMENT_DRAFT_KEY);
+  } catch (err) {
+    return;
+  }
+  if (!raw) return;
+
+  let draft = null;
+  try {
+    draft = JSON.parse(raw);
+    sessionStorage.removeItem(PENDING_PAYMENT_DRAFT_KEY);
+  } catch (err) {
+    try { sessionStorage.removeItem(PENDING_PAYMENT_DRAFT_KEY); } catch (e) { }
+    return;
+  }
+  if (!draft || (draft.savedAt && (Date.now() - draft.savedAt) > 30 * 60 * 1000)) return;
+
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && val) el.value = val;
+  };
+  setVal('cab-customer-name', draft.customerName);
+  setVal('cab-customer-phone', draft.customerPhone);
+  setVal('cab-pickup-address', draft.pickupLoc);
+  setVal('cab-drop-address', draft.dropLoc);
+  setVal('cab-pickup-date', draft.pickupDate);
+  setVal('cab-pickup-time', draft.pickupTime);
+  setVal('cab-return-date', draft.returnDate);
+
+  if (draft.payMode) {
+    const modeRadio = document.querySelector(`input[name="rental_pay_mode"][value="${draft.payMode}"]`);
+    if (modeRadio) modeRadio.checked = true;
+  }
+
+  if (typeof switchTab === 'function') switchTab('cabs');
+  if (typeof goToCabStep === 'function') goToCabStep(3);
+  if (typeof updateTotalCabFare === 'function') updateTotalCabFare();
+
+  if (draft.targetStep > 0 && typeof window.openCheckoutPaymentStepModal === 'function') {
+    window.setTimeout(() => {
+      window.openCheckoutPaymentStepModal(draft.targetStep, true);
+    }, 120);
+  }
+};
 
 window.beginBookingLoginGate = function (payload) {
   // Persist the trip so it survives the one-tap login page reload.
@@ -4718,7 +4818,7 @@ window.resumePendingBooking = async function () {
   }
 
   if (!raw) { return; }
-  if (!(window.INTERCITY_AUTH && window.INTERCITY_AUTH.authenticated)) { return; }
+  if (!window.isUserLoggedInForPayment()) { return; }
 
   let payload;
   try {
@@ -4747,6 +4847,13 @@ window.resumePendingBooking = async function () {
     const data = await res.json();
 
     if (res.ok && data.success && data.booking) {
+      if (data.requires_razorpay && data.razorpay && typeof launchRazorpayCheckout === 'function') {
+        try {
+          await launchRazorpayCheckout(data.booking.booking_reference, data.razorpay);
+        } catch (rzpErr) {
+          showToast(rzpErr.message || 'Razorpay payment was cancelled. Retry anytime from My Trips.', 'warning');
+        }
+      }
       showToast(
         `Booking confirmed. Reference ${data.booking.booking_reference} (Ride OTP: ${data.booking.start_otp})`,
         'success'
@@ -5836,6 +5943,37 @@ window.openViewBookingModal = async function (bookingId) {
       const notesIn = document.getElementById('view-verify-notes-input');
       if (utrIn) utrIn.value = b.upi_utr || '';
       if (notesIn) notesIn.value = '';
+    }
+
+    const attemptsBox = document.getElementById('view-booking-attempts-box');
+    const attemptsList = document.getElementById('view-booking-attempts-list');
+    if (attemptsBox && attemptsList) {
+      const attempts = Array.isArray(b.payment_attempts) ? b.payment_attempts : [];
+      if (attempts.length > 0) {
+        attemptsBox.style.display = 'block';
+        attemptsList.innerHTML = attempts.map(a => {
+          const st = String(a.status || 'initiated').toUpperCase();
+          const stColor = a.status === 'verified' || a.status === 'collected_by_driver'
+            ? '#15803d'
+            : (a.status === 'rejected' || a.status === 'failed' ? '#b91c1c' : '#b45309');
+          const ch = String(a.payment_channel || 'manual').replace(/_/g, ' ').toUpperCase();
+          const refInfo = a.upi_utr ? `UTR: ${escapeHtml(a.upi_utr)}` : (a.gateway_payment_id ? `PayID: ${escapeHtml(a.gateway_payment_id)}` : (a.gateway_order_id ? `Order: ${escapeHtml(a.gateway_order_id)}` : ''));
+          const who = a.user ? ` • ${escapeHtml(a.user.name || a.user.email || ('User #' + a.user.id))}` : '';
+          const when = a.attempted_at ? new Date(a.attempted_at).toLocaleString('en-IN') : '';
+          return `
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:6px 8px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px;">
+              <div>
+                <div style="font-weight:700; color:#0f172a;">₹${Number(a.amount || 0).toLocaleString('en-IN')} • ${escapeHtml(ch)}</div>
+                <div style="font-size:10.5px; color:#64748b;">${refInfo}${who}${when ? ' • ' + escapeHtml(when) : ''}</div>
+              </div>
+              <span style="font-size:10px; font-weight:800; color:${stColor}; white-space:nowrap;">${escapeHtml(st)}</span>
+            </div>
+          `;
+        }).join('');
+      } else {
+        attemptsBox.style.display = 'none';
+        attemptsList.innerHTML = '';
+      }
     }
 
     const modal = document.getElementById('admin-view-booking-modal');
@@ -11574,6 +11712,12 @@ function getCheckoutFareSnapshot() {
 }
 
 window.openCheckoutPaymentStepModal = function (startStep = 1, autoProcess = false) {
+  if (typeof window.isUserLoggedInForPayment === 'function' && !window.isUserLoggedInForPayment()) {
+    window._checkoutStepModalAutoProcess = Boolean(autoProcess);
+    window.promptLoginBeforePayment(startStep);
+    return;
+  }
+
   const modal = document.getElementById('checkout-payment-step-modal');
   if (!modal) return;
 
@@ -11669,4 +11813,585 @@ window.openCheckoutPaymentStepModal = function (startStep = 1, autoProcess = fal
 
   // Toggle active screen cleanly (one screen at a time, mobile-first)
   const panes = {
-... [truncated for diff preview]
+    1: document.getElementById('step-pay-pane-agree'),
+    2: document.getElementById('step-pay-pane-method'),
+    3: document.getElementById('step-pay-pane-qr'),
+    4: document.getElementById('step-pay-pane-utr'),
+  };
+  Object.entries(panes).forEach(([idx, paneEl]) => {
+    if (paneEl) paneEl.style.display = Number(idx) === Number(step) ? 'block' : 'none';
+  });
+
+  const subtitleEl = document.getElementById('step-pay-subtitle');
+  const titleEl = document.getElementById('step-pay-modal-title');
+  const barEl = document.getElementById('step-pay-progress-bar');
+
+  const meta = {
+    1: { sub: isPartPay ? 'Step 1 of 4 • Agreement' : 'Step 1', title: 'Part Pay Balance Agreement', pct: '25%' },
+    2: { sub: isPartPay ? 'Step 2 of 4 • Method' : 'Step 1 of 3 • Method', title: 'Choose Payment Method', pct: isPartPay ? '50%' : '33%' },
+    3: { sub: isPartPay ? 'Step 3 of 4 • Scan & Pay' : 'Step 2 of 3 • Scan & Pay', title: 'Scan QR or Pay via UPI', pct: isPartPay ? '75%' : '66%' },
+    4: { sub: isPartPay ? 'Step 4 of 4 • Confirm' : 'Step 3 of 3 • Confirm', title: 'Enter UTR & Confirm Booking', pct: '100%' },
+  }[step] || { sub: 'Checkout Payment', title: 'Payment Confirmation', pct: '50%' };
+
+  if (subtitleEl) subtitleEl.textContent = meta.sub;
+  if (titleEl) titleEl.textContent = meta.title;
+  if (barEl) barEl.style.width = meta.pct;
+
+  modal.classList.add('active');
+};
+
+window.goBackFromMethodStep = function () {
+  const snap = getCheckoutFareSnapshot();
+  if (snap.checkedMode === 'part_pay') {
+    window.openCheckoutPaymentStepModal(1, window._checkoutStepModalAutoProcess);
+  } else {
+    closeModal('checkout-payment-step-modal');
+  }
+};
+
+window.proceedFromPartPayAgreement = function () {
+  const cb = document.getElementById('step-part-pay-agree-checkbox');
+  if (!cb || !cb.checked) {
+    showToast('Please check the box agreeing to pay the remaining balance and any additional charges on trip completion.', 'warning');
+    if (cb) cb.focus();
+    return;
+  }
+
+  state.cab.partPayAgreed = true;
+  const agreedBadge = document.getElementById('checkout-part-pay-agreed-badge');
+  if (agreedBadge) agreedBadge.style.display = 'block';
+
+  window.openCheckoutPaymentStepModal(2, window._checkoutStepModalAutoProcess);
+};
+
+window.proceedFromMethodStep = function () {
+  if (typeof window.isUserLoggedInForPayment === 'function' && !window.isUserLoggedInForPayment()) {
+    closeModal('checkout-payment-step-modal');
+    window.promptLoginBeforePayment(2);
+    return;
+  }
+
+  const snap = getCheckoutFareSnapshot();
+  let chosen = document.querySelector('input[name="step_payment_channel"]:checked')?.value || 'manual_upi';
+  if (chosen === 'razorpay' && !snap.isRzpActive) chosen = 'manual_upi';
+  if (chosen === 'driver_collect' && !snap.cashAllowed) chosen = 'manual_upi';
+
+  state.cab._stepPaymentChannel = chosen;
+
+  if (chosen === 'manual_upi') {
+    window.openCheckoutPaymentStepModal(3, true);
+    return;
+  }
+
+  // Razorpay Gateway or Driver Collect: submit booking directly
+  state.cab._stepModalReadyToSubmit = true;
+  state.cab._stepUpiUtr = '';
+  closeModal('checkout-payment-step-modal');
+  handleConfirmCabBooking();
+};
+
+window.confirmStepModalUpiAndProcess = function () {
+  if (typeof window.isUserLoggedInForPayment === 'function' && !window.isUserLoggedInForPayment()) {
+    closeModal('checkout-payment-step-modal');
+    window.promptLoginBeforePayment(4);
+    return;
+  }
+
+  const modalUtrInput = document.getElementById('step-modal-upi-utr');
+  const utrVal = modalUtrInput ? modalUtrInput.value.trim().toUpperCase() : '';
+
+  if (!utrVal || !/^[A-Za-z0-9\-_]{6,40}$/.test(utrVal)) {
+    showToast('Please enter a valid 6–40 character UPI UTR / Ref ID.', 'warning');
+    if (modalUtrInput) modalUtrInput.focus();
+    return;
+  }
+
+  state.cab._stepPaymentChannel = 'manual_upi';
+  state.cab._stepUpiUtr = utrVal;
+  state.cab._stepModalReadyToSubmit = true;
+
+  const inlineRadio = document.querySelector('input[name="upi_settlement_choice"][value="submit_utr"]');
+  if (inlineRadio) inlineRadio.checked = true;
+  const inlineUtrInput = document.getElementById('checkout-upi-utr');
+  if (inlineUtrInput) inlineUtrInput.value = utrVal;
+  if (typeof toggleUpiSettlementChoice === 'function') toggleUpiSettlementChoice();
+
+  closeModal('checkout-payment-step-modal');
+  handleConfirmCabBooking();
+};
+
+window.copyCheckoutUpiId = async function () {
+  const upiId = document.getElementById('step-utr-upi-id')?.textContent?.trim()
+    || document.getElementById('checkout-upi-id-text')?.textContent?.trim()
+    || '';
+  if (!upiId) return;
+  try {
+    await navigator.clipboard.writeText(upiId);
+    showToast(`UPI ID ${upiId} copied!`, 'success');
+  } catch (err) {
+    showToast(`UPI ID: ${upiId}`, 'info');
+  }
+};
+
+window.toggleUpiSettlementChoice = function () {
+  const choice = document.querySelector('input[name="upi_settlement_choice"]:checked')?.value || 'submit_utr';
+  const utrRow = document.getElementById('checkout-upi-utr-row');
+  if (utrRow) {
+    utrRow.style.display = choice === 'submit_utr' ? 'block' : 'none';
+  }
+  if (typeof updateTotalCabFare === 'function') {
+    updateTotalCabFare();
+  }
+};
+
+window.updateCheckoutPaymentDisplay = function (totalAmount) {
+  const settings = window.PLATFORM_SETTINGS || {};
+  const advPct = Math.max(1, Math.min(99, parseFloat(settings.payment_advance_pct ?? 20) || 20));
+  const roundedTotal = Math.max(0, Math.round(Number(totalAmount) || 0));
+  const advAmount = Math.round(roundedTotal * (advPct / 100));
+
+  document.querySelectorAll('.checkout-pay-amt').forEach(el => {
+    const mode = el.dataset.amtFor;
+    if (mode === 'full_online' || mode === 'full_upi') {
+      el.textContent = `₹${roundedTotal.toLocaleString('en-IN')}`;
+    } else if (mode === 'part_pay') {
+      el.textContent = `₹${advAmount.toLocaleString('en-IN')} now`;
+    } else if (mode === 'cash') {
+      el.textContent = '₹0 now';
+    }
+  });
+
+  const checkedMode = document.querySelector('input[name="rental_pay_mode"]:checked')?.value || 'full_online';
+  const isRzpActive = String(settings.razorpay_active || '0') === '1';
+  const cashAllowed = String(settings.payment_show_cash ?? '1') === '1';
+  const inlineDriverOpt = document.getElementById('checkout-driver-collect-opt');
+  if (inlineDriverOpt) {
+    inlineDriverOpt.style.display = cashAllowed ? 'flex' : 'none';
+  }
+  if (!cashAllowed) {
+    const submitUtrRadio = document.querySelector('input[name="upi_settlement_choice"][value="submit_utr"]');
+    if (submitUtrRadio && !submitUtrRadio.checked) {
+      submitUtrRadio.checked = true;
+      const utrRow = document.getElementById('checkout-upi-utr-row');
+      if (utrRow) utrRow.style.display = 'block';
+    }
+  }
+
+  const usesManualUpi = !isRzpActive && checkedMode !== 'cash';
+  const upiChoice = cashAllowed ? (document.querySelector('input[name="upi_settlement_choice"]:checked')?.value || 'submit_utr') : 'submit_utr';
+  const upiDueNow = checkedMode === 'part_pay' ? advAmount : roundedTotal;
+  const upiBox = document.getElementById('checkout-upi-details-box');
+  if (upiBox) {
+    upiBox.style.display = usesManualUpi ? 'block' : 'none';
+    const upiId = (settings.upi_id || 'intercitywheels@upi').trim();
+    const upiPayee = (settings.upi_payee_name || 'Intercity Wheels').trim();
+    const upiInstr = settings.upi_instructions || 'Scan QR or pay to this UPI ID via any UPI app, then enter your 12-digit UTR / Ref ID for Admin confirmation.';
+
+    const idEl = document.getElementById('checkout-upi-id-text');
+    const payeeEl = document.getElementById('checkout-upi-payee-text');
+    const amtEl = document.getElementById('checkout-upi-amount-text');
+    const instrEl = document.getElementById('checkout-upi-instructions-text');
+    const appLink = document.getElementById('checkout-upi-app-link');
+
+    if (idEl) idEl.textContent = upiId;
+    if (payeeEl) payeeEl.textContent = upiPayee;
+    if (amtEl) amtEl.textContent = `₹${upiDueNow.toLocaleString('en-IN')}`;
+    if (instrEl) instrEl.textContent = upiInstr;
+    if (appLink) {
+      appLink.href = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiPayee)}&am=${encodeURIComponent(String(upiDueNow))}&cu=INR&tn=${encodeURIComponent('Intercity Wheels Booking')}`;
+    }
+  }
+
+  const payableNowEl = document.getElementById('checkout-payable-now-amount');
+  if (payableNowEl) {
+    if (checkedMode === 'cash') {
+      payableNowEl.textContent = `₹0 now (Driver collects ₹${roundedTotal.toLocaleString('en-IN')} on completion)`;
+    } else if (usesManualUpi && upiChoice === 'driver_collect') {
+      payableNowEl.textContent = `₹0 now (Driver collects ₹${roundedTotal.toLocaleString('en-IN')} on completion)`;
+    } else if (checkedMode === 'part_pay') {
+      const bal = Math.max(0, roundedTotal - advAmount);
+      payableNowEl.textContent = usesManualUpi
+        ? `₹${advAmount.toLocaleString('en-IN')} via UPI (Admin confirms UTR + ₹${bal.toLocaleString('en-IN')} to Driver)`
+        : `₹${advAmount.toLocaleString('en-IN')} (+ Driver collects ₹${bal.toLocaleString('en-IN')} on completion)`;
+    } else if (usesManualUpi) {
+      payableNowEl.textContent = `₹${roundedTotal.toLocaleString('en-IN')} via UPI (Admin confirms UTR)`;
+    } else {
+      payableNowEl.textContent = `₹${roundedTotal.toLocaleString('en-IN')}`;
+    }
+  }
+};
+
+window.renderCheckoutPaymentOptionsFromSettings = function () {
+  const listEl = document.getElementById('checkout-payment-options-list');
+  if (!listEl) return;
+
+  const settings = window.PLATFORM_SETTINGS || {};
+  const advPctRaw = parseFloat(settings.payment_advance_pct ?? 20) || 20;
+  const advLabel = Number.isInteger(advPctRaw) ? String(advPctRaw) : String(advPctRaw);
+
+  const showFull = String(settings.payment_show_full_online ?? '1') === '1';
+  const showPart = String(settings.payment_show_part_pay ?? '1') === '1';
+  const showUpi = String(settings.payment_show_full_upi ?? '1') === '1';
+  const showCash = String(settings.payment_show_cash ?? '1') === '1';
+
+  const opts = [];
+  if (showFull) opts.push({ mode: 'full_online', label: 'Pay Full Online (Card / NetBanking / UPI)', color: '#0f172a' });
+  if (showPart) opts.push({ mode: 'part_pay', label: `Part Pay (${advLabel}% Advance, Balance to Driver)`, color: '#0284c7' });
+  if (showUpi) opts.push({ mode: 'full_upi', label: 'Full UPI (Instant Zero-Fee UPI)', color: '#0f172a' });
+  if (showCash) opts.push({ mode: 'cash', label: 'Pay Later to Chauffeur (Cash / UPI)', color: '#16a34a' });
+  if (opts.length === 0) {
+    opts.push({ mode: 'full_online', label: 'Pay Full Online (Card / NetBanking / UPI)', color: '#0f172a' });
+  }
+
+  const def = opts.some(o => o.mode === settings.payment_default_option) ? settings.payment_default_option : opts[0].mode;
+  listEl.innerHTML = opts.map(o => `
+    <label class="checkout-pay-opt" data-mode="${o.mode}" style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12.5px; cursor:pointer;">
+      <span style="display:flex; align-items:center; gap:8px;">
+        <input type="radio" name="rental_pay_mode" value="${o.mode}" ${o.mode === def ? 'checked' : ''} onchange="onCheckoutPayModeChange(this.value)">
+        <span>${o.label}</span>
+      </span>
+      <strong class="checkout-pay-amt" data-amt-for="${o.mode}" style="color:${o.color}; font-size:12px;"></strong>
+    </label>
+    ${o.mode === 'part_pay' ? `<div id="checkout-part-pay-agreed-badge" style="display:${state.cab.partPayAgreed ? 'block' : 'none'}; font-size:11px; color:#15803d; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:4px 8px; margin-left:20px;">✓ Agreed to pay remaining balance &amp; additional charges (if any) on trip completion. <a href="javascript:void(0)" onclick="openCheckoutPaymentStepModal(1)" style="color:#0284c7; font-weight:700; margin-left:4px;">Review</a></div>` : ''}
+  `).join('');
+
+  const promoCopy = document.getElementById('promo-advance-copy');
+  if (promoCopy) {
+    if (showPart && showCash) {
+      promoCopy.textContent = `No booking charges. Pay ${advLabel}% advance or pay later to driver.`;
+    } else if (showPart) {
+      promoCopy.textContent = `No booking charges. Pay just ${advLabel}% advance to lock your ride.`;
+    } else if (showCash) {
+      promoCopy.textContent = 'No booking charges. Pay directly to driver on pickup.';
+    } else {
+      promoCopy.textContent = 'Instant online booking confirmation with transparent pricing.';
+    }
+  }
+
+  if (typeof updateTotalCabFare === 'function') {
+    updateTotalCabFare();
+  }
+};
+
+window.renderAdminUpiQrPreview = function () {
+  const preview = document.getElementById('admin-upi-qr-preview');
+  const badge = document.getElementById('admin-upi-qr-mode-badge');
+  const qrUrl = document.getElementById('setting-upi-qr-url')?.value?.trim() || '';
+  const upiId = document.getElementById('setting-upi-id')?.value?.trim() || 'intercitywheels@upi';
+  const payee = document.getElementById('setting-upi-payee-name')?.value?.trim() || 'Intercity Wheels';
+
+  if (badge) {
+    badge.textContent = qrUrl ? 'CUSTOM QR IMAGE' : 'AUTO-GENERATED FROM UPI ID';
+    badge.className = `admin-badge ${qrUrl ? 'badge-gold' : 'badge-success'}`;
+  }
+
+  if (!preview) return;
+  if (qrUrl) {
+    preview.innerHTML = `<img src="${escapeHtml(qrUrl)}" alt="Custom UPI QR" style="width:100%; height:100%; object-fit:contain;">`;
+    return;
+  }
+
+  const upiUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(payee)}&cu=INR`;
+  if (typeof window.generateRealUpiQrSvg === 'function') {
+    preview.innerHTML = window.generateRealUpiQrSvg(upiUri, 102);
+  } else {
+    preview.innerHTML = '<span style="font-size:11px; color:#64748b; text-align:center; padding:6px;">Auto QR</span>';
+  }
+};
+
+window.uploadAdminUpiQr = async function (inputEl) {
+  const file = inputEl?.files?.[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append('qr_image', file);
+
+  try {
+    const res = await fetch('/api/admin/settings/upi-qr', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: formData,
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+      const urlInput = document.getElementById('setting-upi-qr-url');
+      if (urlInput) urlInput.value = data.upi_qr_url || '';
+      window.renderAdminUpiQrPreview();
+      showToast(data.message || 'Custom UPI QR code uploaded!', 'success');
+    } else {
+      showToast(data.message || 'Failed to upload QR image.', 'danger');
+    }
+  } catch (err) {
+    console.error('uploadAdminUpiQr', err);
+    showToast('Network error while uploading QR code.', 'danger');
+  } finally {
+    inputEl.value = '';
+  }
+};
+
+window.clearAdminUpiQr = async function () {
+  try {
+    const res = await fetch('/api/admin/settings/upi-qr', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify({ remove: true }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+      const urlInput = document.getElementById('setting-upi-qr-url');
+      if (urlInput) urlInput.value = '';
+      window.renderAdminUpiQrPreview();
+      showToast(data.message || 'Switched back to auto-generated QR code.', 'success');
+    } else {
+      showToast(data.message || 'Could not clear custom QR.', 'danger');
+    }
+  } catch (err) {
+    console.error('clearAdminUpiQr', err);
+    showToast('Network error while clearing custom QR.', 'danger');
+  }
+};
+
+window.toggleRazorpayAdminBadge = function () {
+  const enabled = Boolean(document.getElementById('setting-razorpay-enabled')?.checked);
+  const badge = document.getElementById('setting-razorpay-status-badge');
+  if (badge) {
+    badge.textContent = enabled ? 'RAZORPAY ACTIVE' : 'MANUAL / ESCROW';
+    badge.className = `badge ${enabled ? 'badge-success' : 'badge-secondary'}`;
+  }
+};
+
+window.saveAdminPaymentOptions = async function (e) {
+  if (e) e.preventDefault();
+
+  const advPct = parseFloat(document.getElementById('setting-payment-advance-pct')?.value ?? 20);
+  const showPart = Boolean(document.getElementById('setting-pay-show-part')?.checked);
+  const showFull = Boolean(document.getElementById('setting-pay-show-full')?.checked);
+  const showUpi = Boolean(document.getElementById('setting-pay-show-upi')?.checked);
+  const showCash = Boolean(document.getElementById('setting-pay-show-cash')?.checked);
+  const defaultOpt = document.getElementById('setting-payment-default-option')?.value || 'full_online';
+  const upiId = document.getElementById('setting-upi-id')?.value?.trim() || '';
+  const upiPayeeName = document.getElementById('setting-upi-payee-name')?.value?.trim() || 'Intercity Wheels';
+  const upiInstructions = document.getElementById('setting-upi-instructions')?.value?.trim() || '';
+  const upiQrUrl = document.getElementById('setting-upi-qr-url')?.value?.trim() || '';
+  const rzpEnabled = Boolean(document.getElementById('setting-razorpay-enabled')?.checked);
+  const rzpMode = document.getElementById('setting-razorpay-mode')?.value || 'test';
+  const rzpKeyId = document.getElementById('setting-razorpay-key-id')?.value?.trim() || '';
+  const rzpKeySecret = document.getElementById('setting-razorpay-key-secret')?.value?.trim() || '';
+  const rzpDisplayName = document.getElementById('setting-razorpay-display-name')?.value?.trim() || 'Intercity Wheels';
+
+  if (!showPart && !showFull && !showUpi && !showCash) {
+    showToast('Enable at least one checkout payment option.', 'warning');
+    return;
+  }
+
+  if (showUpi && !upiId) {
+    showToast('Enter a valid UPI ID (VPA) when Full UPI payment is enabled.', 'warning');
+    document.getElementById('setting-upi-id')?.focus();
+    return;
+  }
+
+  if (Number.isNaN(advPct) || advPct < 1 || advPct > 99) {
+    showToast('Advance percentage must be between 1% and 99%.', 'warning');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/settings/payment-options', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify({
+        payment_advance_pct: advPct,
+        payment_show_full_online: showFull,
+        payment_show_part_pay: showPart,
+        payment_show_full_upi: showUpi,
+        payment_show_cash: showCash,
+        payment_default_option: defaultOpt,
+        upi_id: upiId,
+        upi_payee_name: upiPayeeName,
+        upi_instructions: upiInstructions,
+        upi_qr_url: upiQrUrl,
+        payment_gateway: rzpEnabled ? 'razorpay' : 'manual',
+        razorpay_mode: rzpMode,
+        razorpay_key_id: rzpKeyId,
+        razorpay_key_secret: rzpKeySecret || undefined,
+        razorpay_display_name: rzpDisplayName,
+      }),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+      const selDefault = document.getElementById('setting-payment-default-option');
+      if (selDefault && data.settings?.payment_default_option) {
+        selDefault.value = data.settings.payment_default_option;
+      }
+      const secretInput = document.getElementById('setting-razorpay-key-secret');
+      if (secretInput) secretInput.value = '';
+      const secretHint = document.getElementById('setting-razorpay-secret-hint');
+      if (secretHint && data.settings?.razorpay_secret_configured === '1') {
+        secretHint.textContent = '(Saved — leave blank to keep)';
+        secretHint.style.color = '#16a34a';
+      }
+      window.toggleRazorpayAdminBadge();
+      window.renderAdminUpiQrPreview();
+      window.renderCheckoutPaymentOptionsFromSettings();
+      showToast(data.message || 'Checkout payment options updated!', 'success');
+    } else {
+      showToast(data.message || 'Failed to update payment options.', 'danger');
+    }
+  } catch (err) {
+    console.error('saveAdminPaymentOptions', err);
+    showToast('Network error while saving payment options.', 'danger');
+  }
+};
+
+// ===== ADMIN INVOICE TEMPLATE CUSTOMIZER =====
+function collectInvoiceTemplateForm() {
+  const style = document.querySelector('input[name="invoice_template_style"]:checked')?.value || 'classic_gst';
+  return {
+    invoice_template_style: style,
+    invoice_accent_color: document.getElementById('setting-inv-accent')?.value || '#d49b4c',
+    invoice_brand_name: document.getElementById('setting-inv-brand-name')?.value?.trim() || 'INTERCITY WHEELS',
+    invoice_company_legal: document.getElementById('setting-inv-legal-name')?.value?.trim() || 'IntercityWheels Mobility Services Pvt. Ltd.',
+    invoice_title: document.getElementById('setting-inv-title')?.value?.trim() || 'TAX INVOICE',
+    invoice_prefix: document.getElementById('setting-inv-prefix')?.value?.trim() || 'INV',
+    invoice_gstin: document.getElementById('setting-inv-gstin')?.value?.trim() || '',
+    invoice_sac_code: document.getElementById('setting-inv-sac')?.value?.trim() || '',
+    invoice_place_of_supply: document.getElementById('setting-inv-pos')?.value?.trim() || '',
+    invoice_support_phone: document.getElementById('setting-inv-phone')?.value?.trim() || '',
+    invoice_support_email: document.getElementById('setting-inv-email')?.value?.trim() || '',
+    invoice_company_address: document.getElementById('setting-inv-address')?.value?.trim() || '',
+    invoice_cgst_pct: parseFloat(document.getElementById('setting-inv-cgst')?.value ?? 2.5) || 0,
+    invoice_sgst_pct: parseFloat(document.getElementById('setting-inv-sgst')?.value ?? 2.5) || 0,
+    invoice_signatory_name: document.getElementById('setting-inv-signatory-name')?.value?.trim() || '',
+    invoice_signatory_label: document.getElementById('setting-inv-signatory-label')?.value?.trim() || '',
+    invoice_terms: document.getElementById('setting-inv-terms')?.value || '',
+    invoice_show_stamp: Boolean(document.getElementById('setting-inv-show-stamp')?.checked),
+    invoice_show_otp: Boolean(document.getElementById('setting-inv-show-otp')?.checked),
+  };
+}
+
+window.openAdminInvoiceTemplateEditor = function () {
+  if (typeof switchTab === 'function') switchTab('admin');
+  if (typeof switchAdminSection === 'function') switchAdminSection('system');
+  window.setTimeout(() => {
+    const card = document.getElementById('admin-invoice-template-card');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 60);
+};
+
+window.selectInvoiceTemplateStyle = function (style) {
+  document.querySelectorAll('#inv-style-picker-grid .inv-style-card').forEach(card => {
+    const isSel = card.dataset.styleOption === style;
+    card.classList.toggle('selected', isSel);
+    const radio = card.querySelector('input[type="radio"]');
+    if (radio) radio.checked = isSel;
+  });
+};
+
+window.previewInvoiceTemplate = function () {
+  const form = collectInvoiceTemplateForm();
+  const terms = form.invoice_terms.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const taxable = 3400;
+  const cgst = Number((taxable * (form.invoice_cgst_pct / 100)).toFixed(2));
+  const sgst = Number((taxable * (form.invoice_sgst_pct / 100)).toFixed(2));
+  const toll = 250;
+  const total = Math.round(taxable + cgst + sgst + toll);
+
+  applyInvoiceTemplateToDom({
+    template: {
+      style: form.invoice_template_style,
+      accent_color: form.invoice_accent_color,
+      title: form.invoice_title,
+      brand_name: form.invoice_brand_name,
+      place_of_supply: form.invoice_place_of_supply,
+      cgst_pct: form.invoice_cgst_pct,
+      sgst_pct: form.invoice_sgst_pct,
+      show_stamp: form.invoice_show_stamp,
+      show_otp: form.invoice_show_otp,
+      terms,
+      signatory_name: form.invoice_signatory_name,
+      signatory_label: form.invoice_signatory_label,
+    },
+    company: {
+      brand_name: form.invoice_brand_name,
+      name: form.invoice_company_legal,
+      address: form.invoice_company_address,
+      gstin: form.invoice_gstin,
+      hsn_sac: form.invoice_sac_code,
+      support_phone: form.invoice_support_phone,
+      support_email: form.invoice_support_email,
+    },
+  });
+
+  document.getElementById('inv-doc-number').textContent = `${form.invoice_prefix}-2026-ICW-SAMPLE`;
+  document.getElementById('inv-doc-date').textContent = 'Sample Preview';
+  document.getElementById('inv-booking-ref').textContent = 'ICW-SAMPLE';
+  document.getElementById('inv-customer-name').textContent = 'Aarav Sen (Sample)';
+  document.getElementById('inv-customer-phone').textContent = '+91 98765 43210';
+  document.getElementById('inv-customer-email').textContent = 'rider@example.com';
+  document.getElementById('inv-pickup-address').textContent = 'Salt Lake Sector V, Kolkata';
+  document.getElementById('inv-drop-address').textContent = 'New Digha Sea Beach';
+  document.getElementById('inv-service-type').textContent = 'CAB (ONEWAY)';
+  document.getElementById('inv-route').textContent = 'Kolkata → Digha';
+  document.getElementById('inv-travel-date').textContent = 'Tomorrow, 08:00 AM';
+  document.getElementById('inv-driver-name').textContent = 'Rajesh Kumar (Ph: +91 98220 11920)';
+  document.getElementById('inv-vehicle-details').textContent = 'Toyota Innova (MH12AB1234)';
+  document.getElementById('inv-row-base').textContent = '₹3400.00';
+  document.getElementById('inv-row-toll').textContent = '₹250.00';
+  document.getElementById('inv-addon-row').style.display = 'none';
+  document.getElementById('inv-discount-row').style.display = 'none';
+  document.getElementById('inv-subtotal').textContent = `₹${taxable.toFixed(2)}`;
+  document.getElementById('inv-cgst').textContent = `₹${cgst.toFixed(2)}`;
+  document.getElementById('inv-sgst').textContent = `₹${sgst.toFixed(2)}`;
+  document.getElementById('inv-grand-total').textContent = `₹${total.toLocaleString('en-IN')}.00`;
+  document.getElementById('inv-amount-in-words').textContent = `(${numberToWordsINR(total)})`;
+  document.getElementById('inv-paid-stamp-text').textContent = 'PAID IN FULL';
+  document.getElementById('inv-payment-mode-text').textContent = 'Online Escrow (Prepaid)';
+  document.getElementById('inv-txn-ref').textContent = 'TXN-SAMPLE01';
+  document.getElementById('inv-start-otp').textContent = '4829';
+
+  const modal = document.getElementById('admin-invoice-modal');
+  if (modal) modal.classList.add('active');
+};
+
+window.saveAdminInvoiceTemplate = async function (e) {
+  if (e) e.preventDefault();
+  const payload = collectInvoiceTemplateForm();
+
+  try {
+    const res = await fetch('/api/admin/settings/invoice-template', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+      showToast(data.message || 'Invoice template settings saved!', 'success');
+    } else {
+      showToast(data.message || 'Failed to save invoice template settings.', 'danger');
+    }
+  } catch (err) {
+    console.error('saveAdminInvoiceTemplate', err);
+    showToast('Network error while saving invoice template.', 'danger');
+  }
+};

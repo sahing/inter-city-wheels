@@ -6,6 +6,7 @@ use App\Exceptions\InvalidBookingTransition;
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use App\Models\Driver;
+use App\Models\PaymentAttempt;
 use App\Models\PlatformSetting;
 use App\Services\BiddingService;
 use App\Services\BookingReferenceGenerator;
@@ -154,7 +155,7 @@ class BookingAdminController extends Controller
      */
     public function show($id)
     {
-        $booking = Booking::with('driver')->findOrFail($id);
+        $booking = Booking::with(['driver', 'paymentAttempts.user'])->findOrFail($id);
 
         return response()->json([
             'success' => true,
@@ -418,7 +419,36 @@ class BookingAdminController extends Controller
             return $this->workflow->forceTransition($locked, $targetStatus, $attrs);
         });
 
-        $updated->load('driver');
+        $updated->load(['driver', 'paymentAttempts.user']);
+
+        // Record / resolve the matching payment attempt for audit tracking
+        $latestAttempt = PaymentAttempt::where('booking_id', $updated->id)
+            ->whereIn('status', ['initiated', 'utr_submitted', 'driver_collect'])
+            ->latest('id')
+            ->first();
+        $resolvedStatus = $action === 'reject_assign_driver' ? 'rejected' : 'verified';
+        if ($latestAttempt) {
+            $latestAttempt->forceFill([
+                'status' => $resolvedStatus,
+                'upi_utr' => $updated->upi_utr ?: $latestAttempt->upi_utr,
+                'notes' => $updated->payment_notes ?: $latestAttempt->notes,
+                'resolved_at' => now(),
+            ])->save();
+        } else {
+            PaymentAttempt::create([
+                'booking_id' => $updated->id,
+                'user_id' => $updated->customer_user_id,
+                'payment_mode' => (string) ($updated->payment_mode ?: 'full_upi'),
+                'payment_channel' => $action === 'reject_assign_driver' ? 'driver_collect' : 'manual_upi',
+                'amount' => (float) ($updated->advance_amount > 0 ? $updated->advance_amount : $updated->total_amount),
+                'status' => $resolvedStatus,
+                'upi_utr' => $updated->upi_utr,
+                'notes' => $updated->payment_notes,
+                'attempted_at' => now(),
+                'resolved_at' => now(),
+            ]);
+        }
+
         if ($updated->service_type !== 'bus' && $updated->status === BookingWorkflow::CONFIRMED) {
             $this->bidding->openForNewBooking($updated);
         }
@@ -429,7 +459,7 @@ class BookingAdminController extends Controller
             'message' => $action === 'reject_assign_driver'
                 ? 'Collection assigned to Driver upon trip completion.'
                 : 'UPI payment confirmed by Admin!',
-            'booking' => $updated->fresh('driver'),
+            'booking' => $updated->fresh(['driver', 'paymentAttempts.user']),
         ]);
     }
 

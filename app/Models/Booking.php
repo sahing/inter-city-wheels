@@ -74,6 +74,11 @@ class Booking extends Model
         return $this->hasMany(WalletTransaction::class);
     }
 
+    public function paymentAttempts()
+    {
+        return $this->hasMany(PaymentAttempt::class)->latest('id');
+    }
+
     /**
      * Normalized cab type (e.g. SEDAN, SUV, INNOVA) for cab bookings.
      */
