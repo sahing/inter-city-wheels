@@ -403,7 +403,7 @@ class FareCalculatorService
             'booking_type' => $bookingType,
             'car_type' => $fleet,
             'route_fare_id' => $route?->id,
-            'user_id' => $options['user_id'] ?? (auth()->check() ? auth()->id() : null),
+            'user_id' => array_key_exists('user_id', $options) ? $options['user_id'] : (auth()->check() ? auth()->id() : null),
             'driver_id' => $options['driver_id'] ?? null,
             'allow_auto_apply' => ! ($options['disable_auto_coupon'] ?? false),
         ];

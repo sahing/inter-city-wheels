@@ -267,4 +267,76 @@ class AdminCarTypeAndRouteFareScheduleTest extends TestCase
         $bookingRes->assertStatus(200);
         $bookingRes->assertJsonPath('booking.cab_type', 'EV_EXECUTIVE');
     }
+
+    public function test_edit_cab_route_modal_and_api_expose_exact_customer_calculated_fares(): void
+    {
+        $admin = $this->getAdminUser();
+
+        $route = RouteFare::updateOrCreate(
+            ['from_city' => 'Murshidabad', 'to_city' => 'Kolkata'],
+            [
+                'distance_km' => 220,
+                'estimated_time' => '5h 30m',
+                'base_toll' => 240,
+                'additional_amount' => 150,
+                'additional_amount_label' => 'Bridge Cess',
+                'roundtrip_discount_pct' => 10,
+                'sedan_fare' => 3100,
+                'default_car_type' => 'sedan',
+                'is_active' => true,
+            ]
+        );
+
+        // Customer quotes (oneway & roundtrip) as a public/customer user sees them
+        $owCustomer = $this->getJson('/api/routes/calculate?from=Murshidabad&to=Kolkata&trip_type=oneway')
+            ->assertOk()
+            ->json('fleet_estimates');
+        $rtCustomer = $this->getJson('/api/routes/calculate?from=Murshidabad&to=Kolkata&trip_type=roundtrip')
+            ->assertOk()
+            ->json('fleet_estimates');
+
+        // 1. Opening Edit Cab Route returns customer_fare_preview matching customer quote identically
+        $showRes = $this->actingAs($admin)->getJson("/api/admin/cab-routes/{$route->id}")
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('customer_fare_preview.distance_km', 220)
+            ->assertJsonPath('customer_fare_preview.roundtrip_distance_km', 440)
+            ->assertJsonPath('customer_fare_preview.additional_amount', 150);
+
+        $fleets = collect($showRes->json('customer_fare_preview.fleets'))->keyBy('category_key');
+        $this->assertTrue($fleets->has('sedan'));
+        $this->assertTrue($fleets['sedan']['is_preferred']);
+        $this->assertTrue($fleets['sedan']['has_custom_route_fare']);
+        $this->assertEquals((float) $owCustomer['sedan'], (float) $fleets['sedan']['oneway']['total_amount']);
+        $this->assertEquals((float) $rtCustomer['sedan'], (float) $fleets['sedan']['roundtrip']['total_amount']);
+        $this->assertEquals((float) $owCustomer['suv'], (float) $fleets['suv']['oneway']['total_amount']);
+        $this->assertEquals((float) $rtCustomer['suv'], (float) $fleets['suv']['roundtrip']['total_amount']);
+
+        // 2. Live modal edits preview recalculated customer fares via POST /api/admin/cab-routes/preview-fares
+        $previewRes = $this->actingAs($admin)->postJson('/api/admin/cab-routes/preview-fares', [
+            'route_id' => $route->id,
+            'from_city' => 'Murshidabad',
+            'to_city' => 'Kolkata',
+            'distance_km' => 240,
+            'base_toll' => 300,
+            'additional_amount' => 200,
+            'additional_amount_label' => 'Bridge Cess',
+            'roundtrip_discount_pct' => 10,
+            'sedan_fare' => 3500,
+            'default_car_type' => 'sedan',
+        ])->assertOk()->assertJsonPath('success', true);
+
+        $updatedFleets = collect($previewRes->json('customer_fare_preview.fleets'))->keyBy('category_key');
+        $this->assertGreaterThan((float) $owCustomer['sedan'], (float) $updatedFleets['sedan']['oneway']['total_amount']);
+        $this->assertEquals(3700.0, (float) $updatedFleets['sedan']['oneway']['total_amount']); // 3500 override + 200 addl
+
+        // 3. Admin modal HTML & JS ship the preview container and live handlers
+        $adminHtml = $this->actingAs($admin)->get('/')->assertOk()->getContent();
+        $this->assertStringContainsString('id="admin-cab-route-fare-preview-box"', $adminHtml);
+        $this->assertStringContainsString('Calculated Customer Fare (What the Customer Sees)', $adminHtml);
+
+        $jsContent = file_get_contents(public_path('js/app.js')) ?: '';
+        $this->assertStringContainsString('renderAdminCabRouteFarePreview', $jsContent);
+        $this->assertStringContainsString('scheduleAdminCabRouteFarePreview', $jsContent);
+    }
 }

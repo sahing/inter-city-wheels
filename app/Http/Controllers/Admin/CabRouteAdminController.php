@@ -133,16 +133,162 @@ class CabRouteAdminController extends Controller
     }
 
     /**
-     * Show single cab route details.
+     * Show single cab route details along with live customer-visible fare preview.
      */
-    public function show($id)
+    public function show($id, FareCalculatorService $fares)
     {
         $route = RouteFare::findOrFail($id);
 
         return response()->json([
             'success' => true,
             'route' => $route,
+            'customer_fare_preview' => $this->buildCustomerFarePreview($route, $fares),
         ]);
+    }
+
+    /**
+     * Live-calculate the exact fare a customer will see for current modal inputs
+     * (including One-Way & Round-Trip, KM formulas, custom overrides, tolls,
+     * route additional charges, driver allowance, auto price fields, and auto promos).
+     */
+    public function previewFares(Request $request, FareCalculatorService $fares)
+    {
+        $validated = $request->validate([
+            'route_id' => 'nullable|integer',
+            'from_city' => 'nullable|string|max:100',
+            'to_city' => 'nullable|string|max:100',
+            'distance_km' => 'required|numeric|min:1',
+            'estimated_time' => 'nullable|string|max:50',
+            'base_toll' => 'nullable|numeric|min:0',
+            'additional_amount' => 'nullable|numeric|min:0',
+            'additional_amount_label' => 'nullable|string|max:120',
+            'hatchback_fare' => 'nullable|numeric|min:0',
+            'sedan_fare' => 'nullable|numeric|min:0',
+            'suv_fare' => 'nullable|numeric|min:0',
+            'innova_fare' => 'nullable|numeric|min:0',
+            'tempo_fare' => 'nullable|numeric|min:0',
+            'luxury_fare' => 'nullable|numeric|min:0',
+            'car_fares' => 'nullable|array',
+            'roundtrip_discount_pct' => 'nullable|numeric|min:0|max:100',
+            'default_car_type' => 'nullable|string|max:60',
+        ]);
+
+        $route = new RouteFare([
+            'from_city' => trim((string) ($validated['from_city'] ?? 'Origin')) ?: 'Origin',
+            'to_city' => trim((string) ($validated['to_city'] ?? 'Destination')) ?: 'Destination',
+            'distance_km' => (int) round((float) $validated['distance_km']),
+            'estimated_time' => trim((string) ($validated['estimated_time'] ?? '—')) ?: '—',
+            'base_toll' => (float) ($validated['base_toll'] ?? 0),
+            'additional_amount' => (float) ($validated['additional_amount'] ?? 0),
+            'additional_amount_label' => ! empty($validated['additional_amount_label']) ? trim((string) $validated['additional_amount_label']) : null,
+            'hatchback_fare' => isset($validated['hatchback_fare']) && $validated['hatchback_fare'] !== '' ? (float) $validated['hatchback_fare'] : null,
+            'sedan_fare' => isset($validated['sedan_fare']) && $validated['sedan_fare'] !== '' ? (float) $validated['sedan_fare'] : null,
+            'suv_fare' => isset($validated['suv_fare']) && $validated['suv_fare'] !== '' ? (float) $validated['suv_fare'] : null,
+            'innova_fare' => isset($validated['innova_fare']) && $validated['innova_fare'] !== '' ? (float) $validated['innova_fare'] : null,
+            'tempo_fare' => isset($validated['tempo_fare']) && $validated['tempo_fare'] !== '' ? (float) $validated['tempo_fare'] : null,
+            'luxury_fare' => isset($validated['luxury_fare']) && $validated['luxury_fare'] !== '' ? (float) $validated['luxury_fare'] : null,
+            'car_fares' => $validated['car_fares'] ?? null,
+            'roundtrip_discount_pct' => (float) ($validated['roundtrip_discount_pct'] ?? 0),
+            'default_car_type' => ! empty($validated['default_car_type']) ? strtolower(trim((string) $validated['default_car_type'])) : null,
+            'is_active' => true,
+        ]);
+
+        if (! empty($validated['route_id'])) {
+            $route->id = (int) $validated['route_id'];
+        }
+
+        return response()->json([
+            'success' => true,
+            'customer_fare_preview' => $this->buildCustomerFarePreview($route, $fares),
+        ]);
+    }
+
+    /**
+     * Compute One-Way and Round-Trip customer quotes across all active fleets for a RouteFare.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildCustomerFarePreview(RouteFare $route, FareCalculatorService $fares): array
+    {
+        $oneWayTrip = [
+            'trip_type' => 'oneway',
+            'from_city' => $route->from_city ?: 'Origin',
+            'to_city' => $route->to_city ?: 'Destination',
+            'distance_km' => max(0, (int) $route->distance_km),
+            'estimated_time' => $route->estimated_time ?: '—',
+            'base_toll' => (float) ($route->base_toll ?? 0),
+            'roundtrip_discount_pct' => (float) ($route->roundtrip_discount_pct ?? 0),
+            'source' => 'route_table',
+            'local_package' => null,
+            'route' => $route,
+            'airport_hub' => null,
+            'beyond_region' => false,
+            'availability_guaranteed' => true,
+            'region_note' => null,
+        ];
+        $roundTrip = array_merge($oneWayTrip, ['trip_type' => 'roundtrip']);
+        $quoteOptions = [
+            'include_tolls' => false,
+            'user_id' => null,
+        ];
+
+        $preferredKey = strtolower(trim((string) ($route->default_car_type ?? '')));
+        $conditions = $fares->pricingConditions();
+        $fleets = [];
+
+        foreach ($fares->fleetCatalogue() as $carType) {
+            $key = strtolower((string) $carType->category_key);
+            $ow = $fares->quote($oneWayTrip, $key, $quoteOptions);
+            $rt = $fares->quote($roundTrip, $key, $quoteOptions);
+
+            $fleets[] = [
+                'category_key' => $key,
+                'name' => $carType->name ?? ucfirst($key),
+                'seats' => (int) ($carType->seats ?? 4),
+                'is_preferred' => $preferredKey !== '' && $preferredKey === $key,
+                'has_custom_route_fare' => $route->hasCustomFareForCarType($key),
+                'oneway' => [
+                    'total_amount' => $ow['total_amount'],
+                    'subtotal' => $ow['subtotal'],
+                    'base_fare' => $ow['base_fare'],
+                    'rate_per_km' => $ow['rate_per_km'],
+                    'fixed_base_fare' => $ow['fixed_base_fare'],
+                    'extra_km_rate' => $ow['extra_km_rate'],
+                    'route_additional_fare' => $ow['route_additional_fare'],
+                    'addon_fare' => $ow['addon_fare'],
+                    'custom_price_fields_fare' => $ow['custom_price_fields_fare'],
+                    'discount_fare' => $ow['discount_fare'],
+                    'coupon' => $ow['coupon'],
+                ],
+                'roundtrip' => [
+                    'total_amount' => $rt['total_amount'],
+                    'subtotal' => $rt['subtotal'],
+                    'base_fare' => $rt['base_fare'],
+                    'rate_per_km' => $rt['rate_per_km'],
+                    'fixed_base_fare' => $rt['fixed_base_fare'],
+                    'extra_km_rate' => $rt['extra_km_rate'],
+                    'route_additional_fare' => $rt['route_additional_fare'],
+                    'addon_fare' => $rt['addon_fare'],
+                    'custom_price_fields_fare' => $rt['custom_price_fields_fare'],
+                    'discount_fare' => $rt['discount_fare'],
+                    'coupon' => $rt['coupon'],
+                ],
+            ];
+        }
+
+        return [
+            'from_city' => $oneWayTrip['from_city'],
+            'to_city' => $oneWayTrip['to_city'],
+            'distance_km' => $oneWayTrip['distance_km'],
+            'roundtrip_distance_km' => $oneWayTrip['distance_km'] * 2,
+            'base_toll' => (float) ($route->base_toll ?? 0),
+            'additional_amount' => (float) ($route->additional_amount ?? 0),
+            'additional_amount_label' => $route->additional_amount_label,
+            'roundtrip_discount_pct' => (float) ($route->roundtrip_discount_pct ?? 0),
+            'driver_day_allowance' => (float) ($conditions['driver_day_allowance'] ?? 0),
+            'default_car_type' => $preferredKey !== '' ? $preferredKey : null,
+            'fleets' => $fleets,
+        ];
     }
 
     /**

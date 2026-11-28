@@ -9176,18 +9176,18 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-roundtrip-discount">Roundtrip Discount %</label>
-                        <input type="number" id="admin-cab-route-roundtrip-discount" class="form-control" placeholder="e.g. 5 or 10" min="0" max="100" value="0">
+                        <input type="number" id="admin-cab-route-roundtrip-discount" class="form-control" placeholder="e.g. 5 or 10" min="0" max="100" value="0" oninput="scheduleAdminCabRouteFarePreview()">
                     </div>
                 </div>
 
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-additional-amount">Route Additional Amount (₹)</label>
-                        <input type="number" id="admin-cab-route-additional-amount" class="form-control" placeholder="e.g. 250 (added on top of basic rate)" min="0" step="1">
+                        <input type="number" id="admin-cab-route-additional-amount" class="form-control" placeholder="e.g. 250 (added on top of basic rate)" min="0" step="1" oninput="scheduleAdminCabRouteFarePreview()">
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-additional-label">Additional Amount Label</label>
-                        <input type="text" id="admin-cab-route-additional-label" class="form-control" placeholder="e.g. State Border / Hill Fee">
+                        <input type="text" id="admin-cab-route-additional-label" class="form-control" placeholder="e.g. State Border / Hill Fee" oninput="scheduleAdminCabRouteFarePreview()">
                     </div>
                 </div>
 
@@ -9219,37 +9219,37 @@
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:8px;">
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-hatchback-fare">Hatchback Fare (₹)</label>
-                        <input type="number" id="admin-cab-route-hatchback-fare" class="form-control" placeholder="Auto (₹11/km)" min="0">
+                        <input type="number" id="admin-cab-route-hatchback-fare" class="form-control" placeholder="Auto (₹11/km)" min="0" oninput="scheduleAdminCabRouteFarePreview()">
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-sedan-fare">Comfort Sedan Fare (₹)</label>
-                        <input type="number" id="admin-cab-route-sedan-fare" class="form-control" placeholder="Auto (₹12.5/km)" min="0">
+                        <input type="number" id="admin-cab-route-sedan-fare" class="form-control" placeholder="Auto (₹12.5/km)" min="0" oninput="scheduleAdminCabRouteFarePreview()">
                     </div>
                 </div>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:8px;">
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-suv-fare">Family SUV Fare (₹)</label>
-                        <input type="number" id="admin-cab-route-suv-fare" class="form-control" placeholder="Auto (₹18/km)" min="0">
+                        <input type="number" id="admin-cab-route-suv-fare" class="form-control" placeholder="Auto (₹18/km)" min="0" oninput="scheduleAdminCabRouteFarePreview()">
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-innova-fare">Innova Crysta Fare (₹)</label>
-                        <input type="number" id="admin-cab-route-innova-fare" class="form-control" placeholder="Auto (₹22/km)" min="0">
+                        <input type="number" id="admin-cab-route-innova-fare" class="form-control" placeholder="Auto (₹22/km)" min="0" oninput="scheduleAdminCabRouteFarePreview()">
                     </div>
                 </div>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:14px;">
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-tempo-fare">Tempo Traveller Fare (₹)</label>
-                        <input type="number" id="admin-cab-route-tempo-fare" class="form-control" placeholder="Auto (₹28/km)" min="0">
+                        <input type="number" id="admin-cab-route-tempo-fare" class="form-control" placeholder="Auto (₹28/km)" min="0" oninput="scheduleAdminCabRouteFarePreview()">
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-luxury-fare">Luxury Limousine Fare (₹)</label>
-                        <input type="number" id="admin-cab-route-luxury-fare" class="form-control" placeholder="Auto (₹32/km)" min="0">
+                        <input type="number" id="admin-cab-route-luxury-fare" class="form-control" placeholder="Auto (₹32/km)" min="0" oninput="scheduleAdminCabRouteFarePreview()">
                     </div>
                 </div>
 
                 <div class="form-group" style="margin-bottom:12px;">
                     <label class="form-label" for="admin-cab-route-default-car-type">Preferred / Specific Car Type (Optional)</label>
-                    <select id="admin-cab-route-default-car-type" class="form-control booking-type-car-select">
+                    <select id="admin-cab-route-default-car-type" class="form-control booking-type-car-select" onchange="scheduleAdminCabRouteFarePreview()">
                         <option value="">-- Any / All Car Types --</option>
                         @foreach(($allCarTypes ?? collect())->where('is_active', true) as $ct)
                             <option value="{{ strtolower($ct->category_key) }}">{{ $ct->name }}</option>
@@ -9264,8 +9264,23 @@
                     </label>
                 </div>
 
+                <div id="admin-cab-route-fare-preview-box" style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:10px 12px; margin-bottom:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                        <div style="font-size:11.5px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:6px;">
+                            <span class="material-symbols-outlined" style="font-size:16px; color:#0284c7;">calculate</span>
+                            <span>Calculated Customer Fare (What the Customer Sees)</span>
+                        </div>
+                        <span id="admin-cab-route-preview-status" style="font-size:10.5px; font-weight:700; color:#0369a1; background:#e0f2fe; padding:2px 8px; border-radius:999px;">
+                            Live Booking Engine Preview
+                        </span>
+                    </div>
+                    <div id="admin-cab-route-fare-preview-body" style="font-size:11.5px; color:#475569;">
+                        Enter distance (KM) or calculate via API to preview exact customer fares.
+                    </div>
+                </div>
+
                 <div style="background:#f1f5f9; border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:11.5px; color:#475569;">
-                    💡 <strong>Automated Pricing Formula:</strong> The distance (KM) and toll will dynamically calculate instant passenger fares across all fleet tiers (Sedan, Prime, SUV, Crysta, Luxury). Custom fares override the formula.
+                    💡 <strong>Automated Pricing Formula:</strong> The distance (KM) and toll dynamically calculate customer fares using your Car Type rates, Booking Type overrides, Route Additional Amount, Driver Allowance, Auto Price Fields, and Auto-Apply Coupons. Custom car fares override the distance formula.
                 </div>
 
                 <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--outline); padding-top:12px;">

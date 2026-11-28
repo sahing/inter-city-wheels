@@ -8941,6 +8941,9 @@ window.onCabRouteManualMetricEdit = function () {
   if (modeInput && modeInput.value === 'api') {
     window.setCabRouteCalcMode('manual', 'Mode: Manual Override (Edited)');
   }
+  if (typeof window.scheduleAdminCabRouteFarePreview === 'function') {
+    window.scheduleAdminCabRouteFarePreview();
+  }
 };
 
 window.calculateAdminCabRouteDistance = async function () {
@@ -8998,6 +9001,9 @@ window.calculateAdminCabRouteDistance = async function () {
       : (String(d.source || '').includes('osm_geocode') ? 'OSM Geocode + Estimate' : 'Location Matrix API');
     window.setCabRouteCalcMode('api', `Calculated via ${sourceLabel} (${d.distance_km} KM)`);
     showToast(`Distance calculated via ${sourceLabel}: ${d.distance_km} KM (${d.estimated_time})`, 'success');
+    if (typeof window.refreshAdminCabRouteFarePreview === 'function') {
+      window.refreshAdminCabRouteFarePreview();
+    }
   } catch (err) {
     console.error('Calculate cab route distance error:', err);
     window.setCabRouteCalcMode('manual', 'API error — Enter KM manually');
@@ -9040,8 +9046,181 @@ window.openAddCabRouteModal = function () {
   const delBtn = document.getElementById('admin-cab-route-delete-btn');
   if (delBtn) delBtn.style.display = 'none';
 
+  window.renderAdminCabRouteFarePreview(null);
+
   const modal = document.getElementById('admin-cab-route-modal');
   if (modal) modal.classList.add('active');
+};
+
+let adminCabRoutePreviewTimer = null;
+let adminCabRoutePreviewReqId = 0;
+
+window.renderAdminCabRouteFarePreview = function (preview) {
+  const bodyEl = document.getElementById('admin-cab-route-fare-preview-body');
+  const statusEl = document.getElementById('admin-cab-route-preview-status');
+  if (!bodyEl) return;
+
+  if (!preview || !Array.isArray(preview.fleets) || preview.fleets.length === 0) {
+    if (statusEl) {
+      statusEl.textContent = 'Enter Distance (KM)';
+      statusEl.style.background = '#e2e8f0';
+      statusEl.style.color = '#475569';
+    }
+    bodyEl.innerHTML = '<span style="color:#64748b;">Enter highway distance (KM) or calculate via API to preview the exact fare the customer will see.</span>';
+    return;
+  }
+
+  if (statusEl) {
+    statusEl.textContent = `${preview.distance_km} KM One-Way / ${preview.roundtrip_distance_km} KM Round-Trip`;
+    statusEl.style.background = '#e0f2fe';
+    statusEl.style.color = '#0369a1';
+  }
+
+  const formatMoney = (val) => `₹${Math.round(Number(val || 0)).toLocaleString('en-IN')}`;
+  const renderLegCell = (leg, isPreferred, isCustom) => {
+    if (!leg) return '<span style="color:#94a3b8;">—</span>';
+    const hasPromo = leg.discount_fare > 0 && leg.coupon && leg.coupon.applied;
+    const totalHtml = `<strong style="font-size:13px; color:${isPreferred ? '#0369a1' : '#0f172a'};">${formatMoney(leg.total_amount)}</strong>`;
+    const strikeHtml = hasPromo
+      ? ` <span style="font-size:10.5px; color:#94a3b8; text-decoration:line-through;">${formatMoney(leg.subtotal)}</span>`
+      : '';
+
+    const parts = [];
+    if (isCustom) {
+      parts.push(`Override Base ${formatMoney(leg.base_fare)}`);
+    } else if (Number(leg.fixed_base_fare || 0) > 0) {
+      parts.push(`Base ${formatMoney(leg.fixed_base_fare)} + ₹${leg.rate_per_km}/km`);
+    } else {
+      parts.push(`₹${leg.rate_per_km}/km`);
+    }
+    if (Number(leg.route_additional_fare || 0) > 0) parts.push(`+Route Addl ${formatMoney(leg.route_additional_fare)}`);
+    if (Number(leg.addon_fare || 0) > 0) parts.push(`+Allow ${formatMoney(leg.addon_fare)}`);
+    if (Number(leg.custom_price_fields_fare || 0) > 0) parts.push(`+Fields ${formatMoney(leg.custom_price_fields_fare)}`);
+
+    const promoBadge = hasPromo
+      ? `<div style="margin-top:2px;"><span class="admin-badge badge-success" style="font-size:9.5px; padding:1px 6px;">-${formatMoney(leg.discount_fare)} (${escapeHtml(leg.coupon.code)})</span></div>`
+      : '';
+
+    return `
+      <div>${totalHtml}${strikeHtml}</div>
+      <div style="font-size:10px; color:#64748b; line-height:1.35;">${escapeHtml(parts.join(' • '))}</div>
+      ${promoBadge}
+    `;
+  };
+
+  const rowsHtml = preview.fleets.map(f => {
+    const prefBadge = f.is_preferred
+      ? ' <span class="admin-badge badge-info" style="font-size:9px; padding:1px 5px;">Preferred</span>'
+      : '';
+    const modeTag = f.has_custom_route_fare
+      ? '<span style="font-size:9.5px; color:#0369a1; font-weight:700;">Custom Route Fare</span>'
+      : `<span style="font-size:9.5px; color:#64748b;">KM Formula • ${f.seats} Seats</span>`;
+    return `
+      <tr style="${f.is_preferred ? 'background:#f0f9ff;' : ''}">
+        <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0; vertical-align:top;">
+          <div style="font-weight:700; color:#0f172a;">${escapeHtml(f.name)}${prefBadge}</div>
+          <div>${modeTag}</div>
+        </td>
+        <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0; vertical-align:top;">
+          ${renderLegCell(f.oneway, f.is_preferred, f.has_custom_route_fare)}
+        </td>
+        <td style="padding:6px 8px; border-bottom:1px solid #e2e8f0; vertical-align:top;">
+          ${renderLegCell(f.roundtrip, f.is_preferred, f.has_custom_route_fare)}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  const summaryBits = [`Toll in Formula: ${formatMoney(preview.base_toll)}`];
+  if (Number(preview.roundtrip_discount_pct || 0) > 0) summaryBits.push(`RT Disc: ${preview.roundtrip_discount_pct}%`);
+  if (Number(preview.additional_amount || 0) > 0) {
+    const lbl = preview.additional_amount_label ? `${preview.additional_amount_label}: ` : 'Route Additional: ';
+    summaryBits.push(`${lbl}${formatMoney(preview.additional_amount)}`);
+  }
+  if (Number(preview.driver_day_allowance || 0) > 0) summaryBits.push(`Driver Allowance: ${formatMoney(preview.driver_day_allowance)}`);
+
+  bodyEl.innerHTML = `
+    <div style="overflow-x:auto; border:1px solid #e2e8f0; border-radius:6px; background:#fff;">
+      <table style="width:100%; border-collapse:collapse; font-size:11.5px; text-align:left;">
+        <thead>
+          <tr style="background:#f1f5f9; color:#334155; font-size:10.5px; text-transform:uppercase; letter-spacing:0.03em;">
+            <th style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">Car Type</th>
+            <th style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">Customer One-Way</th>
+            <th style="padding:6px 8px; border-bottom:1px solid #e2e8f0;">Customer Round-Trip</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:6px; font-size:10.5px; color:#475569; display:flex; flex-wrap:wrap; gap:6px 12px;">
+      ${summaryBits.map(b => `<span>• ${escapeHtml(b)}</span>`).join('')}
+    </div>
+  `;
+};
+
+window.refreshAdminCabRouteFarePreview = async function () {
+  const distRaw = document.getElementById('admin-cab-route-dist')?.value;
+  const distKm = parseFloat(distRaw);
+  if (!distRaw || isNaN(distKm) || distKm < 1) {
+    window.renderAdminCabRouteFarePreview(null);
+    return;
+  }
+
+  const statusEl = document.getElementById('admin-cab-route-preview-status');
+  if (statusEl) {
+    statusEl.textContent = 'Calculating...';
+    statusEl.style.background = '#fef3c7';
+    statusEl.style.color = '#92400e';
+  }
+
+  const reqId = ++adminCabRoutePreviewReqId;
+  const numOrNull = (id) => {
+    const v = document.getElementById(id)?.value;
+    return v !== undefined && v !== null && String(v).trim() !== '' ? parseFloat(v) : null;
+  };
+
+  try {
+    const res = await fetch('/api/admin/cab-routes/preview-fares', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': getAdminCsrfToken(),
+      },
+      body: JSON.stringify({
+        route_id: numOrNull('admin-cab-route-id'),
+        from_city: document.getElementById('admin-cab-route-from')?.value.trim() || 'Origin',
+        to_city: document.getElementById('admin-cab-route-to')?.value.trim() || 'Destination',
+        distance_km: distKm,
+        estimated_time: document.getElementById('admin-cab-route-time')?.value.trim() || '—',
+        base_toll: numOrNull('admin-cab-route-toll') ?? 0,
+        additional_amount: numOrNull('admin-cab-route-additional-amount') ?? 0,
+        additional_amount_label: document.getElementById('admin-cab-route-additional-label')?.value.trim() || null,
+        roundtrip_discount_pct: numOrNull('admin-cab-route-roundtrip-discount') ?? 0,
+        hatchback_fare: numOrNull('admin-cab-route-hatchback-fare'),
+        sedan_fare: numOrNull('admin-cab-route-sedan-fare'),
+        suv_fare: numOrNull('admin-cab-route-suv-fare'),
+        innova_fare: numOrNull('admin-cab-route-innova-fare'),
+        tempo_fare: numOrNull('admin-cab-route-tempo-fare'),
+        luxury_fare: numOrNull('admin-cab-route-luxury-fare'),
+        default_car_type: document.getElementById('admin-cab-route-default-car-type')?.value || null,
+      }),
+    });
+    const data = await res.json();
+    if (reqId !== adminCabRoutePreviewReqId) return;
+    if (res.ok && data.success && data.customer_fare_preview) {
+      window.renderAdminCabRouteFarePreview(data.customer_fare_preview);
+    }
+  } catch (err) {
+    console.warn('Preview cab route fares error:', err);
+  }
+};
+
+window.scheduleAdminCabRouteFarePreview = function () {
+  if (adminCabRoutePreviewTimer) clearTimeout(adminCabRoutePreviewTimer);
+  adminCabRoutePreviewTimer = setTimeout(() => {
+    window.refreshAdminCabRouteFarePreview();
+  }, 180);
 };
 
 window.openEditCabRouteModal = async function (id) {
@@ -9076,6 +9255,12 @@ window.openEditCabRouteModal = async function (id) {
     if (document.getElementById('admin-cab-route-roundtrip-discount')) document.getElementById('admin-cab-route-roundtrip-discount').value = route.roundtrip_discount_pct || 0;
     if (document.getElementById('admin-cab-route-default-car-type')) document.getElementById('admin-cab-route-default-car-type').value = (route.default_car_type || '').toLowerCase();
     document.getElementById('admin-cab-route-active').checked = Boolean(route.is_active);
+
+    if (data.customer_fare_preview) {
+      window.renderAdminCabRouteFarePreview(data.customer_fare_preview);
+    } else {
+      window.refreshAdminCabRouteFarePreview();
+    }
 
     const delBtn = document.getElementById('admin-cab-route-delete-btn');
     if (delBtn) delBtn.style.display = 'inline-flex';

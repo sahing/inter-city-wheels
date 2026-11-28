@@ -280,6 +280,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     // Outstation Cab Routes
     Route::get('/admin/cab-routes', [CabRouteAdminController::class, 'index'])->name('api.admin.cabRoutes.index');
     Route::post('/admin/cab-routes/calculate-distance', [CabRouteAdminController::class, 'calculateDistance'])->name('api.admin.cabRoutes.calculateDistance');
+    Route::post('/admin/cab-routes/preview-fares', [CabRouteAdminController::class, 'previewFares'])->name('api.admin.cabRoutes.previewFares');
     Route::post('/admin/cab-routes', [CabRouteAdminController::class, 'store'])->name('api.admin.cabRoutes.store');
     Route::post('/admin/cab-routes/bulk-adjust', [CabRouteAdminController::class, 'bulkAdjust'])->name('api.admin.cabRoutes.bulkAdjust');
     Route::get('/admin/cab-routes/{id}', [CabRouteAdminController::class, 'show'])->name('api.admin.cabRoutes.show');
