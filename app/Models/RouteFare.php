@@ -13,6 +13,7 @@ class RouteFare extends Model
 
     protected $casts = [
         'base_toll' => 'float',
+        'additional_amount' => 'float',
         'sedan_fare' => 'float',
         'suv_fare' => 'float',
         'hatchback_fare' => 'float',
@@ -25,35 +26,53 @@ class RouteFare extends Model
     ];
 
     /**
-     * Get custom or formula fare for specific car type.
+     * Whether this route specifies an explicit fixed fare override for $carType.
      */
-    public function getFareForCarType(string $carType, float $defaultRatePerKm = 12.5): float
+    public function hasCustomFareForCarType(string $carType): bool
     {
         $key = strtolower($carType);
 
+        if (in_array($key, ['sedan', 'suv', 'hatchback', 'innova', 'tempo', 'luxury'], true)) {
+            $col = $key.'_fare';
+            if (! empty($this->{$col}) && (float) $this->{$col} > 0) {
+                return true;
+            }
+        }
+
+        return is_array($this->car_fares) && isset($this->car_fares[$key]) && (float) $this->car_fares[$key] > 0;
+    }
+
+    /**
+     * Get custom override or formula fare (Base Fare + Distance * Rate + Highway Toll + Route Additional).
+     */
+    public function getFareForCarType(string $carType, float $defaultRatePerKm = 12.5, float $fixedBaseFare = 0.0, bool $includeAdditional = true): float
+    {
+        $key = strtolower($carType);
+        $additional = $includeAdditional ? (float) ($this->additional_amount ?? 0) : 0.0;
+
         if ($key === 'sedan' && ! empty($this->sedan_fare)) {
-            return (float) $this->sedan_fare;
+            return round((float) $this->sedan_fare + $additional);
         }
         if ($key === 'suv' && ! empty($this->suv_fare)) {
-            return (float) $this->suv_fare;
+            return round((float) $this->suv_fare + $additional);
         }
         if ($key === 'hatchback' && ! empty($this->hatchback_fare)) {
-            return (float) $this->hatchback_fare;
+            return round((float) $this->hatchback_fare + $additional);
         }
         if ($key === 'innova' && ! empty($this->innova_fare)) {
-            return (float) $this->innova_fare;
+            return round((float) $this->innova_fare + $additional);
         }
         if ($key === 'tempo' && ! empty($this->tempo_fare)) {
-            return (float) $this->tempo_fare;
+            return round((float) $this->tempo_fare + $additional);
         }
         if ($key === 'luxury' && ! empty($this->luxury_fare)) {
-            return (float) $this->luxury_fare;
+            return round((float) $this->luxury_fare + $additional);
         }
 
-        if (is_array($this->car_fares) && isset($this->car_fares[$key])) {
-            return (float) $this->car_fares[$key];
+        if (is_array($this->car_fares) && isset($this->car_fares[$key]) && (float) $this->car_fares[$key] > 0) {
+            return round((float) $this->car_fares[$key] + $additional);
         }
 
-        return round($this->distance_km * $defaultRatePerKm + (float) $this->base_toll);
+        return round($fixedBaseFare + ($this->distance_km * $defaultRatePerKm) + (float) $this->base_toll + $additional);
     }
 }

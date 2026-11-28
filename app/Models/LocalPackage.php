@@ -16,6 +16,7 @@ class LocalPackage extends Model
         'included_km' => 'integer',
         'sedan_fare' => 'float',
         'suv_fare' => 'float',
+        'car_fares' => 'array',
         'extra_km_rate' => 'float',
         'extra_hour_rate' => 'float',
         'is_active' => 'boolean',

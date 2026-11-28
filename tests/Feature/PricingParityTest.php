@@ -74,7 +74,7 @@ class PricingParityTest extends TestCase
 
     public function test_route_fare_breakdown_matches_legacy_arithmetic(): void
     {
-        // Seeded Berhampore -> Digha: 345 km, toll 320, sedan 12.5/km.
+        // Seeded Berhampore -> Digha: 345 km, toll 320, sedan base_fare_min 950 + 12.5/km.
         $response = $this->actingAs(User::where('role', 'customer')->firstOrFail())->postJson('/api/bookings', $this->bookingPayload([
             'pet_friendly' => false,
             'coupon_code' => null,
@@ -82,9 +82,9 @@ class PricingParityTest extends TestCase
 
         $booking = $response->json('booking');
 
-        // 345 * 12.5 + 320 = 4632.5 -> 4633 all-inclusive, with 320 itemised as toll.
-        $this->assertEquals(4633.0, (float) $booking['total_amount']);
-        $this->assertEquals(4313.0, (float) $booking['base_fare']);
+        // 950 + 345 * 12.5 + 320 = 5582.5 -> 5583 total, with 5263 base and 320 itemised as toll.
+        $this->assertEquals(5583.0, (float) $booking['total_amount']);
+        $this->assertEquals(5263.0, (float) $booking['base_fare']);
         $this->assertEquals(320.0, (float) $booking['toll_fare']);
     }
 

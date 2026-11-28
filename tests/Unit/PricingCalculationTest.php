@@ -93,4 +93,21 @@ class PricingCalculationTest extends TestCase
         $totalAirportFare = $baseFare + $pickupSurcharge + $airportToll;
         $this->assertEquals(1320, $totalAirportFare);
     }
+
+    public function test_fixed_base_plus_per_km_and_extra_km_overrun_formula(): void
+    {
+        $fixedBaseFare = 800;
+        $bookedKm = 220;
+        $ratePerKm = 10.0;
+        $actualKm = 230;
+        $extraKmRate = 12.0;
+
+        $basicRate = round($fixedBaseFare + ($bookedKm * $ratePerKm));
+        $extraKm = max(0, $actualKm - $bookedKm);
+        $overrunTotal = round($basicRate + ($extraKm * $extraKmRate));
+
+        $this->assertEquals(3000, $basicRate);
+        $this->assertEquals(10, $extraKm);
+        $this->assertEquals(3120, $overrunTotal);
+    }
 }

@@ -74,6 +74,13 @@ class BookingAdminController extends Controller
             'toll_fare' => 'nullable|numeric|min:0',
             'addon_fare' => 'nullable|numeric|min:0',
             'discount_fare' => 'nullable|numeric|min:0',
+            'booked_distance_km' => 'nullable|integer|min:0|max:50000',
+            'actual_distance_km' => 'nullable|integer|min:0|max:50000',
+            'extra_km' => 'nullable|integer|min:0|max:50000',
+            'extra_km_rate' => 'nullable|numeric|min:0',
+            'extra_km_fare' => 'nullable|numeric|min:0',
+            'route_additional_fare' => 'nullable|numeric|min:0',
+            'custom_price_fields_fare' => 'nullable|numeric|min:0',
             'status' => 'nullable|string',
             'assigned_driver_id' => 'nullable|exists:drivers,id',
         ]);
@@ -82,7 +89,18 @@ class BookingAdminController extends Controller
         $tollFare = (float) ($validated['toll_fare'] ?? 0);
         $addonFare = (float) ($validated['addon_fare'] ?? 0);
         $discountFare = (float) ($validated['discount_fare'] ?? 0);
-        $totalAmount = max(0, round($baseFare + $tollFare + $addonFare - $discountFare));
+        $bookedKm = (int) ($validated['booked_distance_km'] ?? 0);
+        $actualKm = (int) ($validated['actual_distance_km'] ?? $bookedKm);
+        $extraKmRate = (float) ($validated['extra_km_rate'] ?? 0);
+        $extraKm = isset($validated['extra_km'])
+            ? (int) $validated['extra_km']
+            : ($bookedKm > 0 ? max(0, $actualKm - $bookedKm) : 0);
+        $extraKmFare = isset($validated['extra_km_fare'])
+            ? (float) $validated['extra_km_fare']
+            : (float) round($extraKm * $extraKmRate);
+        $routeAdditionalFare = (float) ($validated['route_additional_fare'] ?? 0);
+        $customPriceFieldsFare = (float) ($validated['custom_price_fields_fare'] ?? 0);
+        $totalAmount = max(0, round($baseFare + $tollFare + $extraKmFare + $routeAdditionalFare + $addonFare + $customPriceFieldsFare - $discountFare));
 
         $bookingRef = $this->references->generate();
         $otp = $this->references->startOtp();
@@ -113,6 +131,13 @@ class BookingAdminController extends Controller
             'toll_fare' => $tollFare,
             'addon_fare' => $addonFare,
             'discount_fare' => $discountFare,
+            'booked_distance_km' => $bookedKm,
+            'actual_distance_km' => $actualKm,
+            'extra_km' => $extraKm,
+            'extra_km_rate' => $extraKmRate,
+            'extra_km_fare' => $extraKmFare,
+            'route_additional_fare' => $routeAdditionalFare,
+            'custom_price_fields_fare' => $customPriceFieldsFare,
             'total_amount' => $totalAmount,
             'start_otp' => $otp,
             'assigned_driver_id' => $validated['assigned_driver_id'] ?? null,
@@ -193,17 +218,57 @@ class BookingAdminController extends Controller
             'toll_fare' => 'sometimes|numeric|min:0',
             'addon_fare' => 'sometimes|numeric|min:0',
             'discount_fare' => 'sometimes|numeric|min:0',
+            'booked_distance_km' => 'sometimes|nullable|integer|min:0|max:50000',
+            'actual_distance_km' => 'sometimes|nullable|integer|min:0|max:50000',
+            'extra_km' => 'sometimes|nullable|integer|min:0|max:50000',
+            'extra_km_rate' => 'sometimes|nullable|numeric|min:0',
+            'extra_km_fare' => 'sometimes|nullable|numeric|min:0',
+            'route_additional_fare' => 'sometimes|nullable|numeric|min:0',
+            'custom_price_fields_fare' => 'sometimes|nullable|numeric|min:0',
             'status' => 'sometimes|required|string',
             'start_otp' => 'sometimes|nullable|string|max:6',
             'assigned_driver_id' => 'nullable|exists:drivers,id',
         ]);
 
-        if (isset($validated['base_fare']) || isset($validated['toll_fare']) || isset($validated['addon_fare']) || isset($validated['discount_fare'])) {
+        if (
+            array_key_exists('actual_distance_km', $validated)
+            && ! array_key_exists('extra_km_fare', $validated)
+        ) {
+            $bookedKm = (int) ($validated['booked_distance_km'] ?? $booking->booked_distance_km ?? 0);
+            $actualKm = (int) ($validated['actual_distance_km'] ?? $bookedKm);
+            $extraKmRate = (float) ($validated['extra_km_rate'] ?? $booking->extra_km_rate ?? 0);
+            if ($extraKmRate <= 0) {
+                $extraKmRate = app(\App\Services\FareCalculatorService::class)->extraKmRateForFleet(
+                    $validated['cab_type'] ?? $booking->cab_type ?? 'sedan',
+                    $validated['trip_type'] ?? $booking->trip_type ?? 'oneway'
+                );
+            }
+            $extraKm = $bookedKm > 0 ? max(0, $actualKm - $bookedKm) : max(0, (int) ($validated['extra_km'] ?? 0));
+            $validated['extra_km'] = $extraKm;
+            $validated['extra_km_rate'] = $extraKmRate;
+            $validated['extra_km_fare'] = (float) round($extraKm * $extraKmRate);
+        }
+
+        if (
+            isset($validated['base_fare'])
+            || isset($validated['toll_fare'])
+            || isset($validated['addon_fare'])
+            || isset($validated['discount_fare'])
+            || isset($validated['extra_km_fare'])
+            || isset($validated['route_additional_fare'])
+            || isset($validated['custom_price_fields_fare'])
+        ) {
             $baseFare = (float) ($validated['base_fare'] ?? $booking->base_fare);
             $tollFare = (float) ($validated['toll_fare'] ?? $booking->toll_fare);
             $addonFare = (float) ($validated['addon_fare'] ?? $booking->addon_fare);
             $discountFare = (float) ($validated['discount_fare'] ?? $booking->discount_fare);
-            $validated['total_amount'] = max(0, round($baseFare + $tollFare + $addonFare - $discountFare));
+            $extraKmFare = (float) ($validated['extra_km_fare'] ?? $booking->extra_km_fare ?? 0);
+            $routeAdditionalFare = (float) ($validated['route_additional_fare'] ?? $booking->route_additional_fare ?? 0);
+            $customPriceFieldsFare = (float) ($validated['custom_price_fields_fare'] ?? $booking->custom_price_fields_fare ?? 0);
+            $validated['total_amount'] = max(
+                0,
+                round($baseFare + $tollFare + $extraKmFare + $routeAdditionalFare + $addonFare + $customPriceFieldsFare - $discountFare)
+            );
         }
 
         $cabType = $validated['cab_type'] ?? null;
@@ -509,7 +574,19 @@ class BookingAdminController extends Controller
         $cgstPct = max(0.0, (float) ($tpl['invoice_cgst_pct'] ?? 2.5));
         $sgstPct = max(0.0, (float) ($tpl['invoice_sgst_pct'] ?? 2.5));
 
-        $taxableBase = round($booking->base_fare + $booking->addon_fare - $booking->discount_fare, 2);
+        $extraKmFare = (float) ($booking->extra_km_fare ?? 0);
+        $routeAdditionalFare = (float) ($booking->route_additional_fare ?? 0);
+        $customPriceFieldsFare = (float) ($booking->custom_price_fields_fare ?? 0);
+
+        $taxableBase = round(
+            $booking->base_fare
+            + $extraKmFare
+            + $routeAdditionalFare
+            + $customPriceFieldsFare
+            + $booking->addon_fare
+            - $booking->discount_fare,
+            2
+        );
         $cgst = round($taxableBase * ($cgstPct / 100), 2);
         $sgst = round($taxableBase * ($sgstPct / 100), 2);
 
@@ -569,6 +646,14 @@ class BookingAdminController extends Controller
             'charges' => [
                 'base_fare' => $booking->base_fare,
                 'toll_fare' => $booking->toll_fare,
+                'extra_km_fare' => $extraKmFare,
+                'route_additional_fare' => $routeAdditionalFare,
+                'custom_price_fields_fare' => $customPriceFieldsFare,
+                'booked_distance_km' => (int) ($booking->booked_distance_km ?? 0),
+                'actual_distance_km' => (int) ($booking->actual_distance_km ?? 0),
+                'extra_km' => (int) ($booking->extra_km ?? 0),
+                'extra_km_rate' => (float) ($booking->extra_km_rate ?? 0),
+                'fare_breakdown' => $booking->fare_breakdown,
                 'addon_fare' => $booking->addon_fare,
                 'discount_fare' => $booking->discount_fare,
                 'taxable_amount' => $taxableBase,

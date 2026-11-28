@@ -4,13 +4,16 @@ namespace App\Services;
 
 use App\Exceptions\DistanceUnresolvable;
 use App\Models\AirportHub;
+use App\Models\BookingTypeCarRate;
 use App\Models\CarType;
 use App\Models\Coupon;
+use App\Models\DynamicFormField;
 use App\Models\LocalPackage;
 use App\Models\PlatformSetting;
 use App\Models\RouteFare;
 use App\Models\SeatLayout;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * The only place a fare is calculated.
@@ -61,6 +64,10 @@ class FareCalculatorService
     /** OpenStreetMap access (Nominatim geocoding, OSRM distances). */
     private readonly OsmGeoService $osm;
 
+    private ?bool $hasBookingTypeRatesTable = null;
+
+    private ?bool $hasPriceFieldColumns = null;
+
     public function __construct(?OsmGeoService $osm = null)
     {
         $this->osm = $osm ?? new OsmGeoService;
@@ -108,16 +115,36 @@ class FareCalculatorService
 
         if ($tripType === 'airport') {
             $hub = $this->resolveAirportHub($cleanFrom, $cleanTo);
+            $airportDist = 0;
+
+            if ($cleanFrom !== '' && $cleanTo !== '' && strtolower($cleanFrom) !== strtolower($cleanTo)) {
+                $route = $this->resolveRoute($cleanFrom, $cleanTo);
+                if ($route) {
+                    $airportDist = (int) $route->distance_km;
+                } else {
+                    $fromCoords = RegionalLocationService::resolveCoordinatesStrict($cleanFrom);
+                    $toCoords = RegionalLocationService::resolveCoordinatesStrict($cleanTo);
+                    if ($fromCoords !== null && $toCoords !== null) {
+                        $metrics = RegionalLocationService::computeRouteMetrics(
+                            (float) $fromCoords['lat'],
+                            (float) $fromCoords['lng'],
+                            (float) $toCoords['lat'],
+                            (float) $toCoords['lng']
+                        );
+                        $airportDist = (int) $metrics['distance_km'];
+                    }
+                }
+            }
 
             return [
                 'trip_type' => 'airport',
                 'from_city' => $cleanFrom,
                 'to_city' => $cleanTo,
-                'distance_km' => 0,
-                'estimated_time' => 'Transfer',
+                'distance_km' => $airportDist,
+                'estimated_time' => $airportDist > 0 ? max(1, (int) round($airportDist / 45)).' hrs' : 'Transfer',
                 'base_toll' => self::AIRPORT_TOLL,
                 'roundtrip_discount_pct' => 0.0,
-                'source' => $hub ? 'airport_hub' : 'unmeasured',
+                'source' => $hub ? 'airport_hub' : ($airportDist > 0 ? 'location_dataset' : 'unmeasured'),
                 'local_package' => null,
                 'route' => null,
                 'airport_hub' => $hub,
@@ -204,24 +231,35 @@ class FareCalculatorService
     public function quote(array $trip, string $fleetCategory, array $options = []): array
     {
         $fleet = $this->normalizeFleet($fleetCategory);
-        $rate = $this->rateForFleet($fleet);
+        $bookingType = $this->bookingTypeKeyForTrip($trip);
+        $rateConfig = $this->rateConfigFor($fleet, $bookingType);
+        $fixedBase = $rateConfig['base_fare'];
+        $rate = $rateConfig['rate_per_km'];
+        $extraKmRate = $rateConfig['extra_km_rate'];
+        $extraHourRate = $rateConfig['extra_hour_rate'];
         $includeTolls = (bool) ($options['include_tolls'] ?? false);
 
+        /** @var RouteFare|null $route */
+        $route = $trip['route'] ?? null;
+
         $lineItems = [];
+        $bookedKm = (int) ($trip['distance_km'] ?? 0);
 
         switch ($trip['trip_type']) {
             case 'local':
-                $baseFare = $this->localPackageFare($trip['local_package'], $fleet, $rate);
+                $package = $trip['local_package'];
+                $bookedKm = (int) $package->included_km;
+                $baseFare = $this->localPackageFare($package, $fleet, $rateConfig);
                 $tollFare = 0.0;
                 $lineItems[] = [
-                    'label' => $trip['local_package']->name.' ('.$trip['local_package']->included_km.' km)',
+                    'label' => $package->name.' ('.$package->included_km.' km)',
                     'amount' => $baseFare,
                 ];
                 break;
 
             case 'airport':
                 $hub = $trip['airport_hub'];
-                $baseFare = $this->airportFare($trip, $fleet, $rate);
+                $baseFare = $this->airportFare($trip, $fleet, $rateConfig);
                 $tollFare = $includeTolls ? self::AIRPORT_TOLL : 0.0;
                 $lineItems[] = [
                     'label' => $hub ? $hub->airport_name.' transfer' : 'Airport transfer',
@@ -232,25 +270,106 @@ class FareCalculatorService
                 }
                 break;
 
-            default: // oneway, roundtrip
-                [$basePortion, $tollPortion] = $this->distanceComponents($trip, $fleet, $rate, $includeTolls);
+            case 'roundtrip':
+                $bookedKm = (int) ($trip['distance_km'] * 2);
 
-                if ($trip['trip_type'] === 'roundtrip') {
-                    $baseFare = round($basePortion * 2);
-                    if ($trip['roundtrip_discount_pct'] > 0) {
-                        $baseFare = round($baseFare * (1 - ($trip['roundtrip_discount_pct'] / 100)));
+                if ($rateConfig['has_custom_override']) {
+                    $tollOneWay = $route ? (float) $route->base_toll : (float) $trip['base_toll'];
+
+                    if ($route && $route->hasCustomFareForCarType($fleet)) {
+                        $rtAllInc = (float) round($route->getFareForCarType($fleet, $rate, $fixedBase, false) * 2);
+                        if ($includeTolls && $tollOneWay > 0) {
+                            $tollFare = (float) round($tollOneWay * 1.8);
+                            $baseFare = max(0.0, $rtAllInc - $tollFare);
+                        } else {
+                            $baseFare = $rtAllInc;
+                            $tollFare = 0.0;
+                        }
+                    } else {
+                        $distanceCharge = $fixedBase + ($bookedKm * $rate);
+                        if ($route) {
+                            if ($includeTolls && $tollOneWay > 0) {
+                                $baseFare = (float) round($distanceCharge);
+                                $tollFare = (float) round($tollOneWay * 1.8);
+                            } else {
+                                $baseFare = (float) round($distanceCharge + $tollOneWay);
+                                $tollFare = 0.0;
+                            }
+                        } else {
+                            $baseFare = (float) round($distanceCharge);
+                            $tollFare = $includeTolls ? (float) round($tollOneWay * 1.8) : 0.0;
+                        }
                     }
-                    $tollFare = round($tollPortion * 1.8);
-                    $lineItems[] = ['label' => 'Round trip fare', 'amount' => $baseFare];
                 } else {
-                    $baseFare = $basePortion;
-                    $tollFare = $tollPortion;
-                    $lineItems[] = ['label' => 'Base distance fare', 'amount' => $baseFare];
+                    $oneWayConfig = $this->rateConfigFor($fleet, 'oneway');
+                    [$basePortion, $tollPortion] = $this->distanceComponents(
+                        $trip,
+                        $fleet,
+                        $oneWayConfig['rate_per_km'],
+                        $oneWayConfig['base_fare'],
+                        $includeTolls
+                    );
+                    $baseFare = (float) round($basePortion * 2);
+                    $tollFare = (float) round($tollPortion * 1.8);
                 }
 
+                if (($trip['roundtrip_discount_pct'] ?? 0) > 0) {
+                    $baseFare = (float) round($baseFare * (1 - ($trip['roundtrip_discount_pct'] / 100)));
+                }
+
+                $lineItems[] = ['label' => 'Round trip fare', 'amount' => $baseFare];
                 if ($tollFare > 0) {
                     $lineItems[] = ['label' => 'FASTag highway tolls', 'amount' => $tollFare];
                 }
+                break;
+
+            default: // oneway
+                [$baseFare, $tollFare] = $this->distanceComponents($trip, $fleet, $rate, $fixedBase, $includeTolls);
+                $lineItems[] = ['label' => 'Base distance fare', 'amount' => $baseFare];
+                if ($tollFare > 0) {
+                    $lineItems[] = ['label' => 'FASTag highway tolls', 'amount' => $tollFare];
+                }
+        }
+
+        // Extra KM overrun calculation (when actual/expected run exceeds booked distance)
+        $actualKmInput = $options['actual_km'] ?? null;
+        $extraKmInput = $options['extra_km'] ?? null;
+        $actualKm = $bookedKm;
+        $extraKm = 0;
+
+        if ($actualKmInput !== null && $actualKmInput !== '' && is_numeric($actualKmInput)) {
+            $actualKm = max(0, (int) $actualKmInput);
+            if ($bookedKm > 0) {
+                $extraKm = max(0, $actualKm - $bookedKm);
+            } elseif ($extraKmInput !== null && $extraKmInput !== '' && is_numeric($extraKmInput)) {
+                $extraKm = max(0, (int) $extraKmInput);
+            }
+        } elseif ($extraKmInput !== null && $extraKmInput !== '' && is_numeric($extraKmInput)) {
+            $extraKm = max(0, (int) $extraKmInput);
+            $actualKm = $bookedKm > 0 ? ($bookedKm + $extraKm) : $extraKm;
+        }
+
+        $extraKmFare = $extraKm > 0 ? (float) round($extraKm * $extraKmRate) : 0.0;
+        if ($extraKmFare > 0) {
+            $lineItems[] = [
+                'label' => "Extra KM charge ({$extraKm} km x ₹".number_format($extraKmRate, 0).'/km)',
+                'amount' => $extraKmFare,
+            ];
+        }
+
+        // Route-specific additional amount (adds on top of basic rate)
+        $routeAdditionalFare = ($route && $route->additional_amount !== null && (float) $route->additional_amount > 0)
+            ? (float) round((float) $route->additional_amount)
+            : 0.0;
+        $routeAdditionalLabel = $routeAdditionalFare > 0
+            ? (trim((string) ($route->additional_amount_label ?? '')) ?: 'Route additional charge')
+            : null;
+
+        if ($routeAdditionalFare > 0) {
+            $lineItems[] = [
+                'label' => $routeAdditionalLabel,
+                'amount' => $routeAdditionalFare,
+            ];
         }
 
         [$addonFare, $appliedAddons] = $this->computeAddons($options, $lineItems);
@@ -264,7 +383,19 @@ class FareCalculatorService
             }
         }
 
-        $subtotal = $baseFare + $tollFare + $addonFare;
+        // Dynamic Admin Additional Price Fields scoped to booking type and/or route type
+        $pctBasis = $baseFare + $tollFare + $extraKmFare + $routeAdditionalFare;
+        $kmForFields = $actualKm > 0 ? $actualKm : $bookedKm;
+        [$customPriceFieldsFare, $appliedPriceFields, $availablePriceFields] = $this->evaluatePriceFields(
+            $trip,
+            $bookingType,
+            $options,
+            $pctBasis,
+            $kmForFields,
+            $lineItems
+        );
+
+        $subtotal = $baseFare + $tollFare + $extraKmFare + $routeAdditionalFare + $addonFare + $customPriceFieldsFare;
         $coupon = $this->resolveCoupon($options['coupon_code'] ?? null, $subtotal);
 
         if ($coupon['applied']) {
@@ -275,13 +406,28 @@ class FareCalculatorService
 
         return [
             'fleet_category' => $fleet,
+            'booking_type' => $bookingType,
             'rate_per_km' => $rate,
-            'distance_km' => (int) $trip['distance_km'],
+            'fixed_base_fare' => (float) round($fixedBase),
+            'extra_km_rate' => (float) $extraKmRate,
+            'extra_hour_rate' => (float) $extraHourRate,
+            'has_custom_booking_type_rate' => (bool) $rateConfig['has_custom_override'],
+            'distance_km' => (int) $bookedKm,
+            'booked_distance_km' => (int) $bookedKm,
+            'actual_distance_km' => (int) $actualKm,
+            'extra_km' => (int) $extraKm,
             'estimated_time' => $trip['estimated_time'],
             'base_fare' => (float) round($baseFare),
             'toll_fare' => (float) round($tollFare),
+            'extra_km_fare' => (float) round($extraKmFare),
+            'route_additional_fare' => (float) round($routeAdditionalFare),
+            'route_additional_label' => $routeAdditionalLabel,
             'addon_fare' => (float) round($addonFare),
             'applied_addons' => $appliedAddons,
+            'custom_price_fields_fare' => (float) round($customPriceFieldsFare),
+            'applied_price_fields' => $appliedPriceFields,
+            'available_price_fields' => $availablePriceFields,
+            'subtotal' => (float) round($subtotal),
             'discount_fare' => (float) round($coupon['discount']),
             'total_amount' => (float) $total,
             'coupon' => $coupon,
@@ -311,9 +457,14 @@ class FareCalculatorService
             $estimates[$fleet->category_key] = [
                 'name' => $fleet->name ?? ucfirst($fleet->category_key),
                 'rate_per_km' => $quote['rate_per_km'],
+                'fixed_base_fare' => $quote['fixed_base_fare'],
+                'extra_km_rate' => $quote['extra_km_rate'],
                 'distance_km' => $quote['distance_km'],
                 'base_fare' => $quote['base_fare'],
                 'toll_fare' => $quote['toll_fare'],
+                'extra_km_fare' => $quote['extra_km_fare'],
+                'route_additional_fare' => $quote['route_additional_fare'],
+                'custom_price_fields_fare' => $quote['custom_price_fields_fare'],
                 'total' => $quote['total_amount'],
             ];
         }
@@ -441,28 +592,118 @@ class FareCalculatorService
         }
     }
 
-    public function rateForFleet(string $fleet): float
+    /**
+     * Map trip array to a canonical booking_type key.
+     *
+     * @param  array<string, mixed>  $trip
+     */
+    public function bookingTypeKeyForTrip(array $trip): string
     {
-        $fleet = $this->normalizeFleet($fleet);
-        $carType = CarType::where('category_key', $fleet)->first();
+        $type = (string) ($trip['trip_type'] ?? 'oneway');
 
-        if ($carType && (float) $carType->rate_per_km > 0) {
-            return (float) $carType->rate_per_km;
+        if ($type === 'airport') {
+            return (($trip['airport_type'] ?? 'pickup') === 'drop')
+                ? 'airport_drop'
+                : 'airport_pickup';
         }
 
-        return self::DEFAULT_RATES[$fleet] ?? self::DEFAULT_RATES['suv'];
+        return in_array($type, ['oneway', 'roundtrip', 'local'], true) ? $type : 'oneway';
     }
 
-    public function minBaseForFleet(string $fleet): float
+    /**
+     * Resolve effective rates for a fleet + booking type, checking
+     * booking_type_car_rates overrides and falling back to CarType / defaults.
+     *
+     * @return array{
+     *   base_fare: float,
+     *   rate_per_km: float,
+     *   extra_km_rate: float,
+     *   extra_hour_rate: float,
+     *   has_custom_override: bool
+     * }
+     */
+    public function rateConfigFor(string $fleet, string $bookingType = 'oneway'): array
     {
         $fleet = $this->normalizeFleet($fleet);
-        $carType = CarType::where('category_key', $fleet)->first();
+        $bookingType = strtolower(trim($bookingType)) ?: 'oneway';
+        $carType = CarType::whereRaw('LOWER(category_key) = ?', [$fleet])->first();
 
-        if ($carType && $carType->base_fare_min !== null) {
-            return (float) $carType->base_fare_min;
+        $ratePerKm = $carType && (float) $carType->rate_per_km > 0
+            ? (float) $carType->rate_per_km
+            : (float) (self::DEFAULT_RATES[$fleet] ?? self::DEFAULT_RATES['suv']);
+
+        $baseFare = $carType && $carType->base_fare_min !== null
+            ? (float) $carType->base_fare_min
+            : (float) (self::DEFAULT_MIN_BASE[$fleet] ?? 0.0);
+
+        $extraKmRate = $carType && $carType->extra_km_rate !== null && (float) $carType->extra_km_rate > 0
+            ? (float) $carType->extra_km_rate
+            : $ratePerKm;
+
+        $extraHourRate = $carType && $carType->extra_hour_rate !== null
+            ? (float) $carType->extra_hour_rate
+            : 0.0;
+
+        if ($this->hasBookingTypeRatesTable() && $carType) {
+            $btRow = BookingTypeCarRate::where('booking_type', $bookingType)
+                ->where('car_type_id', $carType->id)
+                ->where('is_active', true)
+                ->first();
+
+            if ($btRow && $bookingType === 'oneway') {
+                $extraHourRate = (float) $btRow->extra_hour_rate;
+            } elseif ($btRow && $bookingType !== 'oneway') {
+                return [
+                    'base_fare' => (float) $btRow->base_fare,
+                    'rate_per_km' => (float) $btRow->rate_per_km > 0 ? (float) $btRow->rate_per_km : $ratePerKm,
+                    'extra_km_rate' => (float) $btRow->extra_km_rate > 0 ? (float) $btRow->extra_km_rate : $extraKmRate,
+                    'extra_hour_rate' => (float) $btRow->extra_hour_rate,
+                    'has_custom_override' => true,
+                ];
+            }
         }
 
-        return self::DEFAULT_MIN_BASE[$fleet] ?? 0.0;
+        return [
+            'base_fare' => $baseFare,
+            'rate_per_km' => $ratePerKm,
+            'extra_km_rate' => $extraKmRate,
+            'extra_hour_rate' => $extraHourRate,
+            'has_custom_override' => false,
+        ];
+    }
+
+    public function rateForFleet(string $fleet, string $bookingType = 'oneway'): float
+    {
+        return $this->rateConfigFor($fleet, $bookingType)['rate_per_km'];
+    }
+
+    public function minBaseForFleet(string $fleet, string $bookingType = 'oneway'): float
+    {
+        return $this->rateConfigFor($fleet, $bookingType)['base_fare'];
+    }
+
+    public function extraKmRateForFleet(string $fleet, string $bookingType = 'oneway'): float
+    {
+        return $this->rateConfigFor($fleet, $bookingType)['extra_km_rate'];
+    }
+
+    private function hasBookingTypeRatesTable(): bool
+    {
+        if ($this->hasBookingTypeRatesTable === null) {
+            $this->hasBookingTypeRatesTable = Schema::hasTable('booking_type_car_rates');
+        }
+
+        return $this->hasBookingTypeRatesTable;
+    }
+
+    private function hasPriceFieldColumns(): bool
+    {
+        if ($this->hasPriceFieldColumns === null) {
+            $this->hasPriceFieldColumns = Schema::hasTable('dynamic_form_fields')
+                && Schema::hasColumn('dynamic_form_fields', 'is_price_field');
+        }
+
+        return $this->hasPriceFieldColumns;
     }
 
     public function normalizeFleet(string $fleet): string
@@ -718,22 +959,126 @@ class FareCalculatorService
     }
 
     /**
+     * Evaluate admin-defined dynamic price fields scoped to the current booking type / route type.
+     *
+     * @param  array<string, mixed>  $trip
+     * @param  array<string, mixed>  $options
+     * @param  array<int, array<string, mixed>>  $lineItems
+     * @return array{0: float, 1: array<int, array<string, mixed>>, 2: array<int, array<string, mixed>>}
+     */
+    private function evaluatePriceFields(
+        array $trip,
+        string $bookingType,
+        array $options,
+        float $pctBasis,
+        int $distanceKmForPerKm,
+        array &$lineItems
+    ): array {
+        if (! $this->hasPriceFieldColumns()) {
+            return [0.0, [], []];
+        }
+
+        $fields = DynamicFormField::where('is_active', true)
+            ->where('is_price_field', true)
+            ->orderBy('order_index')
+            ->get();
+
+        if ($fields->isEmpty()) {
+            return [0.0, [], []];
+        }
+
+        /** @var RouteFare|null $route */
+        $route = $trip['route'] ?? null;
+        $selectedKeys = array_map('strval', (array) ($options['selected_price_fields'] ?? []));
+
+        $totalCustomFare = 0.0;
+        $appliedFields = [];
+        $availableFields = [];
+
+        foreach ($fields as $field) {
+            $bScope = strtolower((string) ($field->booking_type_scope ?? 'all')) ?: 'all';
+            $rScope = strtolower((string) ($field->route_type_scope ?? 'all')) ?: 'all';
+
+            $matchesBooking = ($bScope === 'all')
+                || ($bScope === $bookingType)
+                || ($bScope === 'outstation' && in_array($bookingType, ['oneway', 'roundtrip'], true))
+                || ($bScope === 'airport' && in_array($bookingType, ['airport_pickup', 'airport_drop'], true));
+
+            if (! $matchesBooking) {
+                continue;
+            }
+
+            $matchesRoute = match ($rScope) {
+                'all' => true,
+                'route_table', 'configured_route' => $route !== null,
+                'specific_route' => $route !== null && $field->route_fare_id !== null && (int) $route->id === (int) $field->route_fare_id,
+                'local_package' => ($trip['trip_type'] ?? '') === 'local',
+                'airport_hub' => ($trip['trip_type'] ?? '') === 'airport',
+                'custom_distance', 'custom_route' => ! in_array($trip['trip_type'] ?? '', ['local', 'airport'], true) && $route === null,
+                default => false,
+            };
+
+            if (! $matchesRoute) {
+                continue;
+            }
+
+            $rawAmount = (float) ($field->price_amount ?? 0);
+            $mode = strtolower((string) ($field->price_mode ?? 'flat')) ?: 'flat';
+            $behavior = strtolower((string) ($field->charge_behavior ?? 'auto')) ?: 'auto';
+
+            $computed = match ($mode) {
+                'per_km' => (float) round($rawAmount * max(0, $distanceKmForPerKm)),
+                'percentage' => (float) round($pctBasis * ($rawAmount / 100)),
+                default => (float) round($rawAmount),
+            };
+
+            $isApplied = ($behavior === 'auto')
+                || in_array((string) $field->field_key, $selectedKeys, true)
+                || in_array((string) $field->id, $selectedKeys, true);
+
+            $entry = [
+                'id' => $field->id,
+                'field_key' => $field->field_key,
+                'label' => $field->label,
+                'price_amount' => $rawAmount,
+                'price_mode' => $mode,
+                'charge_behavior' => $behavior,
+                'booking_type_scope' => $bScope,
+                'route_type_scope' => $rScope,
+                'route_fare_id' => $field->route_fare_id ? (int) $field->route_fare_id : null,
+                'computed_amount' => $computed,
+                'applied' => $isApplied,
+            ];
+
+            $availableFields[] = $entry;
+
+            if ($isApplied && $computed > 0) {
+                $totalCustomFare += $computed;
+                $appliedFields[] = $entry;
+                $lineItems[] = ['label' => $field->label, 'amount' => $computed];
+            }
+        }
+
+        return [$totalCustomFare, $appliedFields, $availableFields];
+    }
+
+    /**
      * Split the distance-based price into its taxable base and toll portion.
      *
-     * Route-table fares are all-inclusive (distance x rate + toll), so when the
-     * customer asks for tolls to be itemised the toll is moved out of the base
-     * and shown as its own line: the total is unchanged either way.
+     * Formula: Base Fare + (Distance * Rate/KM) (+ Highway Toll for route-table
+     * entries when toll is not itemized separately). Route-table explicit fixed
+     * car fares (e.g. Mumbai->Pune sedan_fare) continue to honor their override.
      *
      * @param  array<string, mixed>  $trip
      * @return array{0: float, 1: float}
      */
-    private function distanceComponents(array $trip, string $fleet, float $rate, bool $includeTolls): array
+    private function distanceComponents(array $trip, string $fleet, float $rate, float $fixedBase, bool $includeTolls): array
     {
         /** @var RouteFare|null $route */
         $route = $trip['route'] ?? null;
 
         if ($route) {
-            $allInclusive = (float) round($route->getFareForCarType($fleet, $rate));
+            $allInclusive = (float) round($route->getFareForCarType($fleet, $rate, $fixedBase, false));
             $toll = (float) $route->base_toll;
 
             if ($includeTolls && $toll > 0) {
@@ -743,15 +1088,26 @@ class FareCalculatorService
             return [$allInclusive, 0.0];
         }
 
-        $byDistance = (float) round($trip['distance_km'] * $rate);
-        $base = max($this->minBaseForFleet($fleet), $byDistance);
+        $byDistance = (float) ($trip['distance_km'] * $rate);
+        $base = (float) round($fixedBase + $byDistance);
         $toll = $includeTolls ? (float) $trip['base_toll'] : 0.0;
 
         return [$base, $toll];
     }
 
-    private function localPackageFare(LocalPackage $package, string $fleet, float $rate): float
+    /**
+     * @param  array{base_fare: float, rate_per_km: float, extra_km_rate: float, extra_hour_rate: float, has_custom_override: bool}  $rateConfig
+     */
+    private function localPackageFare(LocalPackage $package, string $fleet, array $rateConfig): float
     {
+        if ($rateConfig['has_custom_override']) {
+            return round($rateConfig['base_fare'] + ((float) $package->included_km * $rateConfig['rate_per_km']));
+        }
+
+        if (is_array($package->car_fares) && isset($package->car_fares[$fleet]) && (float) $package->car_fares[$fleet] > 0) {
+            return round((float) $package->car_fares[$fleet]);
+        }
+
         $sedan = (float) $package->sedan_fare;
         $suv = (float) $package->suv_fare;
 
@@ -764,13 +1120,17 @@ class FareCalculatorService
         }
 
         // Scale the SUV package price by the fleet's relative per-km rate.
-        $suvRefRate = max(1.0, $this->rateForFleet('suv'));
-        $scaled = $suv * ($rate / $suvRefRate);
+        $suvRefRate = max(1.0, $this->rateForFleet('suv', 'oneway'));
+        $scaled = $suv * ($this->rateForFleet($fleet, 'oneway') / $suvRefRate);
 
         return round(max(0.0, $scaled));
     }
 
-    private function airportFare(array $trip, string $fleet, float $rate): float
+    /**
+     * @param  array<string, mixed>  $trip
+     * @param  array{base_fare: float, rate_per_km: float, extra_km_rate: float, extra_hour_rate: float, has_custom_override: bool}  $rateConfig
+     */
+    private function airportFare(array $trip, string $fleet, array $rateConfig): float
     {
         /** @var AirportHub|null $hub */
         $hub = $trip['airport_hub'];
@@ -783,7 +1143,18 @@ class FareCalculatorService
                 ? (float) $hub->drop_surcharge
                 : (float) $hub->pickup_surcharge;
 
-            $suvRefRate = max(1.0, $this->rateForFleet('suv'));
+            if ($rateConfig['has_custom_override']) {
+                $dist = (float) ($trip['distance_km'] ?? 0);
+
+                return round($rateConfig['base_fare'] + ($dist * $rateConfig['rate_per_km']) + $surcharge);
+            }
+
+            if (is_array($hub->car_fares) && isset($hub->car_fares[$fleet]) && (float) $hub->car_fares[$fleet] > 0) {
+                return round((float) $hub->car_fares[$fleet] + $surcharge);
+            }
+
+            $suvRefRate = max(1.0, $this->rateForFleet('suv', 'oneway'));
+            $rate = $rateConfig['rate_per_km'];
 
             if ($fleet === 'sedan') {
                 $base = (float) $hub->sedan_base_fare;
@@ -792,7 +1163,7 @@ class FareCalculatorService
             } elseif ($fleet === 'prime') {
                 $primeRow = CarType::where('category_key', 'prime')->first();
                 if ($primeRow && (float) $primeRow->rate_per_km > 0) {
-                    $sedanRef = max(1.0, $this->rateForFleet('sedan'));
+                    $sedanRef = max(1.0, $this->rateForFleet('sedan', 'oneway'));
                     $base = (float) $hub->sedan_base_fare * ((float) $primeRow->rate_per_km / $sedanRef);
                 } else {
                     $base = (float) $hub->sedan_base_fare * 1.15;
@@ -804,11 +1175,8 @@ class FareCalculatorService
             return round($base + $surcharge);
         }
 
-        // No hub configured: price the measured transfer, never a flat guess.
-        $base = round($trip['distance_km'] * $rate);
-        $base = max($base, $this->minBaseForFleet($fleet));
-
-        return (float) $base;
+        // No hub configured: Base Fare + distance * rate.
+        return (float) round($rateConfig['base_fare'] + ((float) $trip['distance_km'] * $rateConfig['rate_per_km']));
     }
 
     private function resolveLocalPackage(?string $code): LocalPackage

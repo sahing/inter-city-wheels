@@ -226,21 +226,21 @@ class AdminBulkRateAndPricingConditionsTest extends TestCase
         CarType::where('category_key', 'suv')->update(['rate_per_km' => 30.0]);
 
         // Seeded Pune -> Goa: 450 km, toll 480.
-        // Sedan: 450 * 20 + 480 = 9480; SUV: 450 * 30 + 480 = 13980.
+        // Sedan: base_fare_min 950 + 450 * 20 + 480 = 10430; SUV: base_fare_min 1400 + 450 * 30 + 480 = 15380.
         $page = $this->actingAs($this->admin)->get('/');
         $page->assertStatus(200);
-        $page->assertSee('Comfort Sedan: <strong>₹9,480</strong>', false);
-        $page->assertSee('Family SUV: <strong>₹13,980</strong>', false);
+        $page->assertSee('Comfort Sedan: <strong>₹10,430</strong>', false);
+        $page->assertSee('Family SUV: <strong>₹15,380</strong>', false);
         $page->assertDontSee('Compact Hatchback: <strong>', false);
 
-        // Route calculation excludes deactivated car types and prices active ones from rate_per_km.
+        // Route calculation excludes deactivated car types and prices active ones from base_fare + rate_per_km.
         $oneway = $this->getJson('/api/routes/calculate?from=Pune&to=Goa&fleet=sedan')
             ->assertStatus(200);
-        $this->assertEquals(9480.0, (float) $oneway->json('fleet_estimates.sedan'));
-        $this->assertEquals(13980.0, (float) $oneway->json('fleet_estimates.suv'));
+        $this->assertEquals(10430.0, (float) $oneway->json('fleet_estimates.sedan'));
+        $this->assertEquals(15380.0, (float) $oneway->json('fleet_estimates.suv'));
         $this->assertArrayNotHasKey('hatchback', $oneway->json('fleet_estimates'));
 
-        // Actual One-Way booking charges the updated per-km rate.
+        // Actual One-Way booking charges the updated base_fare + per-km rate.
         $booking = $this->actingAs($this->customer)->postJson('/api/bookings', [
             'service_type' => 'cab',
             'trip_type' => 'oneway',
@@ -253,7 +253,7 @@ class AdminBulkRateAndPricingConditionsTest extends TestCase
             'fleet_category' => 'sedan',
             'include_tolls' => true,
         ])->assertStatus(200);
-        $this->assertEquals(9480.0, (float) $booking->json('booking.total_amount'));
+        $this->assertEquals(10430.0, (float) $booking->json('booking.total_amount'));
 
         // Local package: if Hatchback is active at ₹9/km (below Sedan ₹20/km), it scales proportionally without clamping up to Sedan.
         CarType::where('category_key', 'hatchback')->update(['is_active' => true, 'rate_per_km' => 9.0]);

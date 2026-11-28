@@ -639,7 +639,22 @@ class DatabaseSeeder extends Seeder
             ],
         ];
         foreach ($carTypes as $ct) {
-            CarType::firstOrCreate(['category_key' => $ct['category_key']], $ct);
+            $carType = CarType::firstOrCreate(['category_key' => $ct['category_key']], $ct);
+            if (\Illuminate\Support\Facades\Schema::hasTable('booking_type_car_rates')) {
+                \App\Models\BookingTypeCarRate::firstOrCreate(
+                    [
+                        'booking_type' => 'oneway',
+                        'car_type_id' => $carType->id,
+                    ],
+                    [
+                        'base_fare' => (float) ($carType->base_fare_min ?? 0),
+                        'rate_per_km' => (float) $carType->rate_per_km,
+                        'extra_km_rate' => (float) ($carType->extra_km_rate ?? $carType->rate_per_km),
+                        'extra_hour_rate' => 0.0,
+                        'is_active' => (bool) $carType->is_active,
+                    ]
+                );
+            }
         }
 
         // 16. Seed Regional Fleet Scale-Out (100 partner drivers / 500 cars with amenities)

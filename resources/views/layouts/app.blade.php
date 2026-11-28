@@ -759,6 +759,14 @@
         $jsCarTypes = isset($allCarTypes)
             ? $allCarTypes
             : \App\Models\CarType::orderBy('order_index')->get();
+        $jsBookingTypeRates = isset($bookingTypeRates)
+            ? $bookingTypeRates
+            : (\Illuminate\Support\Facades\Schema::hasTable('booking_type_car_rates')
+                ? \App\Models\BookingTypeCarRate::all()
+                : collect());
+        $jsDynamicFields = isset($allDynamicFields)
+            ? $allDynamicFields
+            : (\App\Models\DynamicFormField::with('routeFare')->orderBy('order_index')->get());
         $jsLocalPackages = isset($localPackages)
             ? $localPackages
             : \App\Models\LocalPackage::orderBy('duration_hours')->get();
@@ -772,6 +780,8 @@
         window.INITIAL_SERVICE_LOCATIONS = {!! json_encode($jsLocations) !!};
         window.INITIAL_CAB_ROUTES = {!! json_encode($jsCabRoutes) !!};
         window.INITIAL_CAR_TYPES = {!! json_encode($jsCarTypes) !!};
+        window.INITIAL_BOOKING_TYPE_RATES = {!! json_encode($jsBookingTypeRates) !!};
+        window.INITIAL_DYNAMIC_FIELDS = {!! json_encode($jsDynamicFields) !!};
         window.INITIAL_LOCAL_PACKAGES = {!! json_encode($jsLocalPackages) !!};
         window.INITIAL_AIRPORT_HUBS = {!! json_encode($jsAirportHubs) !!};
         window.ALTERNATE_AUTH_CONFIG = {!! json_encode($alternateAuthConfig) !!};

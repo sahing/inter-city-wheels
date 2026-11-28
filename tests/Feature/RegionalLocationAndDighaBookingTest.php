@@ -133,7 +133,7 @@ class RegionalLocationAndDighaBookingTest extends TestCase
                 ],
             ]);
 
-        $this->assertEquals(4633, $response->json('fleet_estimates.sedan'));
+        $this->assertEquals(5583, $response->json('fleet_estimates.sedan'));
     }
 
     public function test_customer_can_book_cab_from_berhampore_to_digha()
@@ -160,16 +160,16 @@ class RegionalLocationAndDighaBookingTest extends TestCase
                 'booking' => [
                     'route_summary' => 'Berhampore → Digha',
                     'status' => 'Requested',
-                    'base_fare' => 4313,
+                    'base_fare' => 5263,
                     'toll_fare' => 320,
-                    'total_amount' => 4633,
+                    'total_amount' => 5583,
                 ],
             ]);
 
         $this->assertDatabaseHas('bookings', [
             'route_summary' => 'Berhampore → Digha',
             'customer_name' => 'Abhishek Roy',
-            'total_amount' => 4633,
+            'total_amount' => 5583,
         ]);
     }
 

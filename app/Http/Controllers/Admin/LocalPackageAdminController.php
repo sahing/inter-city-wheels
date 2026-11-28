@@ -48,6 +48,7 @@ class LocalPackageAdminController extends Controller
             'included_km' => 'required|integer|min:1',
             'sedan_fare' => 'required|numeric|min:0',
             'suv_fare' => 'required|numeric|min:0',
+            'car_fares' => 'nullable|array',
             'extra_km_rate' => 'nullable|numeric|min:0',
             'extra_hour_rate' => 'nullable|numeric|min:0',
             'default_car_type' => 'nullable|string|max:60',
@@ -62,6 +63,7 @@ class LocalPackageAdminController extends Controller
             'included_km' => (int) $validated['included_km'],
             'sedan_fare' => (float) $validated['sedan_fare'],
             'suv_fare' => (float) $validated['suv_fare'],
+            'car_fares' => $validated['car_fares'] ?? null,
             'extra_km_rate' => (float) ($validated['extra_km_rate'] ?? 14.00),
             'extra_hour_rate' => (float) ($validated['extra_hour_rate'] ?? 150.00),
             'default_car_type' => ! empty($validated['default_car_type']) ? strtolower(trim($validated['default_car_type'])) : null,
@@ -103,6 +105,7 @@ class LocalPackageAdminController extends Controller
             'included_km' => 'sometimes|required|integer|min:1',
             'sedan_fare' => 'sometimes|required|numeric|min:0',
             'suv_fare' => 'sometimes|required|numeric|min:0',
+            'car_fares' => 'nullable|array',
             'extra_km_rate' => 'nullable|numeric|min:0',
             'extra_hour_rate' => 'nullable|numeric|min:0',
             'default_car_type' => 'nullable|string|max:60',
@@ -129,6 +132,9 @@ class LocalPackageAdminController extends Controller
         }
         if (isset($validated['suv_fare'])) {
             $package->suv_fare = (float) $validated['suv_fare'];
+        }
+        if (array_key_exists('car_fares', $validated)) {
+            $package->car_fares = $validated['car_fares'];
         }
         if (isset($validated['extra_km_rate'])) {
             $package->extra_km_rate = (float) $validated['extra_km_rate'];

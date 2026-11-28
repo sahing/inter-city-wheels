@@ -16,6 +16,7 @@ class AirportHub extends Model
         'drop_surcharge' => 'float',
         'sedan_base_fare' => 'float',
         'suv_base_fare' => 'float',
+        'car_fares' => 'array',
         'is_active' => 'boolean',
     ];
 }

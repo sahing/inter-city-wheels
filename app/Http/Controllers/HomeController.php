@@ -27,7 +27,8 @@ class HomeController extends Controller
         $drivers = Driver::where('is_online', true)->get();
         $lowerBerths = SeatLayout::where('deck', 'lower')->get();
         $upperBerths = SeatLayout::where('deck', 'upper')->get();
-        $dynamicFields = DynamicFormField::where('is_active', true)->orderBy('order_index')->get();
+        $dynamicFields = DynamicFormField::with('routeFare')->where('is_active', true)->orderBy('order_index')->get();
+        $allDynamicFields = DynamicFormField::with('routeFare')->orderBy('order_index')->get();
         $workflowStages = WorkflowStage::where('is_active', true)->orderBy('order_index')->get();
         $coupons = Coupon::where('is_active', true)->get();
         $recentBookings = Booking::with('driver')->latest()->get();
@@ -54,6 +55,9 @@ class HomeController extends Controller
         $localPackages = \App\Models\LocalPackage::orderBy('duration_hours')->get();
         $airportHubs = \App\Models\AirportHub::orderBy('city')->get();
         $allCarTypes = \App\Models\CarType::orderBy('order_index')->get();
+        $bookingTypeRates = \Illuminate\Support\Facades\Schema::hasTable('booking_type_car_rates')
+            ? \App\Models\BookingTypeCarRate::all()
+            : collect();
         $platformSettings = \App\Models\PlatformSetting::allAdminSettings();
         $isSchedulesEnabled = $platformSettings['enable_schedules_and_berths'] === '1';
 
@@ -148,6 +152,7 @@ class HomeController extends Controller
             'lowerBerths',
             'upperBerths',
             'dynamicFields',
+            'allDynamicFields',
             'workflowStages',
             'coupons',
             'recentBookings',
@@ -170,6 +175,7 @@ class HomeController extends Controller
             'localPackages',
             'airportHubs',
             'allCarTypes',
+            'bookingTypeRates',
             'platformSettings',
             'isSchedulesEnabled'
         ));

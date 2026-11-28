@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\BookingTypeCarRate;
 use App\Models\CarType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CarTypeAdminController extends Controller
 {
@@ -75,6 +77,8 @@ class CarTypeAdminController extends Controller
             'is_active' => $request->has('is_active') ? (bool) $request->is_active : true,
         ]);
 
+        $this->syncOneWayBookingTypeRate($carType);
+
         return response()->json([
             'success' => true,
             'message' => "Car Type '{$carType->name}' added successfully!",
@@ -122,6 +126,7 @@ class CarTypeAdminController extends Controller
         }
 
         $carType->update($validated);
+        $this->syncOneWayBookingTypeRate($carType);
 
         return response()->json([
             'success' => true,
@@ -138,6 +143,7 @@ class CarTypeAdminController extends Controller
         $carType = CarType::findOrFail($id);
         $carType->is_active = ! $carType->is_active;
         $carType->save();
+        $this->syncOneWayBookingTypeRate($carType);
 
         return response()->json([
             'success' => true,
@@ -157,6 +163,7 @@ class CarTypeAdminController extends Controller
             'rates.*.rate_per_km' => 'required|numeric|min:1',
             'rates.*.extra_km_rate' => 'nullable|numeric|min:0',
             'rates.*.base_fare_min' => 'nullable|numeric|min:0',
+            'rates.*.extra_hour_rate' => 'nullable|numeric|min:0',
             'rates.*.is_active' => 'nullable|boolean',
         ]);
 
@@ -175,6 +182,10 @@ class CarTypeAdminController extends Controller
                     $carType->is_active = (bool) $row['is_active'];
                 }
                 $carType->save();
+                $extraHr = array_key_exists('extra_hour_rate', $row) && $row['extra_hour_rate'] !== null
+                    ? (float) $row['extra_hour_rate']
+                    : null;
+                $this->syncOneWayBookingTypeRate($carType, $extraHr);
             }
         });
 
@@ -184,7 +195,34 @@ class CarTypeAdminController extends Controller
             'success' => true,
             'message' => "Updated rates for {$updatedCount} car type(s) successfully!",
             'car_types' => CarType::orderBy('order_index')->get(),
+            'booking_type_rates' => Schema::hasTable('booking_type_car_rates') ? BookingTypeCarRate::all() : [],
         ]);
+    }
+
+    private function syncOneWayBookingTypeRate(CarType $carType, ?float $extraHourRate = null): void
+    {
+        if (! Schema::hasTable('booking_type_car_rates')) {
+            return;
+        }
+
+        $attrs = [
+            'base_fare' => (float) ($carType->base_fare_min ?? 0),
+            'rate_per_km' => (float) ($carType->rate_per_km ?? 0),
+            'extra_km_rate' => (float) ($carType->extra_km_rate ?? $carType->rate_per_km ?? 0),
+            'is_active' => (bool) $carType->is_active,
+        ];
+
+        if ($extraHourRate !== null) {
+            $attrs['extra_hour_rate'] = $extraHourRate;
+        }
+
+        BookingTypeCarRate::updateOrCreate(
+            [
+                'booking_type' => 'oneway',
+                'car_type_id' => $carType->id,
+            ],
+            $attrs
+        );
     }
 
     /**

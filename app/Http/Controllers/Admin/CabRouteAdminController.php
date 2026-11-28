@@ -79,6 +79,8 @@ class CabRouteAdminController extends Controller
             'distance_km' => 'required|numeric|min:1',
             'estimated_time' => 'required|string|max:50',
             'base_toll' => 'nullable|numeric|min:0',
+            'additional_amount' => 'nullable|numeric|min:0',
+            'additional_amount_label' => 'nullable|string|max:120',
             'hatchback_fare' => 'nullable|numeric|min:0',
             'sedan_fare' => 'nullable|numeric|min:0',
             'suv_fare' => 'nullable|numeric|min:0',
@@ -107,6 +109,8 @@ class CabRouteAdminController extends Controller
             'distance_km' => round($validated['distance_km']),
             'estimated_time' => trim($validated['estimated_time']),
             'base_toll' => (float) ($validated['base_toll'] ?? 0),
+            'additional_amount' => (float) ($validated['additional_amount'] ?? 0),
+            'additional_amount_label' => ! empty($validated['additional_amount_label']) ? trim((string) $validated['additional_amount_label']) : null,
             'hatchback_fare' => isset($validated['hatchback_fare']) && $validated['hatchback_fare'] !== '' ? (float) $validated['hatchback_fare'] : null,
             'sedan_fare' => isset($validated['sedan_fare']) && $validated['sedan_fare'] !== '' ? (float) $validated['sedan_fare'] : null,
             'suv_fare' => isset($validated['suv_fare']) && $validated['suv_fare'] !== '' ? (float) $validated['suv_fare'] : null,
@@ -154,6 +158,8 @@ class CabRouteAdminController extends Controller
             'distance_km' => 'sometimes|required|numeric|min:1',
             'estimated_time' => 'sometimes|required|string|max:50',
             'base_toll' => 'nullable|numeric|min:0',
+            'additional_amount' => 'nullable|numeric|min:0',
+            'additional_amount_label' => 'nullable|string|max:120',
             'hatchback_fare' => 'nullable|numeric|min:0',
             'sedan_fare' => 'nullable|numeric|min:0',
             'suv_fare' => 'nullable|numeric|min:0',
@@ -185,6 +191,14 @@ class CabRouteAdminController extends Controller
         if (array_key_exists('default_car_type', $validated)) {
             $validated['default_car_type'] = ! empty($validated['default_car_type'])
                 ? strtolower(trim((string) $validated['default_car_type']))
+                : null;
+        }
+        if (array_key_exists('additional_amount', $validated)) {
+            $validated['additional_amount'] = (float) ($validated['additional_amount'] ?? 0);
+        }
+        if (array_key_exists('additional_amount_label', $validated)) {
+            $validated['additional_amount_label'] = ! empty($validated['additional_amount_label'])
+                ? trim((string) $validated['additional_amount_label'])
                 : null;
         }
 
@@ -225,6 +239,8 @@ class CabRouteAdminController extends Controller
             'routes' => 'nullable|array',
             'routes.*.id' => 'required_with:routes|integer|exists:route_fares,id',
             'routes.*.base_toll' => 'nullable|numeric|min:0',
+            'routes.*.additional_amount' => 'nullable|numeric|min:0',
+            'routes.*.additional_amount_label' => 'nullable|string|max:120',
             'routes.*.roundtrip_discount_pct' => 'nullable|numeric|min:0|max:100',
             'routes.*.hatchback_fare' => 'nullable|numeric|min:0',
             'routes.*.sedan_fare' => 'nullable|numeric|min:0',
@@ -282,6 +298,12 @@ class CabRouteAdminController extends Controller
                 $route = RouteFare::findOrFail($row['id']);
                 if (array_key_exists('base_toll', $row) && $row['base_toll'] !== null) {
                     $route->base_toll = (float) $row['base_toll'];
+                }
+                if (array_key_exists('additional_amount', $row)) {
+                    $route->additional_amount = ($row['additional_amount'] === null || $row['additional_amount'] === '') ? 0.0 : (float) $row['additional_amount'];
+                }
+                if (array_key_exists('additional_amount_label', $row)) {
+                    $route->additional_amount_label = ! empty($row['additional_amount_label']) ? trim((string) $row['additional_amount_label']) : null;
                 }
                 if (array_key_exists('roundtrip_discount_pct', $row) && $row['roundtrip_discount_pct'] !== null) {
                     $route->roundtrip_discount_pct = (float) $row['roundtrip_discount_pct'];

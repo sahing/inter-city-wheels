@@ -793,6 +793,15 @@
                             <input type="text" id="cab-special-instructions" class="form-control" placeholder="e.g. Please carry booster seat, flight arriving at Gate 3">
                         </div>
 
+                        <!-- Expected Total KM Run (Extra KM Overrun Calculator Preview) -->
+                        <div class="form-group" id="cab-actual-km-group" style="margin-top:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                                <label class="rental-field-label" for="cab-actual-km-input" style="margin-bottom:0;">Expected Total KM Run (Optional Overrun Preview)</label>
+                                <span id="cab-actual-km-hint" style="font-size:11px; color:#64748b; font-weight:600;">Leave blank to bill standard booked KM</span>
+                            </div>
+                            <input type="number" id="cab-actual-km-input" class="form-control" min="0" step="1" placeholder="e.g. Enter total KM (like 230 on a 220 km trip) to preview Extra KM charge" oninput="onCabActualKmInput()">
+                        </div>
+
                         <!-- Add-ons -->
                         <div style="margin-top:16px; padding-top:14px; border-top:1px solid #f1f5f9;">
                             <label class="rental-field-label" style="margin-bottom:8px;">Trip Preferences & Add-ons</label>
@@ -838,11 +847,14 @@
                             </div>
                         </div>
 
+                        <!-- Dynamic Admin Additional Price Fields (Auto Surcharges & Optional Add-ons) -->
+                        <div id="cab-price-fields-wrapper" style="display:none; margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;"></div>
+
                         <!-- Dynamic Form Fields from Database -->
-                        @if($dynamicFields->count() > 0)
+                        @if($dynamicFields->where('is_price_field', false)->count() > 0)
                         <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;" id="cab-dynamic-fields-wrapper">
                             <label class="rental-field-label">Custom Specifications</label>
-                            @foreach($dynamicFields as $field)
+                            @foreach($dynamicFields->where('is_price_field', false) as $field)
                             <div class="form-group dynamic-field-item" id="dynamic-field-{{ $field->field_key }}" data-field-key="{{ $field->field_key }}" data-applies-to="{{ $field->applies_to }}" data-conditional="{{ $field->conditional_logic }}" style="margin-bottom:8px;">
                                 <label style="font-size:12px; font-weight:600; color:#475569;">{{ $field->label }}</label>
                                 <input type="{{ $field->field_type }}" class="form-control cab-dynamic-field" data-key="{{ $field->field_key }}" name="dynamic_{{ $field->field_key }}" placeholder="Enter {{ $field->label }}">
@@ -877,6 +889,18 @@
                             <div style="display:flex; justify-content:space-between;">
                                 <span>Fastag Tolls & Taxes</span>
                                 <span id="fare-tolls" style="font-weight:700; color:#0f172a;" class="text-tabular">₹120</span>
+                            </div>
+                            <div id="fare-extra-km-row" style="display:none; justify-content:space-between; color:#b45309;">
+                                <span>Extra KM Overrun <small id="fare-extra-km-meta" style="font-weight:600;"></small></span>
+                                <span id="fare-extra-km" style="font-weight:700;" class="text-tabular">₹0</span>
+                            </div>
+                            <div id="fare-route-addl-row" style="display:none; justify-content:space-between; color:#0369a1;">
+                                <span id="fare-route-addl-label">Route Additional Charge</span>
+                                <span id="fare-route-addl" style="font-weight:700;" class="text-tabular">₹0</span>
+                            </div>
+                            <div id="fare-price-fields-row" style="display:none; justify-content:space-between; color:#7c3aed;">
+                                <span>Additional Price Fields</span>
+                                <span id="fare-price-fields" style="font-weight:700;" class="text-tabular">₹0</span>
                             </div>
                             <div style="display:flex; justify-content:space-between;">
                                 <span>Selected Add-ons</span>
@@ -2153,7 +2177,12 @@
                         <div id="dispatch-active-card" style="display:none; background:#eff6ff; border:2px solid #3b82f6; border-radius:14px; padding:18px; text-align:center;">
                             <div style="font-size:11.5px; font-weight:800; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.06em;">Step 3 • Ride In Progress</div>
                             <h3 style="font-size:17px; font-weight:800; color:#0f172a; margin:4px 0 8px;">Trip Started — Ready for Drop-Off Settlement</h3>
-                            <p id="dispatch-active-collect-note" style="font-size:13px; color:#1e3a8a; margin:0 auto 14px; max-width:460px; font-weight:600;">—</p>
+                            <p id="dispatch-active-collect-note" style="font-size:13px; color:#1e3a8a; margin:0 auto 12px; max-width:460px; font-weight:600;">—</p>
+                            <div id="dispatch-actual-km-box" style="max-width:340px; margin:0 auto 14px; background:#ffffff; border:1px solid #bfdbfe; border-radius:10px; padding:10px 12px; text-align:left;">
+                                <label for="dispatch-actual-km-input" style="display:block; font-size:11.5px; font-weight:700; color:#1e3a8a; margin-bottom:4px;">Actual Total KM Run (For Extra KM Reconciliation)</label>
+                                <input type="number" id="dispatch-actual-km-input" class="form-control" min="0" step="1" placeholder="Enter odometer / total trip KM" oninput="updateDispatchActualKmPreview()" style="height:38px; font-weight:700;">
+                                <div id="dispatch-actual-km-preview" style="font-size:11px; color:#475569; margin-top:4px;">Booked KM: —</div>
+                            </div>
                             <button type="button" id="dispatch-complete-trip-btn" class="btn btn-accent" style="min-height:48px; padding:0 24px; font-size:14.5px; font-weight:800;">
                                 <span class="material-symbols-outlined" style="font-size:19px;">flag</span>
                                 <span id="dispatch-complete-trip-label">Complete Trip &amp; Settle</span>
@@ -3925,10 +3954,33 @@
                                         <span class="material-symbols-outlined" style="font-size:16px;">alt_route</span>
                                         <span>Outstation Route Bulk Adjust</span>
                                     </button>
+                                    <button type="button" class="admin-sub-tab-btn admin-pricing-tab-btn" data-tab="price-fields" onclick="switchPricingSubTab('price-fields')">
+                                        <span class="material-symbols-outlined" style="font-size:16px;">add_card</span>
+                                        <span>Additional Price Fields</span>
+                                    </button>
                                 </div>
 
                                 <!-- PANEL 1: BULK CAR TYPE PER-KM RATES -->
                                 <div class="admin-pricing-tab-panel" id="admin-pricing-panel-car-rates" style="display:block;">
+                                    <!-- Booking Type Selector Bar -->
+                                    <div style="padding:12px 18px; background:#fffdf7; border-bottom:1px solid #fde68a; display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+                                        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;" id="pricing-booking-type-pills">
+                                            <span style="font-size:11.5px; font-weight:800; color:#92400e; text-transform:uppercase; margin-right:4px;">Booking Type:</span>
+                                            <button type="button" class="btn btn-xs btn-primary admin-bt-rate-pill active" data-booking-type="oneway" onclick="switchPricingBookingTypeTab('oneway')">One-Way</button>
+                                            <button type="button" class="btn btn-xs btn-outline admin-bt-rate-pill" data-booking-type="roundtrip" onclick="switchPricingBookingTypeTab('roundtrip')">Round-Trip</button>
+                                            <button type="button" class="btn btn-xs btn-outline admin-bt-rate-pill" data-booking-type="local" onclick="switchPricingBookingTypeTab('local')">Local Hourly</button>
+                                            <button type="button" class="btn btn-xs btn-outline admin-bt-rate-pill" data-booking-type="airport_pickup" onclick="switchPricingBookingTypeTab('airport_pickup')">Airport Pickup</button>
+                                            <button type="button" class="btn btn-xs btn-outline admin-bt-rate-pill" data-booking-type="airport_drop" onclick="switchPricingBookingTypeTab('airport_drop')">Airport Drop</button>
+                                        </div>
+                                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                            <span id="pricing-formula-badge" style="font-size:11px; color:#78350f; background:#fef3c7; border:1px solid #fcd34d; border-radius:6px; padding:4px 9px; font-weight:700;">Formula: Base Fare + (Rate/KM × KM) + (Extra KM × Extra KM Rate)</span>
+                                            <button type="button" class="btn btn-xs btn-gold" onclick="openAddDynamicFieldModal(true)">
+                                                <span class="material-symbols-outlined" style="font-size:14px;">add_card</span>
+                                                <span>+ Add Price Field</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
                                     <div class="admin-bookings-toolbar" style="padding:12px 18px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:space-between;">
                                         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                                             <span style="font-size:12px; font-weight:700; color:#334155;">Quick Adjust All:</span>
@@ -3937,10 +3989,11 @@
                                             <button type="button" class="btn btn-xs btn-outline" onclick="applyCarTypeBulkPercent(-5)" title="Decrease all per-km rates by 5%">-5%</button>
                                             <button type="button" class="btn btn-xs btn-outline" onclick="applyCarTypeFlatDelta(1)" title="Add ₹1/km to all">+₹1/km</button>
                                             <button type="button" class="btn btn-xs btn-outline" onclick="syncCarTypeExtraKm()" title="Match Extra KM rate to Rate/KM">Sync Extra KM = Rate/KM</button>
+                                            <button type="button" id="reset-bt-rates-btn" class="btn btn-xs btn-outline-danger" style="display:none;" onclick="resetBookingTypeRates()" title="Revert this booking type to default Car Type rates">Reset to One-Way Defaults</button>
                                         </div>
                                         <button type="button" id="bulk-save-car-rates-btn" class="btn btn-sm btn-primary" onclick="bulkSaveCarTypeRates()">
                                             <span class="material-symbols-outlined" style="font-size:16px;">save</span>
-                                            <span>Save All Car Type Rates</span>
+                                            <span id="bulk-save-car-rates-label">Save All Car Type Rates</span>
                                         </button>
                                     </div>
 
@@ -3949,34 +4002,38 @@
                                             <thead>
                                                 <tr>
                                                     <th>Car Type & Key</th>
+                                                    <th>Base Fare (₹)</th>
                                                     <th>Rate / KM (₹)</th>
                                                     <th>Extra KM Rate (₹)</th>
-                                                    <th>Min Base Fare (₹)</th>
+                                                    <th id="bulk-ct-extra-hour-th">Extra Hour Rate (₹)</th>
                                                     <th style="text-align:center;">Active</th>
                                                 </tr>
                                             </thead>
                                             <tbody id="admin-bulk-car-rates-tbody">
                                                 @forelse($allCarTypes ?? [] as $ct)
-                                                <tr data-car-type-id="{{ $ct->id }}">
+                                                <tr data-car-type-id="{{ $ct->id }}" data-category-key="{{ strtolower($ct->category_key) }}">
                                                     <td>
                                                         <div style="font-weight:700; color:#0f172a;">{{ $ct->name }}</div>
                                                         <div style="font-size:11px; color:#64748b;">key: <code>{{ $ct->category_key }}</code> &bull; {{ $ct->seats }}</div>
                                                     </td>
                                                     <td>
-                                                        <input type="number" step="0.5" min="1" class="form-control bulk-ct-rate-km" value="{{ $ct->rate_per_km }}" style="max-width:120px; height:34px; font-weight:700;">
+                                                        <input type="number" step="50" min="0" class="form-control bulk-ct-min-fare" value="{{ $ct->base_fare_min }}" style="max-width:120px; height:34px; font-weight:700;">
                                                     </td>
                                                     <td>
-                                                        <input type="number" step="0.5" min="0" class="form-control bulk-ct-extra-km" value="{{ $ct->extra_km_rate }}" style="max-width:120px; height:34px;">
+                                                        <input type="number" step="0.5" min="1" class="form-control bulk-ct-rate-km" value="{{ $ct->rate_per_km }}" style="max-width:110px; height:34px; font-weight:700;">
                                                     </td>
                                                     <td>
-                                                        <input type="number" step="50" min="0" class="form-control bulk-ct-min-fare" value="{{ $ct->base_fare_min }}" style="max-width:130px; height:34px;">
+                                                        <input type="number" step="0.5" min="0" class="form-control bulk-ct-extra-km" value="{{ $ct->extra_km_rate }}" style="max-width:110px; height:34px;">
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" step="10" min="0" class="form-control bulk-ct-extra-hr" value="{{ $ct->extra_hour_rate ?? 0 }}" style="max-width:110px; height:34px;">
                                                     </td>
                                                     <td style="text-align:center;">
                                                         <input type="checkbox" class="bulk-ct-active" {{ $ct->is_active ? 'checked' : '' }}>
                                                     </td>
                                                 </tr>
                                                 @empty
-                                                <tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">No car types configured yet.</td></tr>
+                                                <tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">No car types configured yet.</td></tr>
                                                 @endforelse
                                             </tbody>
                                         </table>
@@ -4205,6 +4262,8 @@
                                                     <th>Distance</th>
                                                     <th>Base Toll (₹)</th>
                                                     <th>Return Disc (%)</th>
+                                                    <th>Route Add'l (₹)</th>
+                                                    <th>Additional Label</th>
                                                     <th>Sedan Override (₹)</th>
                                                     <th>SUV Override (₹)</th>
                                                 </tr>
@@ -4214,17 +4273,34 @@
                                                 <tr data-route-id="{{ $cr->id }}">
                                                     <td style="font-weight:700; color:#0f172a;">{{ $cr->from_city }} → {{ $cr->to_city }}</td>
                                                     <td>{{ $cr->distance_km }} km</td>
-                                                    <td><input type="number" min="0" class="form-control bulk-rt-toll" value="{{ $cr->base_toll }}" style="max-width:95px; height:32px;"></td>
-                                                    <td><input type="number" min="0" max="100" step="0.5" class="form-control bulk-rt-disc" value="{{ $cr->roundtrip_discount_pct ?? 0 }}" style="max-width:85px; height:32px;"></td>
-                                                    <td><input type="number" min="0" class="form-control bulk-rt-sedan" value="{{ $cr->sedan_fare }}" placeholder="Auto" style="max-width:100px; height:32px;"></td>
-                                                    <td><input type="number" min="0" class="form-control bulk-rt-suv" value="{{ $cr->suv_fare }}" placeholder="Auto" style="max-width:100px; height:32px;"></td>
+                                                    <td><input type="number" min="0" class="form-control bulk-rt-toll" value="{{ $cr->base_toll }}" style="max-width:90px; height:32px;"></td>
+                                                    <td><input type="number" min="0" max="100" step="0.5" class="form-control bulk-rt-disc" value="{{ $cr->roundtrip_discount_pct ?? 0 }}" style="max-width:80px; height:32px;"></td>
+                                                    <td><input type="number" min="0" step="10" class="form-control bulk-rt-additional" value="{{ $cr->additional_amount }}" placeholder="0" style="max-width:95px; height:32px;"></td>
+                                                    <td><input type="text" class="form-control bulk-rt-additional-label" value="{{ $cr->additional_amount_label }}" placeholder="e.g. Ghat / State Fee" style="min-width:130px; height:32px;"></td>
+                                                    <td><input type="number" min="0" class="form-control bulk-rt-sedan" value="{{ $cr->sedan_fare }}" placeholder="Auto" style="max-width:95px; height:32px;"></td>
+                                                    <td><input type="number" min="0" class="form-control bulk-rt-suv" value="{{ $cr->suv_fare }}" placeholder="Auto" style="max-width:95px; height:32px;"></td>
                                                 </tr>
                                                 @empty
-                                                <tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">No routes configured yet.</td></tr>
+                                                <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">No routes configured yet.</td></tr>
                                                 @endforelse
                                             </tbody>
                                         </table>
                                     </div>
+                                </div>
+
+                                <!-- PANEL 5: ADMIN ADDITIONAL PRICE FIELDS -->
+                                <div class="admin-pricing-tab-panel" id="admin-pricing-panel-price-fields" style="display:none; padding:18px 20px;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+                                        <div>
+                                            <h4 style="font-size:14.5px; font-weight:800; color:#0f172a; margin:0 0 3px;">Additional Dynamic Price Fields</h4>
+                                            <p style="font-size:12px; color:#64748b; margin:0;">Configure flat, per-km, or percentage surcharges scoped to a specific route type, specific corridor, and/or booking type.</p>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-primary" onclick="openAddDynamicFieldModal(true)">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">add_card</span>
+                                            <span>Add Additional Price Field</span>
+                                        </button>
+                                    </div>
+                                    <div id="admin-pricing-price-fields-list"></div>
                                 </div>
                             </div>
                         </div>
@@ -4363,9 +4439,12 @@
                                                     <td>
                                                         <div class="admin-route-fare-schedule" data-route-id="{{ $cr->id }}" data-roundtrip="0" style="font-size:11px; line-height:1.5; color:#334155; display:flex; flex-wrap:wrap; gap:4px 10px;">
                                                             @foreach($activeRouteCarTypes as $ct)
-                                                                @php $ctFare = round($cr->getFareForCarType($ct->category_key, (float) $ct->rate_per_km)); @endphp
+                                                                @php $ctFare = round($cr->getFareForCarType($ct->category_key, (float) $ct->rate_per_km, (float) ($ct->base_fare_min ?? 0))); @endphp
                                                                 <span>{{ $ct->name }}: <strong>₹{{ number_format($ctFare) }}</strong></span>
                                                             @endforeach
+                                                            @if((float) ($cr->additional_amount ?? 0) > 0)
+                                                                <div style="width:100%; font-size:10.5px; color:#0369a1; font-weight:700;">+ ₹{{ number_format($cr->additional_amount) }} ({{ $cr->additional_amount_label ?: 'Route additional' }})</div>
+                                                            @endif
                                                         </div>
                                                     </td>
                                                     <td>
@@ -4477,11 +4556,14 @@
                                                         <div class="admin-route-fare-schedule" data-route-id="{{ $cr->id }}" data-roundtrip="1" style="font-size:11px; line-height:1.5; color:#334155; display:flex; flex-wrap:wrap; gap:4px 10px;">
                                                             @foreach($activeRouteCarTypes as $ct)
                                                                 @php
-                                                                    $ctOneWay = $cr->getFareForCarType($ct->category_key, (float) $ct->rate_per_km);
-                                                                    $ctRtFare = round(($ctOneWay * 2) * $discFactor);
-                                        @endphp
+                                                                    $ctOneWay = $cr->getFareForCarType($ct->category_key, (float) $ct->rate_per_km, (float) ($ct->base_fare_min ?? 0), false);
+                                                                    $ctRtFare = round(($ctOneWay * 2) * $discFactor) + round((float) ($cr->additional_amount ?? 0));
+                                                                @endphp
                                                                 <span>{{ $ct->name }}: <strong>₹{{ number_format($ctRtFare) }}</strong></span>
                                                             @endforeach
+                                                            @if((float) ($cr->additional_amount ?? 0) > 0)
+                                                                <div style="width:100%; font-size:10.5px; color:#0369a1; font-weight:700;">+ ₹{{ number_format($cr->additional_amount) }} ({{ $cr->additional_amount_label ?: 'Route additional' }})</div>
+                                                            @endif
                                                         </div>
                                                     </td>
                                                     <td>
@@ -6121,9 +6203,12 @@
                                                 <td>
                                                     <div class="admin-route-fare-schedule" data-route-id="{{ $cr->id }}" data-roundtrip="0" style="font-size:11px; line-height:1.5; color:#334155; display:flex; flex-wrap:wrap; gap:4px 10px;">
                                                         @foreach($activeRouteCarTypes as $ct)
-                                                            @php $ctFare = round($cr->getFareForCarType($ct->category_key, (float) $ct->rate_per_km)); @endphp
+                                                            @php $ctFare = round($cr->getFareForCarType($ct->category_key, (float) $ct->rate_per_km, (float) ($ct->base_fare_min ?? 0))); @endphp
                                                             <span>{{ $ct->name }}: <strong>₹{{ number_format($ctFare) }}</strong></span>
                                                         @endforeach
+                                                        @if((float) ($cr->additional_amount ?? 0) > 0)
+                                                            <div style="width:100%; font-size:10.5px; color:#0369a1; font-weight:700;">+ ₹{{ number_format($cr->additional_amount) }} ({{ $cr->additional_amount_label ?: 'Route additional' }})</div>
+                                                        @endif
                                                     </div>
                                                 </td>
                                                 <td>
@@ -7000,68 +7085,144 @@
 <!-- MODAL: ADD DYNAMIC CUSTOM FORM FIELD (AdminLTE 3)       -->
 <!-- ======================================================== -->
 <div class="modal-overlay" id="add-dynamic-field-modal">
-    <div class="modal-dialog">
+    <div class="modal-dialog" style="max-width: 560px;">
         <div class="modal-header">
             <h3 class="modal-title">
                 <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">add_circle</span>
-                <span>Add Dynamic Form Field</span>
+                <span id="add-dynamic-field-modal-title">Add Dynamic Field / Price Rule</span>
             </h3>
             <button type="button" class="modal-close-btn" onclick="closeAddDynamicFieldModal()">×</button>
         </div>
         <div class="modal-body">
             <form id="add-dynamic-field-form" onsubmit="submitAddDynamicField(event)">
+                <input type="hidden" id="edit-dynamic-field-id" value="">
+
+                <div class="form-group">
+                    <label class="form-label" for="new-field-mode">Field Purpose</label>
+                    <select id="new-field-mode" class="form-control" onchange="toggleDynamicFieldPriceMode()">
+                        <option value="input">Standard Form Input (Customer Details)</option>
+                        <option value="price">Additional Price Field (Surcharge / Add-on Charge)</option>
+                    </select>
+                </div>
+
                 <div class="form-group">
                     <label class="form-label" for="new-field-label">Field Display Label *</label>
                     <div class="input-with-icon">
                         <span class="material-symbols-outlined">edit_note</span>
-                        <input type="text" id="new-field-label" class="form-control" placeholder="e.g. Return Flight PNR, Child Safety Seat" required>
+                        <input type="text" id="new-field-label" class="form-control" placeholder="e.g. Border State Permit, Hill Climb Fee, Return Flight PNR" required>
                     </div>
                 </div>
 
-                <div class="form-row">
+                <div id="dynamic-field-input-options">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="new-field-type">Input Type</label>
+                            <select id="new-field-type" class="form-control">
+                                <option value="text">Text Input</option>
+                                <option value="number">Numeric (Count / Age)</option>
+                                <option value="select">Dropdown Select</option>
+                                <option value="checkbox">Toggle / Checkbox</option>
+                                <option value="price">Price Charge</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="new-field-applies">Applies To Scope</label>
+                            <select id="new-field-applies" class="form-control">
+                                <option value="all">All Bookings</option>
+                                <option value="cab">Outstation Cabs Only</option>
+                                <option value="bus">Volvo Sleeper Buses Only</option>
+                                <option value="airport">Airport Transfers Only</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div class="form-group">
-                        <label class="form-label" for="new-field-type">Input Type</label>
-                        <select id="new-field-type" class="form-control">
-                            <option value="text">Text Input</option>
-                            <option value="number">Numeric (Count / Age)</option>
-                            <option value="select">Dropdown Select</option>
-                            <option value="checkbox">Toggle / Checkbox</option>
+                        <label class="form-label" for="new-field-condition">Conditional Trigger Rule</label>
+                        <select id="new-field-condition" class="form-control">
+                            <option value="All Bookings">Always Visible</option>
+                            <option value="Airport Trips Only">Only when Airport Trip selected</option>
+                            <option value="Pet-friendly Selected">Only when Pet-friendly addon checked</option>
+                            <option value="Corporate Invoice">Only for Corporate GST</option>
                         </select>
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label" for="new-field-applies">Applies To Scope</label>
-                        <select id="new-field-applies" class="form-control">
-                            <option value="all">All Bookings</option>
-                            <option value="cab">Outstation Cabs Only</option>
-                            <option value="bus">Volvo Sleeper Buses Only</option>
-                            <option value="airport">Airport Transfers Only</option>
-                        </select>
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; font-weight:600;">
+                            <input type="checkbox" id="new-field-required" style="width:16px; height:16px; accent-color:var(--primary);">
+                            <span>Mark this field as mandatory for checkout</span>
+                        </label>
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label" for="new-field-condition">Conditional Trigger Rule</label>
-                    <select id="new-field-condition" class="form-control">
-                        <option value="All Bookings">Always Visible</option>
-                        <option value="Airport Trips Only">Only when Airport Trip selected</option>
-                        <option value="Pet-friendly Selected">Only when Pet-friendly addon checked</option>
-                        <option value="Corporate Invoice">Only for Corporate GST</option>
-                    </select>
-                </div>
+                <div id="dynamic-field-pricing-box" style="display:none; background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:12px; margin-bottom:14px;">
+                    <div style="font-size:11px; font-weight:800; color:#92400e; text-transform:uppercase; margin-bottom:8px;">Additional Price Configuration &amp; Scope</div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px;">
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" for="new-field-price-amount">Charge Amount *</label>
+                            <input type="number" id="new-field-price-amount" class="form-control" min="0" step="0.5" placeholder="e.g. 250">
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" for="new-field-price-mode">Calculation Mode</label>
+                            <select id="new-field-price-mode" class="form-control">
+                                <option value="flat">Flat Amount (₹)</option>
+                                <option value="per_km">Per KM (₹/km)</option>
+                                <option value="percentage">Percentage (% of Fare)</option>
+                            </select>
+                        </div>
+                    </div>
 
-                <div class="form-group" style="margin-bottom:20px;">
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; font-weight:600;">
-                        <input type="checkbox" id="new-field-required" style="width:16px; height:16px; accent-color:var(--primary);">
-                        <span>Mark this field as mandatory for checkout</span>
-                    </label>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px;">
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" for="new-field-charge-behavior">Charge Behavior</label>
+                            <select id="new-field-charge-behavior" class="form-control">
+                                <option value="auto">Auto-Added Surcharge</option>
+                                <option value="optional">Optional Customer Add-on</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" for="new-field-booking-type-scope">Booking Type Scope</label>
+                            <select id="new-field-booking-type-scope" class="form-control">
+                                <option value="all">All Booking Types</option>
+                                <option value="oneway">One-Way Only</option>
+                                <option value="roundtrip">Round-Trip Only</option>
+                                <option value="local">Local Hourly Only</option>
+                                <option value="airport">All Airport Transfers</option>
+                                <option value="airport_pickup">Airport Pickup Only</option>
+                                <option value="airport_drop">Airport Drop Only</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" for="new-field-route-type-scope">Route Type Scope</label>
+                            <select id="new-field-route-type-scope" class="form-control" onchange="onDynamicFieldRouteTypeScopeChange()">
+                                <option value="all">All Routes</option>
+                                <option value="route_table">All Fixed Corridor Routes</option>
+                                <option value="specific_route">One Specific Route</option>
+                                <option value="local_package">Local Hourly Packages</option>
+                                <option value="airport_hub">Airport Hub Transfers</option>
+                                <option value="custom_distance">Dynamic Custom Distance Routes</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="new-field-specific-route-group" style="margin:0; display:none;">
+                            <label class="form-label" for="new-field-route-fare-id">Select Specific Route</label>
+                            <select id="new-field-route-fare-id" class="form-control">
+                                <option value="">-- Choose Route --</option>
+                                @foreach($allCabRoutes ?? [] as $cr)
+                                    <option value="{{ $cr->id }}">{{ $cr->from_city }} → {{ $cr->to_city }} ({{ $cr->distance_km }} km)</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
                 <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--outline); padding-top:14px;">
                     <button type="button" class="btn btn-secondary btn-sm" onclick="closeAddDynamicFieldModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary btn-sm">
                         <span class="material-symbols-outlined" style="font-size:16px;">check</span>
-                        <span>Create Dynamic Field</span>
+                        <span id="add-dynamic-field-submit-label">Save Dynamic Field</span>
                     </button>
                 </div>
             </form>
@@ -7379,6 +7540,10 @@
                 </div>
 
                 <div style="font-size:12px; display:flex; flex-direction:column; gap:6px;">
+                    <div id="view-booking-distance-line" style="display:none; justify-content:space-between; color:#0f172a; background:#f1f5f9; padding:5px 8px; border-radius:4px; font-weight:600;">
+                        <span>Distance Audit (Booked / Actual KM):</span>
+                        <span id="view-booking-distance-text">—</span>
+                    </div>
                     <div style="display:flex; justify-content:space-between; color:#475569;">
                         <span>Base Intercity Route Fare:</span>
                         <span style="font-weight:600;" id="view-booking-base-fare">₹0</span>
@@ -7386,6 +7551,18 @@
                     <div style="display:flex; justify-content:space-between; color:#475569;">
                         <span>NHAI National Highway Toll Charges:</span>
                         <span style="font-weight:600;" id="view-booking-toll-fare">₹0</span>
+                    </div>
+                    <div id="view-booking-extra-km-row" style="display:none; justify-content:space-between; color:#b45309;">
+                        <span id="view-booking-extra-km-label">Extra KM Overrun Charge:</span>
+                        <span style="font-weight:700;" id="view-booking-extra-km-fare">₹0</span>
+                    </div>
+                    <div id="view-booking-route-addl-row" style="display:none; justify-content:space-between; color:#0369a1;">
+                        <span id="view-booking-route-addl-label">Route Additional Charge:</span>
+                        <span style="font-weight:700;" id="view-booking-route-addl-fare">₹0</span>
+                    </div>
+                    <div id="view-booking-price-fields-row" style="display:none; justify-content:space-between; color:#7c3aed;">
+                        <span>Additional Price Fields:</span>
+                        <span style="font-weight:700;" id="view-booking-price-fields-fare">₹0</span>
                     </div>
                     <div style="display:flex; justify-content:space-between; color:#475569;">
                         <span>Add-on Fees (Pet / Night Stay):</span>
@@ -7550,8 +7727,26 @@
                     </div>
                 </div>
 
-                <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; margin:14px 0 8px;">Financial Charges & Reconciliation (₹)</div>
-                <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-bottom:12px;">
+                <div style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; margin:14px 0 8px;">KM Overrun &amp; Financial Charges Reconciliation (₹)</div>
+                <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-bottom:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px;">
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label" for="edit-booked-km">Booked KM</label>
+                        <input type="number" id="edit-booked-km" class="form-control" min="0" step="1" oninput="recalcEditExtraKm()">
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label" for="edit-actual-km">Actual KM Run</label>
+                        <input type="number" id="edit-actual-km" class="form-control" min="0" step="1" oninput="recalcEditExtraKm()">
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label" for="edit-extra-km-rate">Extra KM Rate</label>
+                        <input type="number" id="edit-extra-km-rate" class="form-control" min="0" step="0.5" oninput="recalcEditExtraKm()">
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label" for="edit-extra-km-fare">Extra KM Fare</label>
+                        <input type="number" id="edit-extra-km-fare" class="form-control" min="0" step="1" oninput="recalcEditTotalFare()">
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; margin-bottom:10px;">
                     <div class="form-group">
                         <label class="form-label" for="edit-base-fare">Base Fare</label>
                         <input type="number" id="edit-base-fare" class="form-control" step="1" oninput="recalcEditTotalFare()" required>
@@ -7564,9 +7759,19 @@
                         <label class="form-label" for="edit-addon-fare">Addons</label>
                         <input type="number" id="edit-addon-fare" class="form-control" step="1" oninput="recalcEditTotalFare()">
                     </div>
+                </div>
+                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="edit-route-additional-fare">Route Additional (₹)</label>
+                        <input type="number" id="edit-route-additional-fare" class="form-control" min="0" step="1" oninput="recalcEditTotalFare()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="edit-custom-price-fields-fare">Price Fields (₹)</label>
+                        <input type="number" id="edit-custom-price-fields-fare" class="form-control" min="0" step="1" oninput="recalcEditTotalFare()">
+                    </div>
                     <div class="form-group">
                         <label class="form-label" for="edit-discount-fare">Discount</label>
-                        <input type="number" id="edit-discount-fare" class="form-control" step="1" oninput="recalcEditTotalFare()">
+                        <input type="number" id="edit-discount-fare" class="form-control" min="0" step="1" oninput="recalcEditTotalFare()">
                     </div>
                 </div>
 
@@ -7872,6 +8077,33 @@
                             </td>
                             <td style="text-align:center; font-family:monospace;">996412</td>
                             <td style="text-align:right; font-weight:600;" id="inv-row-toll">₹0.00</td>
+                        </tr>
+                        <tr id="inv-extra-km-row" style="display:none;">
+                            <td>•</td>
+                            <td>
+                                <strong>Extra KM Overrun Charges</strong>
+                                <div style="font-size:10.5px; color:#64748b;" id="inv-extra-km-meta">Additional distance run beyond booked package</div>
+                            </td>
+                            <td style="text-align:center; font-family:monospace;">996412</td>
+                            <td style="text-align:right; font-weight:600;" id="inv-row-extra-km">₹0.00</td>
+                        </tr>
+                        <tr id="inv-route-addl-row" style="display:none;">
+                            <td>•</td>
+                            <td>
+                                <strong id="inv-route-addl-title">Route Additional Charge</strong>
+                                <div style="font-size:10.5px; color:#64748b;">Corridor-specific additional charge</div>
+                            </td>
+                            <td style="text-align:center; font-family:monospace;">996412</td>
+                            <td style="text-align:right; font-weight:600;" id="inv-row-route-addl">₹0.00</td>
+                        </tr>
+                        <tr id="inv-price-fields-row" style="display:none;">
+                            <td>•</td>
+                            <td>
+                                <strong>Additional Price Fields / Conditional Surcharges</strong>
+                                <div style="font-size:10.5px; color:#64748b;">Applicable route &amp; booking type charges</div>
+                            </td>
+                            <td style="text-align:center; font-family:monospace;">996412</td>
+                            <td style="text-align:right; font-weight:600;" id="inv-row-price-fields">₹0.00</td>
                         </tr>
                         <tr id="inv-addon-row">
                             <td>3</td>
@@ -8844,6 +9076,17 @@
                     <div class="form-group">
                         <label class="form-label" for="admin-cab-route-roundtrip-discount">Roundtrip Discount %</label>
                         <input type="number" id="admin-cab-route-roundtrip-discount" class="form-control" placeholder="e.g. 5 or 10" min="0" max="100" value="0">
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-cab-route-additional-amount">Route Additional Amount (₹)</label>
+                        <input type="number" id="admin-cab-route-additional-amount" class="form-control" placeholder="e.g. 250 (added on top of basic rate)" min="0" step="1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-cab-route-additional-label">Additional Amount Label</label>
+                        <input type="text" id="admin-cab-route-additional-label" class="form-control" placeholder="e.g. State Border / Hill Fee">
                     </div>
                 </div>
 

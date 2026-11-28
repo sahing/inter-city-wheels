@@ -172,6 +172,8 @@ const state = {
     petFriendly: false,
     nightAllowance: false,
     luggageCarrier: false,
+    actualDistanceKm: null,
+    selectedPriceFields: [],
     appliedCoupon: null,
     discountAmount: 0
   },
@@ -207,6 +209,7 @@ const state = {
 
   // Dynamic Form Builder & Workflow Config (gemini.md requirements)
   admin: {
+    activePricingBookingType: 'oneway',
     customFields: [
       { id: 'f_flight_num', label: 'Flight Number (For Airport Pickup)', type: 'text', condition: 'Airport Trips Only', required: false },
       { id: 'f_pet_info', label: 'Pet Breed & Weight', type: 'text', condition: 'Pet-friendly Selected', required: false },
@@ -339,6 +342,35 @@ document.addEventListener('DOMContentLoaded', () => {
   // Seed locations from server-rendered window variable
   if (window.INITIAL_SERVICE_LOCATIONS && Array.isArray(window.INITIAL_SERVICE_LOCATIONS)) {
     window.syncAllLocationDropdowns(window.INITIAL_SERVICE_LOCATIONS);
+  }
+
+  // Seed booking-type bulk rates and dynamic fields from server-rendered window variables
+  if (Array.isArray(window.INITIAL_BOOKING_TYPE_RATES)) {
+    window.BOOKING_TYPE_RATES = window.INITIAL_BOOKING_TYPE_RATES;
+  } else {
+    window.BOOKING_TYPE_RATES = [];
+  }
+
+  if (Array.isArray(window.INITIAL_DYNAMIC_FIELDS)) {
+    state.admin.customFields = window.INITIAL_DYNAMIC_FIELDS.map(f => ({
+      id: `db_${f.id}`,
+      dbId: f.id,
+      fieldKey: f.field_key,
+      label: f.label,
+      type: f.field_type || 'text',
+      applies: f.applies_to || 'all',
+      condition: f.conditional_logic || 'All Bookings',
+      required: Boolean(f.is_required),
+      isActive: f.is_active !== false && f.is_active !== 0,
+      isPriceField: Boolean(f.is_price_field),
+      priceAmount: f.price_amount != null ? Number(f.price_amount) : 0,
+      priceMode: f.price_mode || 'flat',
+      chargeBehavior: f.charge_behavior || 'auto',
+      bookingTypeScope: f.booking_type_scope || 'all',
+      routeTypeScope: f.route_type_scope || 'all',
+      routeFareId: f.route_fare_id ? Number(f.route_fare_id) : null,
+      routeFare: f.route_fare || null
+    }));
   }
 
   // Seed car types from server-rendered window variable
@@ -1369,8 +1401,10 @@ window.syncAllCarTypes = async function (carTypesList) {
         seats: String(ct.seats || '4 Seats'),
         luggage: String(ct.luggage || '2 Bags'),
         ratePerKm: Number(ct.rate_per_km) || 12,
+        baseFareMin: Number(ct.base_fare_min || 0),
         badge: ct.badge || 'Popular',
         extraKm: Number(ct.extra_km_rate || ct.rate_per_km) || 12,
+        extraHourRate: Number(ct.extra_hour_rate || 0),
         image: ct.image_url || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80'
       };
     });
@@ -1758,10 +1792,80 @@ function cabQuoteParams() {
   if (state.cab.petFriendly) params.set('pet_friendly', '1');
   if (state.cab.nightAllowance) params.set('night_allowance', '1');
   if (state.cab.luggageCarrier) params.set('luggage_carrier', '1');
+  if (state.cab.actualDistanceKm !== null && state.cab.actualDistanceKm !== '' && !isNaN(Number(state.cab.actualDistanceKm))) {
+    params.set('actual_km', String(Math.max(0, parseInt(state.cab.actualDistanceKm, 10))));
+  }
+  if (Array.isArray(state.cab.selectedPriceFields) && state.cab.selectedPriceFields.length > 0) {
+    state.cab.selectedPriceFields.forEach(k => params.append('selected_price_fields[]', String(k)));
+  }
   if (state.cab.appliedCoupon) params.set('coupon', state.cab.appliedCoupon);
 
   return params;
 }
+
+let cabActualKmTimer = null;
+window.onCabActualKmInput = function () {
+  const input = document.getElementById('cab-actual-km-input');
+  const raw = input ? input.value.trim() : '';
+  state.cab.actualDistanceKm = raw !== '' ? Math.max(0, parseInt(raw, 10) || 0) : null;
+  if (cabActualKmTimer) clearTimeout(cabActualKmTimer);
+  cabActualKmTimer = setTimeout(() => {
+    refreshCabQuote();
+  }, 180);
+};
+
+window.toggleCabPriceField = function (fieldKey, checked) {
+  const current = new Set(Array.isArray(state.cab.selectedPriceFields) ? state.cab.selectedPriceFields : []);
+  if (checked) current.add(String(fieldKey));
+  else current.delete(String(fieldKey));
+  state.cab.selectedPriceFields = Array.from(current);
+  refreshCabQuote();
+};
+
+window.renderCabPriceFields = function (availableFields) {
+  const wrapper = document.getElementById('cab-price-fields-wrapper');
+  if (!wrapper) return;
+  const list = Array.isArray(availableFields) ? availableFields : [];
+  if (list.length === 0) {
+    wrapper.style.display = 'none';
+    wrapper.innerHTML = '';
+    return;
+  }
+  const selected = new Set((state.cab.selectedPriceFields || []).map(String));
+  wrapper.style.display = 'block';
+  wrapper.innerHTML = `
+    <label class="rental-field-label" style="margin-bottom:8px;">Route &amp; Booking Type Additional Charges</label>
+    <div class="addons-group">
+      ${list.map(pf => {
+        const modeLabel = pf.price_mode === 'per_km'
+          ? `₹${pf.price_amount}/km`
+          : (pf.price_mode === 'percentage' ? `${pf.price_amount}%` : `₹${pf.price_amount}`);
+        const amtText = `+₹${Math.round(Number(pf.computed_amount || 0)).toLocaleString('en-IN')}`;
+        if (pf.charge_behavior === 'auto') {
+          return `
+            <div class="addon-item" style="background:#f8fafc;">
+              <div class="addon-label">
+                <input type="checkbox" checked disabled>
+                <span>${escapeHtml(pf.label)} <small style="color:#64748b;">(${escapeHtml(modeLabel)} &bull; Auto-added)</small></span>
+              </div>
+              <span class="addon-price">${amtText}</span>
+            </div>
+          `;
+        }
+        const isChecked = selected.has(String(pf.field_key)) || selected.has(String(pf.id)) || Boolean(pf.applied);
+        return `
+          <label class="addon-item">
+            <div class="addon-label">
+              <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleCabPriceField('${escapeHtml(pf.field_key)}', this.checked)">
+              <span>${escapeHtml(pf.label)} <small style="color:#64748b;">(${escapeHtml(modeLabel)} &bull; Optional)</small></span>
+            </div>
+            <span class="addon-price">${amtText}</span>
+          </label>
+        `;
+      }).join('')}
+    </div>
+  `;
+};
 
 let cabQuoteRequestId = 0;
 
@@ -1792,6 +1896,12 @@ async function refreshCabQuote() {
         state.cab.travelTime = data.route.estimated_time;
         state.cab.tollEstimate = data.route.base_toll;
         updateRouteRecapTexts();
+      }
+      if (typeof window.renderCabPriceFields === 'function') {
+        const pfList = (data.quote && Array.isArray(data.quote.available_price_fields))
+          ? data.quote.available_price_fields
+          : (Array.isArray(data.available_price_fields) ? data.available_price_fields : []);
+        window.renderCabPriceFields(pfList);
       }
       if (typeof syncBeyondRegionNoticeUi === 'function') syncBeyondRegionNoticeUi();
 
@@ -1978,20 +2088,27 @@ window.renderRentalVehicles = function (filterCat = 'all', sortBy = 'recommended
     dist = pkg === '4_40' ? 40 : (pkg === '8_80' ? 80 : (pkg === '10_100' ? 100 : 120));
   }
 
+  const itemMap = (state.cab.serverQuote && state.cab.serverQuote.itemized_breakdown) || {};
+
   let fleets = Object.entries(FLEET_TYPES).map(([key, f]) => {
     // Prefer the server's itemised quote for this fleet; fall back to a local
     // estimate only when the quote is unavailable (offline / mid-flight).
-    const quotedTotal = serverFleetTotal(key);
+    const serverItem = itemMap[key] || null;
+    const quotedTotal = serverItem && typeof serverItem.total === 'number' ? serverItem.total : serverFleetTotal(key);
 
-    let baseFare = Math.round(dist * f.ratePerKm);
+    let baseFare = Math.round((f.baseFareMin || 0) + (dist * f.ratePerKm));
     let tollFare = state.cab.includeTolls ? (state.cab.tollEstimate || 120) : 0;
     if (state.cab.tripType === 'roundtrip') tollFare = Math.round(tollFare * 1.8);
     if (state.cab.tripType === 'local') tollFare = 0;
     let totalFare = quotedTotal !== null ? quotedTotal : (baseFare + tollFare);
+    const bookedKmDisplay = serverItem && serverItem.booked_distance_km != null ? serverItem.booked_distance_km : dist;
+    const extraKmDisplay = serverItem && serverItem.extra_km_rate != null ? serverItem.extra_km_rate : f.extraKm;
 
     return {
       key,
       ...f,
+      bookedKmDisplay,
+      extraKmDisplay,
       calculatedBase: baseFare,
       calculatedToll: tollFare,
       totalFare
@@ -2035,7 +2152,7 @@ window.renderRentalVehicles = function (filterCat = 'all', sortBy = 'recommended
         <div class="rental-vehicle-footer">
           <div class="rental-fare-block">
             <div class="rental-fare-total">₹${f.totalFare.toLocaleString('en-IN')}</div>
-            <div class="rental-fare-sub">up to ${dist} km • ₹${f.extraKm}/km after</div>
+            <div class="rental-fare-sub">up to ${f.bookedKmDisplay} km • ₹${f.extraKmDisplay}/km after</div>
           </div>
           <button type="button" class="btn-book-vehicle" onclick="selectRentalVehicle('${f.key}')">Book now</button>
         </div>
@@ -2512,6 +2629,10 @@ async function handleConfirmCabBooking() {
     pet_friendly: Boolean(state.cab.petFriendly),
     night_allowance: Boolean(state.cab.nightAllowance),
     luggage_carrier: Boolean(state.cab.luggageCarrier),
+    actual_distance_km: (state.cab.actualDistanceKm !== null && state.cab.actualDistanceKm !== '' && !isNaN(Number(state.cab.actualDistanceKm)))
+      ? parseInt(state.cab.actualDistanceKm, 10)
+      : undefined,
+    selected_price_fields: Array.isArray(state.cab.selectedPriceFields) ? state.cab.selectedPriceFields : [],
     coupon_code: state.cab.appliedCoupon || '',
     payment_mode: selectedPayMode,
     payment_channel: chosenChannel,
@@ -2611,6 +2732,10 @@ function handleCityChange() {
 
 function finalizeCabBookingUi(b, fromCityName, toCityName, customerName) {
   state.cab.partPayAgreed = false;
+  state.cab.actualDistanceKm = null;
+  state.cab.selectedPriceFields = [];
+  const actualKmIn = document.getElementById('cab-actual-km-input');
+  if (actualKmIn) actualKmIn.value = '';
   state.cab._stepModalReadyToSubmit = false;
   state.cab._stepPaymentChannel = null;
   state.cab._stepUpiUtr = '';
@@ -2762,6 +2887,13 @@ function updateTotalCabFare() {
 
   let baseFare;
   let tolls;
+  let extraKmFare = 0;
+  let extraKmCount = 0;
+  let extraKmRateVal = fleet.extraKm || fleet.ratePerKm;
+  let bookedKmDisplay = dist;
+  let routeAdditionalFare = 0;
+  let routeAdditionalLabel = 'Route Additional Charge';
+  let customPriceFieldsFare = 0;
   let addons;
   let discount;
   let total;
@@ -2770,38 +2902,87 @@ function updateTotalCabFare() {
     // Authoritative numbers straight from FareCalculatorService.
     baseFare = Number(serverQuote.base_fare) || 0;
     tolls = Number(serverQuote.toll_fare) || 0;
+    extraKmFare = Number(serverQuote.extra_km_fare) || 0;
+    extraKmCount = Number(serverQuote.extra_km) || 0;
+    extraKmRateVal = Number(serverQuote.extra_km_rate) || extraKmRateVal;
+    bookedKmDisplay = Number(serverQuote.booked_distance_km || dist) || dist;
+    routeAdditionalFare = Number(serverQuote.route_additional_fare) || 0;
+    routeAdditionalLabel = serverQuote.route_additional_label || routeAdditionalLabel;
+    customPriceFieldsFare = Number(serverQuote.custom_price_fields_fare) || 0;
     addons = Number(serverQuote.addon_fare) || 0;
     discount = Number(serverQuote.discount_fare) || 0;
     total = Number(serverQuote.total_amount) || 0;
   } else {
-    baseFare = dist * fleet.ratePerKm;
+    baseFare = (fleet.baseFareMin || 0) + (dist * fleet.ratePerKm);
     tolls = state.cab.includeTolls ? (ROUTE_MATRIX[`${state.cab.fromCity}-${state.cab.toCity}`]?.toll || 400) : 0;
     if (state.cab.tripType === 'roundtrip') tolls = tolls * 1.8;
+
+    const actKm = Number(state.cab.actualDistanceKm || 0);
+    if (bookedKmDisplay > 0 && actKm > bookedKmDisplay) {
+      extraKmCount = actKm - bookedKmDisplay;
+      extraKmFare = Math.round(extraKmCount * extraKmRateVal);
+    }
 
     addons = 0;
     if (state.cab.petFriendly) addons += state.admin.pricingRules.petCharge;
     if (state.cab.nightAllowance) addons += state.admin.pricingRules.nightCharge;
     if (state.cab.luggageCarrier) addons += state.admin.pricingRules.luggageCharge;
 
-    const subtotal = Math.round(baseFare + tolls + addons);
+    const subtotal = Math.round(baseFare + tolls + extraKmFare + addons);
     discount = 0;
     total = Math.max(subtotal - discount, 0);
   }
 
   state.cab.discountAmount = discount;
 
+  const actualKmHint = document.getElementById('cab-actual-km-hint');
+  if (actualKmHint) {
+    actualKmHint.textContent = bookedKmDisplay > 0
+      ? `Booked: ${bookedKmDisplay} km • Extra KM rate: ₹${extraKmRateVal}/km`
+      : `Extra KM rate: ₹${extraKmRateVal}/km`;
+  }
+
   // Update UI breakdown
   const elBase = document.getElementById('fare-base');
   const elTolls = document.getElementById('fare-tolls');
+  const elExtraRow = document.getElementById('fare-extra-km-row');
+  const elExtraMeta = document.getElementById('fare-extra-km-meta');
+  const elExtraAmt = document.getElementById('fare-extra-km');
+  const elRouteAddlRow = document.getElementById('fare-route-addl-row');
+  const elRouteAddlLabel = document.getElementById('fare-route-addl-label');
+  const elRouteAddlAmt = document.getElementById('fare-route-addl');
+  const elPriceFieldsRow = document.getElementById('fare-price-fields-row');
+  const elPriceFieldsAmt = document.getElementById('fare-price-fields');
   const elAddons = document.getElementById('fare-addons');
   const elDiscount = document.getElementById('fare-discount');
   const elTotal = document.getElementById('fare-grand-total');
 
   if (elBase) elBase.textContent = `₹${Math.round(baseFare).toLocaleString('en-IN')}`;
   if (elTolls) elTolls.textContent = `₹${Math.round(tolls).toLocaleString('en-IN')}`;
+  if (elExtraRow) {
+    elExtraRow.style.display = extraKmFare > 0 ? 'flex' : 'none';
+    if (elExtraMeta) elExtraMeta.textContent = `(${extraKmCount} km × ₹${extraKmRateVal})`;
+    if (elExtraAmt) elExtraAmt.textContent = `₹${Math.round(extraKmFare).toLocaleString('en-IN')}`;
+  }
+  if (elRouteAddlRow) {
+    elRouteAddlRow.style.display = routeAdditionalFare > 0 ? 'flex' : 'none';
+    if (elRouteAddlLabel) elRouteAddlLabel.textContent = routeAdditionalLabel;
+    if (elRouteAddlAmt) elRouteAddlAmt.textContent = `₹${Math.round(routeAdditionalFare).toLocaleString('en-IN')}`;
+  }
+  if (elPriceFieldsRow) {
+    elPriceFieldsRow.style.display = customPriceFieldsFare > 0 ? 'flex' : 'none';
+    if (elPriceFieldsAmt) elPriceFieldsAmt.textContent = `₹${Math.round(customPriceFieldsFare).toLocaleString('en-IN')}`;
+  }
   if (elAddons) elAddons.textContent = `₹${Math.round(addons).toLocaleString('en-IN')}`;
   if (elDiscount) elDiscount.textContent = `-₹${Math.round(discount).toLocaleString('en-IN')}`;
   if (elTotal) elTotal.textContent = `₹${Math.round(total).toLocaleString('en-IN')}`;
+
+  if (typeof window.renderCabPriceFields === 'function') {
+    const pfList = (serverQuote && Array.isArray(serverQuote.available_price_fields))
+      ? serverQuote.available_price_fields
+      : ((state.cab.serverQuote && Array.isArray(state.cab.serverQuote.available_price_fields)) ? state.cab.serverQuote.available_price_fields : []);
+    window.renderCabPriceFields(pfList);
+  }
 
   if (typeof updateCheckoutPaymentDisplay === 'function') {
     updateCheckoutPaymentDisplay(total);
@@ -3761,6 +3942,9 @@ function initAdminModule() {
   if (!adminApp) return;
 
   renderFormBuilderFields();
+  if (typeof window.renderPricingPriceFields === 'function') {
+    window.renderPricingPriceFields();
+  }
   renderWorkflowStages();
 }
 
@@ -3887,9 +4071,44 @@ window.filterAdminMenu = function (query) {
   });
 };
 
-// Dynamic Field Modal Handlers
-window.openAddDynamicFieldModal = function () {
+// Dynamic Field & Additional Price Field Modal Handlers
+window.toggleDynamicFieldPriceMode = function () {
+  const mode = document.getElementById('new-field-mode')?.value || 'input';
+  const isPrice = mode === 'price';
+  const inputOpts = document.getElementById('dynamic-field-input-options');
+  const priceBox = document.getElementById('dynamic-field-pricing-box');
+  const typeSelect = document.getElementById('new-field-type');
+  const amtInput = document.getElementById('new-field-price-amount');
+  if (inputOpts) inputOpts.style.display = isPrice ? 'none' : 'block';
+  if (priceBox) priceBox.style.display = isPrice ? 'block' : 'none';
+  if (typeSelect && isPrice) typeSelect.value = 'price';
+  if (typeSelect && !isPrice && typeSelect.value === 'price') typeSelect.value = 'text';
+  if (amtInput) amtInput.required = isPrice;
+};
+
+window.onDynamicFieldRouteTypeScopeChange = function () {
+  const scope = document.getElementById('new-field-route-type-scope')?.value || 'all';
+  const grp = document.getElementById('new-field-specific-route-group');
+  const routeSelect = document.getElementById('new-field-route-fare-id');
+  const isSpecific = scope === 'specific_route';
+  if (grp) grp.style.display = isSpecific ? 'block' : 'none';
+  if (routeSelect) routeSelect.required = isSpecific;
+};
+
+window.openAddDynamicFieldModal = function (priceModeDefault = false) {
   const modal = document.getElementById('add-dynamic-field-modal');
+  const form = document.getElementById('add-dynamic-field-form');
+  if (form) form.reset();
+  const editIdEl = document.getElementById('edit-dynamic-field-id');
+  if (editIdEl) editIdEl.value = '';
+  const modeEl = document.getElementById('new-field-mode');
+  if (modeEl) modeEl.value = priceModeDefault === true ? 'price' : 'input';
+  const titleEl = document.getElementById('add-dynamic-field-modal-title');
+  if (titleEl) titleEl.textContent = priceModeDefault === true ? 'Add Additional Price Field' : 'Add Dynamic Form Field';
+  const submitLbl = document.getElementById('add-dynamic-field-submit-label');
+  if (submitLbl) submitLbl.textContent = 'Create Field';
+  window.toggleDynamicFieldPriceMode();
+  window.onDynamicFieldRouteTypeScopeChange();
   if (modal) {
     modal.classList.add('active');
     setTimeout(() => {
@@ -3899,58 +4118,142 @@ window.openAddDynamicFieldModal = function () {
   }
 };
 
+window.openEditDynamicFieldModal = function (idx) {
+  const f = state.admin.customFields[idx];
+  if (!f) return;
+  const modal = document.getElementById('add-dynamic-field-modal');
+  const editIdEl = document.getElementById('edit-dynamic-field-id');
+  if (editIdEl) editIdEl.value = f.dbId ? String(f.dbId) : '';
+  const modeEl = document.getElementById('new-field-mode');
+  if (modeEl) modeEl.value = f.isPriceField ? 'price' : 'input';
+  const lblEl = document.getElementById('new-field-label');
+  if (lblEl) lblEl.value = f.label || '';
+  const typeEl = document.getElementById('new-field-type');
+  if (typeEl) typeEl.value = f.type || (f.isPriceField ? 'price' : 'text');
+  const appEl = document.getElementById('new-field-applies');
+  if (appEl) appEl.value = f.applies || 'all';
+  const condEl = document.getElementById('new-field-condition');
+  if (condEl) condEl.value = f.condition || 'All Bookings';
+  const reqEl = document.getElementById('new-field-required');
+  if (reqEl) reqEl.checked = Boolean(f.required);
+
+  if (document.getElementById('new-field-price-amount')) document.getElementById('new-field-price-amount').value = f.priceAmount ?? '';
+  if (document.getElementById('new-field-price-mode')) document.getElementById('new-field-price-mode').value = f.priceMode || 'flat';
+  if (document.getElementById('new-field-charge-behavior')) document.getElementById('new-field-charge-behavior').value = f.chargeBehavior || 'auto';
+  if (document.getElementById('new-field-booking-type-scope')) document.getElementById('new-field-booking-type-scope').value = f.bookingTypeScope || 'all';
+  if (document.getElementById('new-field-route-type-scope')) document.getElementById('new-field-route-type-scope').value = f.routeTypeScope || 'all';
+  if (document.getElementById('new-field-route-fare-id')) document.getElementById('new-field-route-fare-id').value = f.routeFareId ? String(f.routeFareId) : '';
+
+  const titleEl = document.getElementById('add-dynamic-field-modal-title');
+  if (titleEl) titleEl.textContent = f.isPriceField ? `Edit Price Field: ${f.label}` : `Edit Field: ${f.label}`;
+  const submitLbl = document.getElementById('add-dynamic-field-submit-label');
+  if (submitLbl) submitLbl.textContent = 'Update Field';
+
+  window.toggleDynamicFieldPriceMode();
+  window.onDynamicFieldRouteTypeScopeChange();
+  if (modal) modal.classList.add('active');
+};
+
 window.closeAddDynamicFieldModal = function () {
   const modal = document.getElementById('add-dynamic-field-modal');
   if (modal) modal.classList.remove('active');
 };
 
-window.submitAddDynamicField = function (e) {
+function mapDynamicFieldRecord(raw) {
+  return {
+    id: `db_${raw.id}`,
+    dbId: raw.id,
+    fieldKey: raw.field_key,
+    label: raw.label,
+    type: raw.field_type || 'text',
+    applies: raw.applies_to || 'all',
+    condition: raw.conditional_logic || 'All Bookings',
+    required: Boolean(raw.is_required),
+    isActive: raw.is_active !== false && raw.is_active !== 0,
+    isPriceField: Boolean(raw.is_price_field),
+    priceAmount: raw.price_amount != null ? Number(raw.price_amount) : 0,
+    priceMode: raw.price_mode || 'flat',
+    chargeBehavior: raw.charge_behavior || 'auto',
+    bookingTypeScope: raw.booking_type_scope || 'all',
+    routeTypeScope: raw.route_type_scope || 'all',
+    routeFareId: raw.route_fare_id ? Number(raw.route_fare_id) : null,
+    routeFare: raw.route_fare || null
+  };
+}
+
+window.submitAddDynamicField = async function (e) {
   if (e) e.preventDefault();
   const labelInput = document.getElementById('new-field-label');
   const label = labelInput ? labelInput.value.trim() : '';
   if (!label) return;
 
-  const type = document.getElementById('new-field-type')?.value || 'text';
+  const editId = document.getElementById('edit-dynamic-field-id')?.value || '';
+  const modeVal = document.getElementById('new-field-mode')?.value || 'input';
+  const isPriceField = modeVal === 'price';
+  const type = isPriceField ? 'price' : (document.getElementById('new-field-type')?.value || 'text');
   const applies = document.getElementById('new-field-applies')?.value || 'all';
   const condition = document.getElementById('new-field-condition')?.value || 'All Bookings';
   const required = document.getElementById('new-field-required')?.checked || false;
 
-  const newField = {
-    id: `f_${Date.now()}`,
-    label: label,
-    type: type,
-    applies: applies,
-    condition: condition,
-    required: required
+  const priceAmount = isPriceField ? (parseFloat(document.getElementById('new-field-price-amount')?.value || 0) || 0) : null;
+  const priceMode = isPriceField ? (document.getElementById('new-field-price-mode')?.value || 'flat') : 'flat';
+  const chargeBehavior = isPriceField ? (document.getElementById('new-field-charge-behavior')?.value || 'auto') : 'auto';
+  const bookingTypeScope = isPriceField ? (document.getElementById('new-field-booking-type-scope')?.value || 'all') : 'all';
+  const routeTypeScope = isPriceField ? (document.getElementById('new-field-route-type-scope')?.value || 'all') : 'all';
+  const routeFareRaw = document.getElementById('new-field-route-fare-id')?.value || '';
+  const routeFareId = (isPriceField && routeTypeScope === 'specific_route' && routeFareRaw) ? parseInt(routeFareRaw, 10) : null;
+
+  const payload = {
+    label,
+    field_type: type,
+    applies_to: applies,
+    conditional_logic: condition,
+    is_required: required,
+    is_price_field: isPriceField,
+    price_amount: priceAmount,
+    price_mode: priceMode,
+    charge_behavior: chargeBehavior,
+    booking_type_scope: bookingTypeScope,
+    route_type_scope: routeTypeScope,
+    route_fare_id: routeFareId
   };
 
-  state.admin.customFields.push(newField);
-  renderFormBuilderFields();
-  closeAddDynamicFieldModal();
-  document.getElementById('add-dynamic-field-form')?.reset();
-  showToast(`Dynamic field "${label}" added to booking system!`, 'success');
-
-  // Attempt async persistence to backend API
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-  fetch('/api/admin/dynamic-fields', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'X-CSRF-TOKEN': csrfToken || ''
-    },
-    body: JSON.stringify({
-      label: label,
-      field_type: type,
-      applies_to: applies,
-      conditional_logic: condition,
-      is_required: required
-    })
-  }).then(res => res.json()).then(data => {
-    if (data && data.field) {
-      newField.dbId = data.field.id;
+  const url = editId ? `/api/admin/dynamic-fields/${editId}` : '/api/admin/dynamic-fields';
+  const method = editId ? 'PUT' : 'POST';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': csrfToken || ''
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok && data && data.field) {
+      const mapped = mapDynamicFieldRecord(data.field);
+      const existingIdx = state.admin.customFields.findIndex(item => Number(item.dbId) === Number(mapped.dbId));
+      if (existingIdx >= 0) {
+        state.admin.customFields[existingIdx] = mapped;
+      } else {
+        state.admin.customFields.push(mapped);
+      }
+      renderFormBuilderFields();
+      if (typeof window.renderPricingPriceFields === 'function') window.renderPricingPriceFields();
+      if (typeof refreshCabQuote === 'function') refreshCabQuote();
+      closeAddDynamicFieldModal();
+      document.getElementById('add-dynamic-field-form')?.reset();
+      showToast(`${isPriceField ? 'Price field' : 'Dynamic field'} "${label}" saved!`, 'success');
+    } else {
+      showToast((data && data.message) || 'Could not save dynamic field.', 'warning');
     }
-  }).catch(() => { });
+  } catch (err) {
+    console.error('submitAddDynamicField', err);
+    showToast('Network error saving field.', 'danger');
+  }
 };
 
 function renderFormBuilderFields() {
@@ -3967,24 +4270,37 @@ function renderFormBuilderFields() {
     if (count === 0) {
       container.innerHTML = `<div style="text-align:center; padding:24px; color:#94a3b8;">No custom dynamic fields configured. Click "Add Custom Field" to inject one.</div>`;
     } else {
-      container.innerHTML = state.admin.customFields.map((field, idx) => `
+      container.innerHTML = state.admin.customFields.map((field, idx) => {
+        const priceBadge = field.isPriceField
+          ? `<span class="admin-badge badge-gold">Price: ${field.priceMode === 'per_km' ? `₹${field.priceAmount}/km` : (field.priceMode === 'percentage' ? `${field.priceAmount}%` : `₹${field.priceAmount}`)} (${field.chargeBehavior === 'optional' ? 'Optional' : 'Auto'})</span>`
+          : '';
+        const scopeLine = field.isPriceField
+          ? `<span style="font-size:10.5px; color:#475569;">Booking: <strong>${escapeHtml(field.bookingTypeScope || 'all')}</strong> &bull; Route: <strong>${escapeHtml(field.routeTypeScope || 'all')}${field.routeFare ? ` (${escapeHtml(field.routeFare.from_city)} → ${escapeHtml(field.routeFare.to_city)})` : ''}</strong></span>`
+          : `<span class="builder-field-condition">Rule: ${escapeHtml(field.condition)}</span> <span style="font-size:10.5px; color:#64748b;">Scope: ${escapeHtml(field.applies || 'all')}</span>`;
+
+        return `
         <div class="builder-field-card">
           <div class="builder-field-meta">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span class="builder-field-title">${field.label}</span>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span class="builder-field-title">${escapeHtml(field.label)}</span>
               ${field.required ? '<span class="admin-badge badge-primary">Required</span>' : ''}
+              ${priceBadge}
+              <span class="admin-badge ${field.isActive === false ? 'badge-danger' : 'badge-success'}" style="cursor:pointer;" onclick="toggleDynamicFieldStatus(${idx})">${field.isActive === false ? 'Inactive' : 'Active'}</span>
             </div>
             <div style="display:flex; gap:8px; margin-top:4px; align-items:center; flex-wrap:wrap;">
-              <span class="builder-field-type">Type: <strong>${field.type}</strong></span>
-              <span class="builder-field-condition">Rule: ${field.condition}</span>
-              <span style="font-size:10.5px; color:#64748b;">Scope: ${field.applies || 'all'}</span>
+              <span class="builder-field-type">Type: <strong>${escapeHtml(field.type)}</strong></span>
+              ${scopeLine}
             </div>
           </div>
-          <button type="button" class="btn btn-sm btn-outline" style="color:#dc2626; border-color:#fecaca;" onclick="deleteAdminField(${idx})" title="Remove field">
-            <span class="material-symbols-outlined" style="font-size:18px;">delete</span>
-          </button>
+          <div style="display:flex; gap:6px; align-items:center;">
+            ${field.dbId ? `<button type="button" class="btn btn-sm btn-outline" onclick="openEditDynamicFieldModal(${idx})" title="Edit field"><span class="material-symbols-outlined" style="font-size:17px;">edit</span></button>` : ''}
+            <button type="button" class="btn btn-sm btn-outline" style="color:#dc2626; border-color:#fecaca;" onclick="deleteAdminField(${idx})" title="Remove field">
+              <span class="material-symbols-outlined" style="font-size:18px;">delete</span>
+            </button>
+          </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
   }
 
@@ -3992,21 +4308,96 @@ function renderFormBuilderFields() {
     previewContainer.innerHTML = state.admin.customFields.map(field => `
       <div style="background:#ffffff; border:1px solid var(--outline); border-radius:var(--radius-xs); padding:10px;">
         <div style="font-size:11.5px; font-weight:700; color:#334155; margin-bottom:4px;">
-          ${field.label} ${field.required ? '<span style="color:#ef4444;">*</span>' : ''}
+          ${escapeHtml(field.label)} ${field.required ? '<span style="color:#ef4444;">*</span>' : ''}
         </div>
-        ${field.type === 'checkbox' ? `
+        ${field.isPriceField ? `
+          <div style="font-size:12px; color:#92400e; font-weight:700;">
+            ${field.priceMode === 'per_km' ? `₹${field.priceAmount}/km` : (field.priceMode === 'percentage' ? `${field.priceAmount}% of fare` : `₹${field.priceAmount} flat`)} &bull; ${field.chargeBehavior === 'optional' ? 'Optional checkbox' : 'Auto-added surcharge'}
+          </div>
+        ` : (field.type === 'checkbox' ? `
           <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#64748b; cursor:pointer;">
             <input type="checkbox" style="accent-color:var(--primary);">
             <span>Yes, include this requirement</span>
           </label>
         ` : `
-          <input type="${field.type === 'number' ? 'number' : 'text'}" class="form-control" placeholder="Passenger enters ${field.label.toLowerCase()}..." style="height:34px; font-size:12px;" disabled>
-        `}
-        <div style="font-size:9.5px; color:#94a3b8; margin-top:4px;">Rule: ${field.condition}</div>
+          <input type="${field.type === 'number' ? 'number' : 'text'}" class="form-control" placeholder="Passenger enters ${escapeHtml(String(field.label || '').toLowerCase())}..." style="height:34px; font-size:12px;" disabled>
+        `)}
+        <div style="font-size:9.5px; color:#94a3b8; margin-top:4px;">Rule: ${escapeHtml(field.isPriceField ? `${field.bookingTypeScope || 'all'} / ${field.routeTypeScope || 'all'}` : field.condition)}</div>
       </div>
     `).join('');
   }
+
+  if (typeof window.renderPricingPriceFields === 'function') {
+    window.renderPricingPriceFields();
+  }
 }
+
+window.renderPricingPriceFields = function () {
+  const target = document.getElementById('admin-pricing-price-fields-list');
+  if (!target) return;
+  const priceFields = (state.admin.customFields || [])
+    .map((f, idx) => ({ f, idx }))
+    .filter(item => item.f.isPriceField);
+
+  if (priceFields.length === 0) {
+    target.innerHTML = `<div style="text-align:center; padding:22px; color:#64748b; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:8px;">No Additional Price Fields configured yet. Click <strong>Add Additional Price Field</strong> above to create a flat, per-km, or percentage fee for a specific booking type or route.</div>`;
+    return;
+  }
+
+  target.innerHTML = priceFields.map(({ f, idx }) => {
+    const rateTxt = f.priceMode === 'per_km'
+      ? `₹${f.priceAmount}/km`
+      : (f.priceMode === 'percentage' ? `${f.priceAmount}%` : `₹${f.priceAmount} Flat`);
+    const routeTxt = f.routeTypeScope === 'specific_route' && f.routeFare
+      ? `Specific: ${f.routeFare.from_city} → ${f.routeFare.to_city}`
+      : (f.routeTypeScope || 'all');
+
+    return `
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 14px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:10px; background:#ffffff;">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <strong style="font-size:13.5px; color:#0f172a;">${escapeHtml(f.label)}</strong>
+            <span class="admin-badge badge-gold">${rateTxt}</span>
+            <span class="admin-badge ${f.chargeBehavior === 'optional' ? 'badge-info' : 'badge-primary'}">${f.chargeBehavior === 'optional' ? 'Optional Add-on' : 'Auto Surcharge'}</span>
+            <span class="admin-badge ${f.isActive === false ? 'badge-danger' : 'badge-success'}" style="cursor:pointer;" onclick="toggleDynamicFieldStatus(${idx})">${f.isActive === false ? 'Inactive' : 'Active'}</span>
+          </div>
+          <div style="font-size:11.5px; color:#64748b; margin-top:4px;">
+            Booking Type: <strong>${escapeHtml(f.bookingTypeScope || 'all')}</strong> &bull;
+            Route Type: <strong>${escapeHtml(routeTxt)}</strong>
+          </div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button type="button" class="btn btn-xs btn-outline" onclick="openEditDynamicFieldModal(${idx})">Edit</button>
+          <button type="button" class="btn btn-xs btn-outline-danger" onclick="deleteAdminField(${idx})">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+};
+
+window.toggleDynamicFieldStatus = async function (idx) {
+  const field = state.admin.customFields[idx];
+  if (!field || !field.dbId) return;
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+  try {
+    const res = await fetch(`/api/admin/dynamic-fields/${field.dbId}/toggle`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': csrfToken || ''
+      }
+    });
+    const data = await res.json();
+    if (res.ok && data.field) {
+      state.admin.customFields[idx] = mapDynamicFieldRecord(data.field);
+      renderFormBuilderFields();
+      if (typeof refreshCabQuote === 'function') refreshCabQuote();
+      showToast(`"${field.label}" status updated.`, 'success');
+    }
+  } catch (err) {
+    console.error('toggleDynamicFieldStatus', err);
+  }
+};
 
 window.deleteAdminField = function (idx) {
   const field = state.admin.customFields[idx];
@@ -4022,6 +4413,8 @@ window.deleteAdminField = function (idx) {
         'Accept': 'application/json',
         'X-CSRF-TOKEN': csrfToken || ''
       }
+    }).then(() => {
+      if (typeof refreshCabQuote === 'function') refreshCabQuote();
     }).catch(() => { });
   }
 };
@@ -6069,8 +6462,54 @@ window.openViewBookingModal = async function (bookingId) {
     }
 
     // Financial breakdown
+    const distLine = document.getElementById('view-booking-distance-line');
+    if (distLine) {
+      const bKm = Number(b.booked_distance_km || 0);
+      const aKm = Number(b.actual_distance_km || bKm);
+      const xKm = Number(b.extra_km || 0);
+      if (bKm > 0 || aKm > 0) {
+        distLine.style.display = 'flex';
+        const distTxt = document.getElementById('view-booking-distance-text');
+        if (distTxt) distTxt.textContent = `${bKm} km booked / ${aKm} km run${xKm > 0 ? ` (+${xKm} extra km)` : ''}`;
+      } else {
+        distLine.style.display = 'none';
+      }
+    }
     document.getElementById('view-booking-base-fare').textContent = `₹${Number(b.base_fare || 0).toLocaleString('en-IN')}`;
     document.getElementById('view-booking-toll-fare').textContent = `₹${Number(b.toll_fare || 0).toLocaleString('en-IN')}`;
+    const viewExtraRow = document.getElementById('view-booking-extra-km-row');
+    if (viewExtraRow) {
+      if (Number(b.extra_km_fare || 0) > 0) {
+        viewExtraRow.style.display = 'flex';
+        const lbl = document.getElementById('view-booking-extra-km-label');
+        if (lbl) lbl.textContent = `Extra KM Charge (${b.extra_km || 0} km × ₹${b.extra_km_rate || 0}/km):`;
+        document.getElementById('view-booking-extra-km-fare').textContent = `₹${Number(b.extra_km_fare).toLocaleString('en-IN')}`;
+      } else {
+        viewExtraRow.style.display = 'none';
+      }
+    }
+    const viewRouteAddlRow = document.getElementById('view-booking-route-addl-row');
+    if (viewRouteAddlRow) {
+      if (Number(b.route_additional_fare || 0) > 0) {
+        viewRouteAddlRow.style.display = 'flex';
+        const lbl = document.getElementById('view-booking-route-addl-label');
+        if (lbl && b.fare_breakdown && b.fare_breakdown.route_additional_label) {
+          lbl.textContent = `${b.fare_breakdown.route_additional_label}:`;
+        }
+        document.getElementById('view-booking-route-addl-fare').textContent = `₹${Number(b.route_additional_fare).toLocaleString('en-IN')}`;
+      } else {
+        viewRouteAddlRow.style.display = 'none';
+      }
+    }
+    const viewPriceFieldsRow = document.getElementById('view-booking-price-fields-row');
+    if (viewPriceFieldsRow) {
+      if (Number(b.custom_price_fields_fare || 0) > 0) {
+        viewPriceFieldsRow.style.display = 'flex';
+        document.getElementById('view-booking-price-fields-fare').textContent = `₹${Number(b.custom_price_fields_fare).toLocaleString('en-IN')}`;
+      } else {
+        viewPriceFieldsRow.style.display = 'none';
+      }
+    }
     document.getElementById('view-booking-addon-fare').textContent = `₹${Number(b.addon_fare || 0).toLocaleString('en-IN')}`;
     const discRow = document.getElementById('view-booking-discount-row');
     if (Number(b.discount_fare) > 0) {
@@ -6242,6 +6681,13 @@ window.openEditBookingModal = async function (bookingId) {
     document.getElementById('edit-pickup-location').value = b.pickup_location || '';
     document.getElementById('edit-drop-location').value = b.drop_location || '';
 
+    if (document.getElementById('edit-booked-km')) document.getElementById('edit-booked-km').value = Number(b.booked_distance_km || 0);
+    if (document.getElementById('edit-actual-km')) document.getElementById('edit-actual-km').value = Number(b.actual_distance_km || b.booked_distance_km || 0);
+    if (document.getElementById('edit-extra-km-rate')) document.getElementById('edit-extra-km-rate').value = Number(b.extra_km_rate || 0);
+    if (document.getElementById('edit-extra-km-fare')) document.getElementById('edit-extra-km-fare').value = Math.round(b.extra_km_fare || 0);
+    if (document.getElementById('edit-route-additional-fare')) document.getElementById('edit-route-additional-fare').value = Math.round(b.route_additional_fare || 0);
+    if (document.getElementById('edit-custom-price-fields-fare')) document.getElementById('edit-custom-price-fields-fare').value = Math.round(b.custom_price_fields_fare || 0);
+
     document.getElementById('edit-base-fare').value = Math.round(b.base_fare || 0);
     document.getElementById('edit-toll-fare').value = Math.round(b.toll_fare || 0);
     document.getElementById('edit-addon-fare').value = Math.round(b.addon_fare || 0);
@@ -6267,12 +6713,27 @@ window.openEditBookingFromView = function () {
   }
 };
 
+window.recalcEditExtraKm = function () {
+  const booked = Number(document.getElementById('edit-booked-km')?.value) || 0;
+  const actual = Number(document.getElementById('edit-actual-km')?.value) || 0;
+  const rate = Number(document.getElementById('edit-extra-km-rate')?.value) || 0;
+  const extraKm = booked > 0 ? Math.max(0, actual - booked) : 0;
+  const extraFareEl = document.getElementById('edit-extra-km-fare');
+  if (extraFareEl && booked > 0) {
+    extraFareEl.value = Math.round(extraKm * rate);
+  }
+  window.recalcEditTotalFare();
+};
+
 window.recalcEditTotalFare = function () {
   const base = Number(document.getElementById('edit-base-fare')?.value) || 0;
   const toll = Number(document.getElementById('edit-toll-fare')?.value) || 0;
+  const extraKmFare = Number(document.getElementById('edit-extra-km-fare')?.value) || 0;
+  const routeAddlFare = Number(document.getElementById('edit-route-additional-fare')?.value) || 0;
+  const priceFieldsFare = Number(document.getElementById('edit-custom-price-fields-fare')?.value) || 0;
   const addon = Number(document.getElementById('edit-addon-fare')?.value) || 0;
   const discount = Number(document.getElementById('edit-discount-fare')?.value) || 0;
-  const total = Math.max(0, Math.round(base + toll + addon - discount));
+  const total = Math.max(0, Math.round(base + toll + extraKmFare + routeAddlFare + priceFieldsFare + addon - discount));
 
   const totalElem = document.getElementById('edit-computed-total');
   if (totalElem) totalElem.textContent = `₹${total.toLocaleString('en-IN')}`;
@@ -6293,6 +6754,12 @@ window.submitEditBooking = async function (e) {
     route_summary: document.getElementById('edit-route-summary').value.trim(),
     pickup_location: document.getElementById('edit-pickup-location').value.trim(),
     drop_location: document.getElementById('edit-drop-location').value.trim(),
+    booked_distance_km: Number(document.getElementById('edit-booked-km')?.value) || 0,
+    actual_distance_km: Number(document.getElementById('edit-actual-km')?.value) || 0,
+    extra_km_rate: Number(document.getElementById('edit-extra-km-rate')?.value) || 0,
+    extra_km_fare: Number(document.getElementById('edit-extra-km-fare')?.value) || 0,
+    route_additional_fare: Number(document.getElementById('edit-route-additional-fare')?.value) || 0,
+    custom_price_fields_fare: Number(document.getElementById('edit-custom-price-fields-fare')?.value) || 0,
     base_fare: Number(document.getElementById('edit-base-fare').value) || 0,
     toll_fare: Number(document.getElementById('edit-toll-fare').value) || 0,
     addon_fare: Number(document.getElementById('edit-addon-fare').value) || 0,
@@ -6521,6 +6988,42 @@ window.openInvoiceModal = async function (bookingId) {
     document.getElementById('inv-row-base').textContent = `₹${Number(inv.charges.base_fare).toFixed(2)}`;
     document.getElementById('inv-row-toll').textContent = `₹${Number(inv.charges.toll_fare).toFixed(2)}`;
 
+    const invExtraKmRow = document.getElementById('inv-extra-km-row');
+    if (invExtraKmRow) {
+      if (Number(inv.charges.extra_km_fare || 0) > 0) {
+        invExtraKmRow.style.display = '';
+        const metaEl = document.getElementById('inv-extra-km-meta');
+        if (metaEl) metaEl.textContent = `${inv.charges.extra_km || 0} extra km × ₹${inv.charges.extra_km_rate || 0}/km (Actual: ${inv.charges.actual_distance_km || 0} km vs Booked: ${inv.charges.booked_distance_km || 0} km)`;
+        document.getElementById('inv-row-extra-km').textContent = `₹${Number(inv.charges.extra_km_fare).toFixed(2)}`;
+      } else {
+        invExtraKmRow.style.display = 'none';
+      }
+    }
+
+    const invRouteAddlRow = document.getElementById('inv-route-addl-row');
+    if (invRouteAddlRow) {
+      if (Number(inv.charges.route_additional_fare || 0) > 0) {
+        invRouteAddlRow.style.display = '';
+        const tEl = document.getElementById('inv-route-addl-title');
+        if (tEl && inv.charges.fare_breakdown && inv.charges.fare_breakdown.route_additional_label) {
+          tEl.textContent = inv.charges.fare_breakdown.route_additional_label;
+        }
+        document.getElementById('inv-row-route-addl').textContent = `₹${Number(inv.charges.route_additional_fare).toFixed(2)}`;
+      } else {
+        invRouteAddlRow.style.display = 'none';
+      }
+    }
+
+    const invPriceFieldsRow = document.getElementById('inv-price-fields-row');
+    if (invPriceFieldsRow) {
+      if (Number(inv.charges.custom_price_fields_fare || 0) > 0) {
+        invPriceFieldsRow.style.display = '';
+        document.getElementById('inv-row-price-fields').textContent = `₹${Number(inv.charges.custom_price_fields_fare).toFixed(2)}`;
+      } else {
+        invPriceFieldsRow.style.display = 'none';
+      }
+    }
+
     const addonRow = document.getElementById('inv-addon-row');
     if (Number(inv.charges.addon_fare) > 0) {
       addonRow.style.display = '';
@@ -6668,14 +7171,29 @@ window.printAdminInvoice = function () {
     }
 
     if (isStarted) {
-      setTxt('dispatch-active-collect-note', due > 0
-        ? `Collect ₹${due.toLocaleString('en-IN')} from ${dt.customer_name || 'passenger'} before marking this trip completed.`
-        : 'This ride is prepaid. Tap below once drop-off is complete to credit your wallet.');
+      window._dispatchBaseDue = due;
+      const actualKmInput = document.getElementById('dispatch-actual-km-input');
+      const actualKmBox = document.getElementById('dispatch-actual-km-box');
+      if (actualKmInput && actualKmBox) {
+        const bookedKm = Number(dt.booked_distance_km || (dt.fare_breakdown && dt.fare_breakdown.booked_distance_km) || 0);
+        const curActual = Number(dt.actual_distance_km || bookedKm || 0);
+        actualKmBox.style.display = bookedKm > 0 ? 'block' : 'none';
+        actualKmInput.value = curActual > 0 ? String(curActual) : '';
+        window.updateDispatchActualKmPreview();
+      } else {
+        setTxt('dispatch-active-collect-note', due > 0
+          ? `Collect ₹${due.toLocaleString('en-IN')} from ${dt.customer_name || 'passenger'} before marking this trip completed.`
+          : 'This ride is prepaid. Tap below once drop-off is complete to credit your wallet.');
+      }
       const compBtn = document.getElementById('dispatch-complete-trip-btn');
       const compLbl = document.getElementById('dispatch-complete-trip-label');
       if (compLbl) compLbl.textContent = due > 0 ? `Collect ₹${due.toLocaleString('en-IN')} & Complete Trip` : 'Complete Trip & Settle';
       if (compBtn) {
-        compBtn.onclick = () => completeDriverTrip(dt.id, due, dt.payment_status || '');
+        compBtn.onclick = () => {
+          const enteredKm = document.getElementById('dispatch-actual-km-input')?.value;
+          const actKmParam = (enteredKm !== undefined && enteredKm !== '' && Number(enteredKm) >= 0) ? parseInt(enteredKm, 10) : null;
+          completeDriverTrip(dt.id, window._dispatchEffectiveDue ?? due, dt.payment_status || '', actKmParam);
+        };
       }
     }
 
@@ -6795,7 +7313,40 @@ window.printAdminInvoice = function () {
     }
   };
 
-      window.completeDriverTrip = async function (bookingId, collectDue = 0, paymentStatus = '') {
+      window.updateDispatchActualKmPreview = function () {
+        const dt = window._activeDispatchTrip;
+        if (!dt) return;
+        const bookedKm = Number(dt.booked_distance_km || (dt.fare_breakdown && dt.fare_breakdown.booked_distance_km) || 0);
+        const extraRate = Number(dt.extra_km_rate || (dt.fare_breakdown && dt.fare_breakdown.extra_km_rate) || 0);
+        const oldExtraFare = Number(dt.extra_km_fare || 0);
+        const baseDue = Number(window._dispatchBaseDue || 0);
+        const rawActual = document.getElementById('dispatch-actual-km-input')?.value;
+        const actualKm = rawActual !== '' && rawActual !== undefined ? Math.max(0, parseInt(rawActual, 10) || 0) : bookedKm;
+        const extraKm = bookedKm > 0 ? Math.max(0, actualKm - bookedKm) : 0;
+        const newExtraFare = Math.round(extraKm * extraRate);
+        const delta = newExtraFare - oldExtraFare;
+        const effectiveDue = Math.max(0, Math.round(baseDue + delta));
+        window._dispatchEffectiveDue = effectiveDue;
+
+        const prevEl = document.getElementById('dispatch-actual-km-preview');
+        if (prevEl) {
+          prevEl.innerHTML = extraKm > 0
+            ? `Booked: ${bookedKm} km &bull; <strong style="color:#b45309;">+${extraKm} extra km × ₹${extraRate}/km = ₹${newExtraFare.toLocaleString('en-IN')}</strong>`
+            : `Booked: ${bookedKm} km (₹${extraRate}/km after)`;
+        }
+        const noteEl = document.getElementById('dispatch-active-collect-note');
+        if (noteEl) {
+          noteEl.textContent = effectiveDue > 0
+            ? `Collect ₹${effectiveDue.toLocaleString('en-IN')} from ${dt.customer_name || 'passenger'} before marking this trip completed.`
+            : 'This ride is prepaid. Tap below once drop-off is complete to credit your wallet.';
+        }
+        const compLbl = document.getElementById('dispatch-complete-trip-label');
+        if (compLbl) {
+          compLbl.textContent = effectiveDue > 0 ? `Collect ₹${effectiveDue.toLocaleString('en-IN')} & Complete Trip` : 'Complete Trip & Settle';
+        }
+      };
+
+      window.completeDriverTrip = async function (bookingId, collectDue = 0, paymentStatus = '', actualDistanceKm = null) {
         const due = Number(collectDue || 0);
         const confirmMsg = due > 0
           ? (paymentStatus === 'pending_upi_verification' || paymentStatus === 'awaiting_upi_utr'
@@ -6809,6 +7360,14 @@ window.printAdminInvoice = function () {
 
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
+        const reqBody = {
+          collected_by_driver: due > 0,
+          collected_amount: due > 0 ? due : 0,
+        };
+        if (actualDistanceKm !== null && actualDistanceKm !== '' && !isNaN(Number(actualDistanceKm))) {
+          reqBody.actual_distance_km = parseInt(actualDistanceKm, 10);
+        }
+
         try {
           const res = await fetch(`/api/driver/trips/${bookingId}/complete`, {
             method: 'POST',
@@ -6817,10 +7376,7 @@ window.printAdminInvoice = function () {
               'Accept': 'application/json',
               'X-CSRF-TOKEN': csrfToken
             },
-            body: JSON.stringify({
-              collected_by_driver: due > 0,
-              collected_amount: due > 0 ? due : 0,
-            })
+            body: JSON.stringify(reqBody)
           });
 
           const data = await res.json();
@@ -8231,6 +8787,8 @@ window.printAdminInvoice = function () {
             document.getElementById('admin-cab-route-dist').value = '';
             document.getElementById('admin-cab-route-time').value = '4h 30m';
             document.getElementById('admin-cab-route-toll').value = '0';
+            if (document.getElementById('admin-cab-route-additional-amount')) document.getElementById('admin-cab-route-additional-amount').value = '';
+            if (document.getElementById('admin-cab-route-additional-label')) document.getElementById('admin-cab-route-additional-label').value = '';
             window.setCabRouteCalcMode('manual', 'Mode: Manual or Calculate via API');
             if (document.getElementById('admin-cab-route-schedule')) document.getElementById('admin-cab-route-schedule').value = '06:00 AM, 11:30 AM, 04:00 PM, 09:30 PM';
             if (document.getElementById('admin-cab-route-freq')) document.getElementById('admin-cab-route-freq').value = 'Daily Express';
@@ -8269,6 +8827,8 @@ window.printAdminInvoice = function () {
               document.getElementById('admin-cab-route-dist').value = route.distance_km;
               document.getElementById('admin-cab-route-time').value = route.estimated_time;
               document.getElementById('admin-cab-route-toll').value = route.base_toll || 0;
+              if (document.getElementById('admin-cab-route-additional-amount')) document.getElementById('admin-cab-route-additional-amount').value = route.additional_amount != null ? route.additional_amount : '';
+              if (document.getElementById('admin-cab-route-additional-label')) document.getElementById('admin-cab-route-additional-label').value = route.additional_amount_label || '';
               window.setCabRouteCalcMode('manual', 'Mode: Saved / Manual (or Recalculate via API)');
               if (document.getElementById('admin-cab-route-schedule')) document.getElementById('admin-cab-route-schedule').value = route.departure_schedule || '';
               if (document.getElementById('admin-cab-route-freq')) document.getElementById('admin-cab-route-freq').value = route.schedule_frequency || 'Daily Express';
@@ -8309,6 +8869,8 @@ window.printAdminInvoice = function () {
               distance_km: parseFloat(document.getElementById('admin-cab-route-dist').value),
               estimated_time: document.getElementById('admin-cab-route-time').value.trim(),
               base_toll: parseFloat(document.getElementById('admin-cab-route-toll').value) || 0,
+              additional_amount: document.getElementById('admin-cab-route-additional-amount')?.value !== '' ? parseFloat(document.getElementById('admin-cab-route-additional-amount').value) : null,
+              additional_amount_label: document.getElementById('admin-cab-route-additional-label')?.value.trim() || null,
               ...(fromLatVal !== '' && fromLngVal !== '' ? { from_lat: parseFloat(fromLatVal), from_lng: parseFloat(fromLngVal) } : {}),
               ...(toLatVal !== '' && toLngVal !== '' ? { to_lat: parseFloat(toLatVal), to_lng: parseFloat(toLngVal) } : {}),
               departure_schedule: document.getElementById('admin-cab-route-schedule')?.value.trim() || null,
@@ -12402,6 +12964,103 @@ window.printAdminInvoice = function () {
         document.querySelectorAll('.admin-pricing-tab-panel').forEach(panel => {
           panel.style.display = (panel.id === `admin-pricing-panel-${tabId}`) ? 'block' : 'none';
         });
+        if (tabId === 'price-fields' && typeof window.renderPricingPriceFields === 'function') {
+          window.renderPricingPriceFields();
+        }
+      };
+
+      const BOOKING_TYPE_RATE_LABELS = {
+        oneway: 'One-Way',
+        roundtrip: 'Round-Trip',
+        local: 'Local Hourly',
+        airport_pickup: 'Airport Pickup',
+        airport_drop: 'Airport Drop'
+      };
+
+      window.switchPricingBookingTypeTab = async function (bookingType) {
+        state.admin.activePricingBookingType = bookingType;
+        document.querySelectorAll('.admin-bt-rate-pill').forEach(pill => {
+          const active = pill.dataset.bookingType === bookingType;
+          pill.classList.toggle('active', active);
+          pill.classList.toggle('btn-primary', active);
+          pill.classList.toggle('btn-outline', !active);
+        });
+
+        const resetBtn = document.getElementById('reset-bt-rates-btn');
+        if (resetBtn) resetBtn.style.display = bookingType === 'oneway' ? 'none' : 'inline-flex';
+        const saveLbl = document.getElementById('bulk-save-car-rates-label');
+        if (saveLbl) {
+          saveLbl.textContent = bookingType === 'oneway'
+            ? 'Save All Car Type Rates'
+            : `Save ${BOOKING_TYPE_RATE_LABELS[bookingType] || bookingType} Rates`;
+        }
+
+        try {
+          const res = await fetch('/api/admin/booking-type-rates');
+          const data = await res.json();
+          if (res.ok && data.success) {
+            if (Array.isArray(data.car_types)) await window.syncAllCarTypes(data.car_types);
+            if (Array.isArray(data.rates)) window.BOOKING_TYPE_RATES = data.rates;
+          }
+        } catch (_) {}
+
+        window.populatePricingBookingTypeRows(bookingType);
+      };
+
+      window.populatePricingBookingTypeRows = function (bookingType) {
+        const btRates = Array.isArray(window.BOOKING_TYPE_RATES) ? window.BOOKING_TYPE_RATES : [];
+        const rowsByCarId = new Map(
+          btRates.filter(r => r.booking_type === bookingType).map(r => [Number(r.car_type_id), r])
+        );
+        const carTypesById = new Map(
+          (Array.isArray(window.INITIAL_CAR_TYPES) ? window.INITIAL_CAR_TYPES : []).map(ct => [Number(ct.id), ct])
+        );
+
+        document.querySelectorAll('#admin-bulk-car-rates-tbody tr[data-car-type-id]').forEach(row => {
+          const carId = parseInt(row.dataset.carTypeId, 10);
+          const override = rowsByCarId.get(carId);
+          const fallback = carTypesById.get(carId);
+          const src = override || fallback;
+          if (!src) return;
+
+          const baseEl = row.querySelector('.bulk-ct-min-fare');
+          const rateEl = row.querySelector('.bulk-ct-rate-km');
+          const extraKmEl = row.querySelector('.bulk-ct-extra-km');
+          const extraHrEl = row.querySelector('.bulk-ct-extra-hr');
+          const activeEl = row.querySelector('.bulk-ct-active');
+
+          if (baseEl) baseEl.value = override ? override.base_fare : (fallback?.base_fare_min ?? 0);
+          if (rateEl) rateEl.value = src.rate_per_km ?? 12;
+          if (extraKmEl) extraKmEl.value = src.extra_km_rate ?? src.rate_per_km ?? 12;
+          if (extraHrEl) extraHrEl.value = src.extra_hour_rate ?? 0;
+          if (activeEl) activeEl.checked = src.is_active !== false && src.is_active !== 0;
+        });
+      };
+
+      window.resetBookingTypeRates = async function () {
+        const bookingType = state.admin.activePricingBookingType || 'oneway';
+        if (bookingType === 'oneway') return;
+        try {
+          const res = await fetch('/api/admin/booking-type-rates/bulk', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-TOKEN': getAdminCsrfToken(),
+            },
+            body: JSON.stringify({ booking_type: bookingType, action: 'reset' }),
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            if (Array.isArray(data.rates)) window.BOOKING_TYPE_RATES = data.rates;
+            window.populatePricingBookingTypeRows(bookingType);
+            if (typeof refreshCabQuote === 'function') refreshCabQuote();
+            showToast(data.message || 'Reverted to One-Way defaults.', 'success');
+          }
+        } catch (err) {
+          console.error('resetBookingTypeRates', err);
+          showToast('Failed to reset booking type rates.', 'danger');
+        }
       };
 
       window.applyCarTypeBulkPercent = function (pct) {
@@ -12418,7 +13077,7 @@ window.printAdminInvoice = function () {
             extraEl.value = val;
           }
         });
-        showToast(`Preview adjusted by ${pct > 0 ? '+' : ''}${pct}%. Click "Save All Car Type Rates" to apply.`, 'info');
+        showToast(`Preview adjusted by ${pct > 0 ? '+' : ''}${pct}%. Click Save to apply.`, 'info');
       };
 
       window.applyCarTypeFlatDelta = function (delta) {
@@ -12428,7 +13087,7 @@ window.printAdminInvoice = function () {
           if (rateEl) rateEl.value = Math.max(1, (parseFloat(rateEl.value || 0) + delta));
           if (extraEl) extraEl.value = Math.max(0, (parseFloat(extraEl.value || 0) + delta));
         });
-        showToast(`Adjusted preview by ${delta >= 0 ? '+' : ''}₹${delta}/km. Click "Save All Car Type Rates" to apply.`, 'info');
+        showToast(`Adjusted preview by ${delta >= 0 ? '+' : ''}₹${delta}/km. Click Save to apply.`, 'info');
       };
 
       window.syncCarTypeExtraKm = function () {
@@ -12441,12 +13100,60 @@ window.printAdminInvoice = function () {
       };
 
       window.bulkSaveCarTypeRates = async function () {
+        const bookingType = state.admin.activePricingBookingType || 'oneway';
+
+        if (bookingType !== 'oneway') {
+          const btRates = [];
+          document.querySelectorAll('#admin-bulk-car-rates-tbody tr[data-car-type-id]').forEach(row => {
+            const carTypeId = parseInt(row.dataset.carTypeId, 10);
+            const ratePerKm = parseFloat(row.querySelector('.bulk-ct-rate-km')?.value || 0);
+            const extraKmRate = parseFloat(row.querySelector('.bulk-ct-extra-km')?.value || ratePerKm);
+            const baseFare = parseFloat(row.querySelector('.bulk-ct-min-fare')?.value || 0);
+            const extraHourRate = parseFloat(row.querySelector('.bulk-ct-extra-hr')?.value || 0);
+            const isActive = Boolean(row.querySelector('.bulk-ct-active')?.checked);
+            if (carTypeId && ratePerKm >= 0) {
+              btRates.push({
+                car_type_id: carTypeId,
+                base_fare: isNaN(baseFare) ? 0 : baseFare,
+                rate_per_km: ratePerKm,
+                extra_km_rate: isNaN(extraKmRate) ? ratePerKm : extraKmRate,
+                extra_hour_rate: isNaN(extraHourRate) ? 0 : extraHourRate,
+                is_active: isActive,
+              });
+            }
+          });
+          try {
+            const res = await fetch('/api/admin/booking-type-rates/bulk', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': getAdminCsrfToken(),
+              },
+              body: JSON.stringify({ booking_type: bookingType, rates: btRates }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              if (Array.isArray(data.rates)) window.BOOKING_TYPE_RATES = data.rates;
+              if (typeof refreshCabQuote === 'function') refreshCabQuote();
+              showToast(data.message || 'Booking type rates updated!', 'success');
+            } else {
+              showToast(data.message || 'Failed to save booking type rates.', 'warning');
+            }
+          } catch (err) {
+            console.error('bulkSaveBookingTypeRates', err);
+            showToast('Network error while saving booking type rates.', 'danger');
+          }
+          return;
+        }
+
         const rates = [];
         document.querySelectorAll('#admin-bulk-car-rates-tbody tr[data-car-type-id]').forEach(row => {
           const id = parseInt(row.dataset.carTypeId, 10);
           const ratePerKm = parseFloat(row.querySelector('.bulk-ct-rate-km')?.value || 0);
           const extraKmRate = parseFloat(row.querySelector('.bulk-ct-extra-km')?.value || ratePerKm);
           const baseFareMin = parseFloat(row.querySelector('.bulk-ct-min-fare')?.value || 0);
+          const extraHourRate = parseFloat(row.querySelector('.bulk-ct-extra-hr')?.value || 0);
           const isActive = Boolean(row.querySelector('.bulk-ct-active')?.checked);
           if (id && ratePerKm >= 1) {
             rates.push({
@@ -12454,6 +13161,7 @@ window.printAdminInvoice = function () {
               rate_per_km: ratePerKm,
               extra_km_rate: isNaN(extraKmRate) ? ratePerKm : extraKmRate,
               base_fare_min: isNaN(baseFareMin) ? 0 : baseFareMin,
+              extra_hour_rate: isNaN(extraHourRate) ? 0 : extraHourRate,
               is_active: isActive,
             });
           }
@@ -12477,7 +13185,11 @@ window.printAdminInvoice = function () {
           const data = await res.json();
           if (res.ok && data.success) {
             showToast(data.message || 'Car type rates updated!', 'success');
+            if (Array.isArray(data.booking_type_rates)) {
+              window.BOOKING_TYPE_RATES = data.booking_type_rates;
+            }
             if (Array.isArray(data.car_types)) {
+              window.INITIAL_CAR_TYPES = data.car_types;
               data.car_types.forEach(ct => {
                 const row = document.getElementById(`admin-car-type-row-${ct.id}`);
                 if (row) {
@@ -12721,10 +13433,14 @@ window.printAdminInvoice = function () {
             const id = parseInt(row.dataset.routeId, 10);
             const sedanRaw = row.querySelector('.bulk-rt-sedan')?.value;
             const suvRaw = row.querySelector('.bulk-rt-suv')?.value;
+            const addlRaw = row.querySelector('.bulk-rt-additional')?.value;
+            const addlLabel = row.querySelector('.bulk-rt-additional-label')?.value?.trim() || null;
             routes.push({
               id,
               base_toll: parseFloat(row.querySelector('.bulk-rt-toll')?.value ?? 0) || 0,
               roundtrip_discount_pct: parseFloat(row.querySelector('.bulk-rt-disc')?.value ?? 0) || 0,
+              additional_amount: addlRaw !== '' && addlRaw !== undefined ? parseFloat(addlRaw) : null,
+              additional_amount_label: addlLabel,
               sedan_fare: sedanRaw !== '' && sedanRaw !== undefined ? parseFloat(sedanRaw) : null,
               suv_fare: suvRaw !== '' && suvRaw !== undefined ? parseFloat(suvRaw) : null,
             });
@@ -12752,10 +13468,14 @@ window.printAdminInvoice = function () {
                 if (bulkRow) {
                   const tollEl = bulkRow.querySelector('.bulk-rt-toll');
                   const discEl = bulkRow.querySelector('.bulk-rt-disc');
+                  const addlEl = bulkRow.querySelector('.bulk-rt-additional');
+                  const addlLblEl = bulkRow.querySelector('.bulk-rt-additional-label');
                   const sedanEl = bulkRow.querySelector('.bulk-rt-sedan');
                   const suvEl = bulkRow.querySelector('.bulk-rt-suv');
                   if (tollEl) tollEl.value = r.base_toll ?? 0;
                   if (discEl) discEl.value = r.roundtrip_discount_pct ?? 0;
+                  if (addlEl) addlEl.value = r.additional_amount ?? '';
+                  if (addlLblEl) addlLblEl.value = r.additional_amount_label ?? '';
                   if (sedanEl) sedanEl.value = r.sedan_fare ?? '';
                   if (suvEl) suvEl.value = r.suv_fare ?? '';
                 }
@@ -12778,6 +13498,7 @@ window.printAdminInvoice = function () {
         const discFactor = Math.max(0, 1 - ((Number(route.roundtrip_discount_pct) || 0) / 100));
         const entries = Object.entries(FLEET_TYPES || {});
         if (entries.length === 0) return '<span style="color:#94a3b8;">No active car types</span>';
+        const routeAddl = Number(route.additional_amount || 0);
 
         const items = entries.map(([key, fleet]) => {
           const fixedCol = route[`${key}_fare`];
@@ -12786,12 +13507,16 @@ window.printAdminInvoice = function () {
             ? Number(fixedCol)
             : (customMap !== undefined && customMap !== null && Number(customMap) > 0
               ? Number(customMap)
-              : Math.round(Number(route.distance_km || 0) * Number(fleet.ratePerKm || 12.5) + Number(route.base_toll || 0)));
-          const fare = isRoundTrip ? Math.round((baseOneWay * 2) * discFactor) : Math.round(baseOneWay);
+              : Math.round(Number(fleet.baseFareMin || 0) + (Number(route.distance_km || 0) * Number(fleet.ratePerKm || 12.5)) + Number(route.base_toll || 0)));
+          const fare = (isRoundTrip ? Math.round((baseOneWay * 2) * discFactor) : Math.round(baseOneWay)) + Math.round(routeAddl);
           return `<span>${fleet.name}: <strong>₹${fare.toLocaleString('en-IN')}</strong></span>`;
         }).join('');
 
-        return `<div class="admin-route-fare-schedule" data-route-id="${route.id}" data-roundtrip="${isRoundTrip ? '1' : '0'}" style="font-size:11px; line-height:1.5; color:#334155; display:flex; flex-wrap:wrap; gap:4px 10px;">${items}</div>`;
+        const addlNote = routeAddl > 0
+          ? `<div style="width:100%; font-size:10.5px; color:#0369a1; font-weight:700;">+ ₹${Math.round(routeAddl).toLocaleString('en-IN')} (${escapeHtml(route.additional_amount_label || 'Route additional')})</div>`
+          : '';
+
+        return `<div class="admin-route-fare-schedule" data-route-id="${route.id}" data-roundtrip="${isRoundTrip ? '1' : '0'}" style="font-size:11px; line-height:1.5; color:#334155; display:flex; flex-wrap:wrap; gap:4px 10px;">${items}${addlNote}</div>`;
       };
 
       window.refreshAdminRouteFareDisplays = function () {

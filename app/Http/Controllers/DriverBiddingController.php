@@ -262,6 +262,7 @@ class DriverBiddingController extends Controller
         $validated = $request->validate([
             'collected_by_driver' => 'nullable|boolean',
             'collected_amount' => 'nullable|numeric|min:0',
+            'actual_distance_km' => 'nullable|integer|min:0|max:50000',
         ]);
 
         $booking = Booking::findOrFail($id);
@@ -276,6 +277,49 @@ class DriverBiddingController extends Controller
             $result = DB::transaction(function () use ($booking, $validated, $request) {
                 $locked = Booking::whereKey($booking->id)->lockForUpdate()->firstOrFail();
 
+                $completionAttrs = [];
+                $fareDelta = 0.0;
+
+                if ($request->filled('actual_distance_km') && $validated['actual_distance_km'] !== null) {
+                    $actualKm = max(0, (int) $validated['actual_distance_km']);
+                    $breakdown = is_array($locked->fare_breakdown) ? $locked->fare_breakdown : [];
+                    $bookedKm = (int) ($locked->booked_distance_km ?: ($breakdown['booked_distance_km'] ?? 0));
+                    $extraKmRate = (float) ($locked->extra_km_rate ?: ($breakdown['extra_km_rate'] ?? 0));
+
+                    if ($extraKmRate <= 0) {
+                        $fleetKey = $locked->cab_type ?: 'sedan';
+                        $btKey = $locked->trip_type ?: 'oneway';
+                        $extraKmRate = app(\App\Services\FareCalculatorService::class)
+                            ->extraKmRateForFleet($fleetKey, $btKey);
+                    }
+
+                    $oldExtraFare = (float) ($locked->extra_km_fare ?? 0);
+                    $extraKm = $bookedKm > 0 ? max(0, $actualKm - $bookedKm) : 0;
+                    $newExtraFare = $extraKm > 0 ? (float) round($extraKm * $extraKmRate) : 0.0;
+                    $fareDelta = round($newExtraFare - $oldExtraFare, 2);
+                    $newTotal = max(0.0, round((float) $locked->total_amount + $fareDelta, 2));
+
+                    $breakdown['actual_distance_km'] = $actualKm;
+                    $breakdown['extra_km'] = $extraKm;
+                    $breakdown['extra_km_rate'] = $extraKmRate;
+                    $breakdown['extra_km_fare'] = $newExtraFare;
+                    $breakdown['total_amount'] = $newTotal;
+
+                    $completionAttrs['actual_distance_km'] = $actualKm;
+                    $completionAttrs['extra_km'] = $extraKm;
+                    $completionAttrs['extra_km_rate'] = $extraKmRate;
+                    $completionAttrs['extra_km_fare'] = $newExtraFare;
+                    $completionAttrs['total_amount'] = $newTotal;
+                    $completionAttrs['fare_breakdown'] = $breakdown;
+
+                    if ($locked->driver_payout_amount !== null && $fareDelta != 0.0) {
+                        $completionAttrs['driver_payout_amount'] = max(
+                            0.0,
+                            round((float) $locked->driver_payout_amount + ($fareDelta * (1 - self::PLATFORM_FEE_RATE)), 2)
+                        );
+                    }
+                }
+
                 $collectDue = 0.0;
                 if ($locked->driver_collected_at === null) {
                     if ($locked->payment_mode === 'part_pay' && (float) $locked->balance_amount > 0) {
@@ -288,23 +332,29 @@ class DriverBiddingController extends Controller
                     }
                 }
 
+                if ($fareDelta != 0.0) {
+                    $collectDue = max(0.0, round($collectDue + $fareDelta, 2));
+                    if ((float) $locked->balance_amount > 0 || $fareDelta > 0) {
+                        $completionAttrs['balance_amount'] = max(0.0, round((float) $locked->balance_amount + $fareDelta, 2));
+                    }
+                }
+
                 if ($collectDue > 0 && $request->has('collected_by_driver') && ! $validated['collected_by_driver']) {
                     throw ValidationException::withMessages([
                         'collected_by_driver' => 'Please collect ₹'.number_format($collectDue, 2).' from the customer before completing this trip.',
                     ]);
                 }
 
-                $completionAttrs = [];
                 if ($collectDue > 0) {
                     $existingNote = trim((string) ($locked->payment_notes ?? ''));
                     $collectionNote = 'Collected ₹'.number_format($collectDue, 2).' by driver on trip completion';
-                    $completionAttrs = [
+                    $completionAttrs = array_merge($completionAttrs, [
                         'payment_collection_by' => 'driver',
                         'driver_collected_amount' => $collectDue,
                         'driver_collected_at' => now(),
                         'payment_status' => 'paid',
                         'payment_notes' => $existingNote !== '' ? "{$existingNote} | {$collectionNote}" : $collectionNote,
-                    ];
+                    ]);
                 }
 
                 // Rejects a second completion, which would pay the driver twice.

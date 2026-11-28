@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AirportHubAdminController;
 use App\Http\Controllers\Admin\BerthRouteAdminController;
 use App\Http\Controllers\Admin\BiddingAdminController;
 use App\Http\Controllers\Admin\BookingAdminController;
+use App\Http\Controllers\Admin\BookingTypeRateAdminController;
 use App\Http\Controllers\Admin\CabRouteAdminController;
 use App\Http\Controllers\Admin\CarTypeAdminController;
 use App\Http\Controllers\Admin\CouponAdminController;
@@ -261,10 +262,16 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::patch('/admin/users/{id}/role', [UserAdminController::class, 'updateRole'])->name('api.admin.users.updateRole');
     Route::delete('/admin/users/{id}', [UserAdminController::class, 'destroy'])->name('api.admin.users.destroy');
 
-    // Dynamic Form Builder
+    // Dynamic Form & Additional Price Fields Builder
     Route::get('/admin/dynamic-fields', [DynamicFormController::class, 'index'])->name('api.admin.fields.index');
     Route::post('/admin/dynamic-fields', [DynamicFormController::class, 'store'])->name('api.admin.fields.store');
+    Route::put('/admin/dynamic-fields/{id}', [DynamicFormController::class, 'update'])->name('api.admin.fields.update');
+    Route::post('/admin/dynamic-fields/{id}/toggle', [DynamicFormController::class, 'toggleStatus'])->name('api.admin.fields.toggle');
     Route::delete('/admin/dynamic-fields/{id}', [DynamicFormController::class, 'destroy'])->name('api.admin.fields.destroy');
+
+    // Per-Booking-Type Bulk Rates (One-Way, Round-Trip, Local, Airport Pickup, Airport Drop)
+    Route::get('/admin/booking-type-rates', [BookingTypeRateAdminController::class, 'index'])->name('api.admin.bookingTypeRates.index');
+    Route::post('/admin/booking-type-rates/bulk', [BookingTypeRateAdminController::class, 'bulkUpdate'])->name('api.admin.bookingTypeRates.bulk');
 
     // Workflow Stages
     Route::get('/admin/workflows', [WorkflowConfigController::class, 'index'])->name('api.admin.workflows.index');

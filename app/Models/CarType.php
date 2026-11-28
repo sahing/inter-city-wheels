@@ -19,6 +19,11 @@ class CarType extends Model
         'is_active' => 'boolean',
     ];
 
+    public function bookingTypeRates()
+    {
+        return $this->hasMany(BookingTypeCarRate::class, 'car_type_id');
+    }
+
     /**
      * Scope for active car types ordered by order_index.
      */
