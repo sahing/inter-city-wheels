@@ -5890,6 +5890,81 @@ td[data-booking-part].notif-part-highlight {
 
 /* ===== Admin Dashboard & Table Pagination ===== */
 .admin-page-hidden { display: none !important; }
+.table-col-filtered-out { display: none !important; }
+.table-th-sortable {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.table-th-sortable:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+.table-th-sortable.is-sorted-asc,
+.table-th-sortable.is-sorted-desc {
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+}
+.table-th-sort-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: flex-start;
+  width: 100%;
+}
+.table-sort-indicator {
+  font-size: 11px;
+  font-weight: 800;
+  opacity: 0.45;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.table-th-sortable.is-sorted-asc .table-sort-indicator,
+.table-th-sortable.is-sorted-desc .table-sort-indicator {
+  opacity: 1;
+  color: #1d4ed8;
+}
+.table-col-filter-row th {
+  padding: 5px 8px !important;
+  background: #f8fafc !important;
+  border-bottom: 1px solid #cbd5e1 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+.table-col-filter-input {
+  width: 100%;
+  min-width: 64px;
+  height: 27px;
+  padding: 2px 7px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 500;
+  box-sizing: border-box;
+}
+.table-col-filter-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(212, 155, 76, 0.15);
+}
+.table-col-filter-clear-btn {
+  padding: 3px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.table-col-filter-clear-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
 .admin-pagination-bar {
   display: flex;
   align-items: center;

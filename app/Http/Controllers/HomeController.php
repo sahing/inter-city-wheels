@@ -32,6 +32,7 @@ class HomeController extends Controller
         $workflowStages = WorkflowStage::where('is_active', true)->orderBy('order_index')->get();
         $coupons = Coupon::where('is_active', true)->get();
         $recentBookings = Booking::with('driver')->latest()->get();
+        $dispatchBookings = Booking::with('driver')->dispatchOrder()->get();
         $allDrivers = Driver::all();
         $allUsers = \App\Models\User::latest()->get();
         $currentUser = auth()->user();
@@ -156,6 +157,7 @@ class HomeController extends Controller
             'workflowStages',
             'coupons',
             'recentBookings',
+            'dispatchBookings',
             'currentUser',
             'customerBookings',
             'customerTravellers',

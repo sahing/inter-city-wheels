@@ -3499,7 +3499,10 @@
                                         <div class="admin-filter-item">
                                             <label>Status:</label>
                                             <select id="admin-booking-filter-status" onchange="handleBookingFilterChange()">
-                                                <option value="all">All Statuses</option>
+                                                <option value="all">All Statuses (Queue Order)</option>
+                                                <option value="active">Active Queue (Pending / In Progress)</option>
+                                                <option value="Requested">Requested</option>
+                                                <option value="Bidding">Bidding</option>
                                                 <option value="Confirmed">Confirmed</option>
                                                 <option value="Driver Assigned">Driver Assigned</option>
                                                 <option value="Started">Trip Started</option>
@@ -3515,7 +3518,20 @@
                                                 <option value="bus">Sleeper Berths</option>
                                             </select>
                                         </div>
-                                        <span class="admin-count-pill" id="admin-bookings-filter-count">{{ count($recentBookings) }} Bookings</span>
+                                        <div class="admin-filter-item">
+                                            <label for="admin-booking-sort-select">Arrange:</label>
+                                            <select id="admin-booking-sort-select" onchange="handleBookingSortChange(this.value)">
+                                                <option value="dispatch_default">Requested Oldest → Completed Last (Default)</option>
+                                                <option value="date_asc">Date Created (Oldest → Newest)</option>
+                                                <option value="date_desc">Date Created (Newest → Oldest)</option>
+                                                <option value="amount_asc">Fare (Low → High)</option>
+                                                <option value="amount_desc">Fare (High → Low)</option>
+                                                <option value="status_asc">Status (Pending → Completed)</option>
+                                                <option value="status_desc">Status (Completed → Requested)</option>
+                                            </select>
+                                        </div>
+                                        <button type="button" class="btn btn-xs btn-outline" onclick="resetAdminBookingsFilters()" title="Reset status, filters and default queue order">Reset</button>
+                                        <span class="admin-count-pill" id="admin-bookings-filter-count">{{ count($dispatchBookings ?? $recentBookings) }} Bookings</span>
                                     </div>
                                 </div>
 
@@ -3544,9 +3560,22 @@
                                             </tr>
                                         </thead>
                                         <tbody id="admin-bookings-table-tbody">
-                                            @forelse($recentBookings as $b)
-                                            <tr id="booking-row-{{ $b->id }}" data-id="{{ $b->id }}" data-ref="{{ $b->booking_reference }}" data-status="{{ $b->status }}" data-service="{{ $b->service_type }}" data-trip-type="{{ strtolower($b->trip_type ?? 'oneway') }}" data-search="{{ strtolower($b->booking_reference . ' ' . $b->customer_name . ' ' . $b->customer_phone . ' ' . $b->route_summary . ' ' . $b->pickup_location . ' ' . $b->drop_location . ' ' . ($b->cab_type ?? '')) }}">
-                                                <td>
+                                            @forelse(($dispatchBookings ?? $recentBookings) as $b)
+                                            @php
+                                                $bStatusSortRank = match($b->status) {
+                                                    'Requested' => 0,
+                                                    'Bidding' => 1,
+                                                    'Confirmed' => 2,
+                                                    'Driver Assigned' => 3,
+                                                    'Started' => 4,
+                                                    'Cancelled' => 5,
+                                                    'Completed' => 6,
+                                                    default => 7,
+                                                };
+                                                $bCreatedTs = $b->created_at ? $b->created_at->timestamp : (int) $b->id;
+                                            @endphp
+                                            <tr id="booking-row-{{ $b->id }}" data-id="{{ $b->id }}" data-ref="{{ $b->booking_reference }}" data-status="{{ $b->status }}" data-status-rank="{{ $bStatusSortRank }}" data-created-ts="{{ $bCreatedTs }}" data-amount="{{ (float) $b->total_amount }}" data-service="{{ $b->service_type }}" data-trip-type="{{ strtolower($b->trip_type ?? 'oneway') }}" data-search="{{ strtolower($b->booking_reference . ' ' . $b->customer_name . ' ' . $b->customer_phone . ' ' . $b->route_summary . ' ' . $b->pickup_location . ' ' . $b->drop_location . ' ' . ($b->cab_type ?? '')) }}">
+                                                <td data-sort-value="{{ $bCreatedTs }}">
                                                     <a href="javascript:void(0)" onclick="openViewBookingModal({{ $b->id }})" class="booking-ref-link" title="Click to inspect booking">
                                                         {{ $b->booking_reference }}
                                                     </a>
@@ -3581,7 +3610,7 @@
                                                         {{ $b->pickup_location }} → {{ $b->drop_location }}
                                                     </div>
                                                 </td>
-                                                <td>
+                                                <td data-sort-value="{{ (float) $b->total_amount }}">
                                                     <div class="cell-primary-text text-tabular" style="font-weight:800; color:#0f172a;">
                                                         ₹{{ number_format($b->total_amount) }}
                                                     </div>
@@ -3627,7 +3656,7 @@
                                                 <td>
                                                     <span class="admin-otp-pill">{{ $b->start_otp }}</span>
                                                 </td>
-                                                <td>
+                                                <td data-sort-value="{{ $bStatusSortRank }}">
                                                     <span class="admin-badge @if($b->status === 'Confirmed') badge-success @elseif($b->status === 'Driver Assigned') badge-gold @elseif($b->status === 'Started') badge-info @elseif($b->status === 'Completed') badge-primary @else badge-secondary @endif" id="booking-status-badge-{{ $b->id }}">
                                                         {{ $b->status }}
                                                     </span>

@@ -156,4 +156,25 @@ class Booking extends Model
 
         return hash_equals($expected, $given);
     }
+
+    /**
+     * Default dispatch ordering: oldest Requested bookings first, followed by
+     * active in-progress bookings (oldest to newest), then Cancelled, with
+     * Completed bookings placed last.
+     */
+    public function scopeDispatchOrder($query)
+    {
+        return $query->orderByRaw("
+            CASE status
+                WHEN 'Requested' THEN 0
+                WHEN 'Bidding' THEN 1
+                WHEN 'Confirmed' THEN 1
+                WHEN 'Driver Assigned' THEN 1
+                WHEN 'Started' THEN 1
+                WHEN 'Cancelled' THEN 2
+                WHEN 'Completed' THEN 3
+                ELSE 4
+            END ASC
+        ")->orderBy('created_at', 'asc')->orderBy('id', 'asc');
+    }
 }

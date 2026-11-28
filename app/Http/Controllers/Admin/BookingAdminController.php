@@ -31,10 +31,22 @@ class BookingAdminController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Booking::with('driver')->latest();
+        $query = Booking::with('driver');
 
         if ($request->filled('status') && $request->status !== 'all') {
-            $query->where('status', $request->status);
+            if ($request->status === 'active') {
+                $query->whereNotIn('status', ['Completed', 'Cancelled']);
+            } else {
+                $query->where('status', $request->status);
+            }
+        }
+
+        if ($request->filled('service_type') && $request->service_type !== 'all') {
+            $query->where('service_type', $request->service_type);
+        }
+
+        if ($request->filled('trip_type') && $request->trip_type !== 'all') {
+            $query->where('trip_type', $request->trip_type);
         }
 
         if ($request->filled('search')) {
@@ -43,9 +55,37 @@ class BookingAdminController extends Controller
                 $q->where('booking_reference', 'like', "%{$s}%")
                     ->orWhere('customer_name', 'like', "%{$s}%")
                     ->orWhere('customer_phone', 'like', "%{$s}%")
-                    ->orWhere('route_summary', 'like', "%{$s}%");
+                    ->orWhere('route_summary', 'like', "%{$s}%")
+                    ->orWhere('pickup_location', 'like', "%{$s}%")
+                    ->orWhere('drop_location', 'like', "%{$s}%");
             });
         }
+
+        $sortBy = strtolower(trim((string) $request->query('sort_by', 'dispatch_default')));
+        $sortDir = strtolower(trim((string) $request->query('sort_dir', 'asc'))) === 'desc' ? 'desc' : 'asc';
+
+        match ($sortBy) {
+            'oldest', 'date_asc', 'created_asc' => $query->orderBy('created_at', 'asc')->orderBy('id', 'asc'),
+            'newest', 'date_desc', 'created_desc' => $query->orderBy('created_at', 'desc')->orderBy('id', 'desc'),
+            'amount', 'fare', 'total_amount' => $query->orderBy('total_amount', $sortDir)->orderBy('id', 'asc'),
+            'amount_asc' => $query->orderBy('total_amount', 'asc')->orderBy('id', 'asc'),
+            'amount_desc' => $query->orderBy('total_amount', 'desc')->orderBy('id', 'desc'),
+            'customer' => $query->orderBy('customer_name', $sortDir)->orderBy('id', 'asc'),
+            'reference' => $query->orderBy('booking_reference', $sortDir)->orderBy('id', 'asc'),
+            'status' => $query->orderByRaw("
+                CASE status
+                    WHEN 'Requested' THEN 0
+                    WHEN 'Bidding' THEN 1
+                    WHEN 'Confirmed' THEN 2
+                    WHEN 'Driver Assigned' THEN 3
+                    WHEN 'Started' THEN 4
+                    WHEN 'Cancelled' THEN 5
+                    WHEN 'Completed' THEN 6
+                    ELSE 7
+                END ".($sortDir === 'desc' ? 'DESC' : 'ASC')
+            )->orderBy('created_at', 'asc')->orderBy('id', 'asc'),
+            default => $query->dispatchOrder(),
+        };
 
         return response()->json([
             'success' => true,
