@@ -6066,3 +6066,274 @@ td[data-booking-part].notif-part-highlight {
     margin-bottom: 3px;
   }
 }
+
+/* ======================================================== */
+/* ADMIN DASHBOARD — DRIVER ROSTER                          */
+/* Desktop keeps the data table; < 640px becomes a stacked   */
+/* card so nothing wraps, clips or scrolls sideways.         */
+/* ======================================================== */
+
+/* --- Desktop table (values mirror the previous inline styles) --- */
+.driver-roster-table .drv-roster-id {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.driver-roster-table .drv-roster-avatar {
+  font-size: 18px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.driver-roster-table .drv-roster-idtext { min-width: 0; }
+.driver-roster-table .drv-roster-name {
+  font-weight: 700;
+  font-size: 12.5px;
+}
+.driver-roster-table .drv-roster-phone {
+  display: block;
+  font-size: 10.5px;
+  color: #64748b;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.driver-roster-table .drv-roster-phone:hover {
+  color: #0284c7;
+  text-decoration: underline;
+}
+.driver-roster-table .drv-roster-vehicle {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.driver-roster-table .drv-roster-model {
+  font-size: 12px;
+  font-weight: 600;
+}
+.driver-roster-table .drv-plate-pill {
+  font-size: 10px;
+  color: #64748b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+}
+.driver-roster-table .drv-roster-wallet {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.driver-roster-table .drv-roster-wallet.is-positive { color: #16a34a; }
+.driver-roster-table .drv-roster-wallet.is-negative { color: #dc2626; }
+
+/* Keep all five columns inside the card on desktop/large tablets: the default
+   14px side padding pushed the table ~25px past its card, scrolling the Status
+   column off the right edge. */
+@media (min-width: 640px) {
+  .driver-roster-table th,
+  .driver-roster-table td {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .driver-roster-table th:first-child,
+  .driver-roster-table td:first-child { padding-left: 12px; }
+  .driver-roster-table th:last-child,
+  .driver-roster-table td:last-child { padding-right: 12px; }
+}
+
+/* Header: let the title/subtitle shrink instead of clipping, at any width. */
+.card-fleet-roster .card-header {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.card-fleet-roster .card-header > div { min-width: 0; }
+.card-fleet-roster .card-title > .material-symbols-outlined { flex: 0 0 auto; }
+.card-fleet-roster .card-title > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.card-fleet-roster .card-subtitle { overflow-wrap: anywhere; }
+
+/* A plain `1fr` track is minmax(auto, 1fr), so a wide data table inside a card
+   inflates the track past the container and the card (plus its header) gets
+   clipped on the right edge. Pinning the item's min-width lets the track shrink
+   so the table wrapper scrolls instead of pushing the card out of the viewport. */
+.admin-card-grid-split > .card { min-width: 0; }
+
+@media (max-width: 639.98px) {
+  .admin-card-grid-split { grid-template-columns: minmax(0, 1fr); }
+
+  /* --- Card header: title block on its own row, action right-aligned below --- */
+  .card-fleet-roster .card-header {
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .card-fleet-roster .card-header > div { flex: 1 1 100%; }
+  .card-fleet-roster .card-header > .btn {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+  .card-fleet-roster .card-title { font-size: 15px; line-height: 1.3; }
+  .card-fleet-roster .card-subtitle { font-size: 11.5px; line-height: 1.4; }
+
+  /* --- Table -> stacked cards --- */
+  .driver-roster-table thead { display: none; }
+  .driver-roster-table,
+  .driver-roster-table tbody,
+  .driver-roster-table tr,
+  .driver-roster-table td {
+    display: block;
+  }
+  .driver-roster-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 12.5px;
+  }
+  .driver-roster-table tbody > tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    grid-template-areas:
+      "id rating wallet status"
+      "vehicle vehicle vehicle vehicle";
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 10px;
+    margin: 0 0 10px;
+    padding: 12px 14px;
+    background: #ffffff;
+    border: 1px solid #e6ebf2;
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s ease, border-color 0.15s ease,
+                box-shadow 0.15s ease, transform 0.15s ease;
+  }
+  .driver-roster-table tbody > tr:last-child { margin-bottom: 0; }
+
+  /* Full-row hover + tap feedback */
+  .driver-roster-table tbody > tr:hover,
+  .driver-roster-table tbody > tr:focus-within {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.10);
+  }
+  .driver-roster-table tbody > tr:active {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+    transform: scale(0.994);
+  }
+
+  .driver-roster-table td {
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    vertical-align: middle;
+    text-align: left;
+  }
+  .driver-roster-table td.drv-roster-cell-id { grid-area: id; min-width: 0; }
+  .driver-roster-table td.drv-roster-cell-vehicle { grid-area: vehicle; min-width: 0; }
+  .driver-roster-table td.drv-roster-cell-rating { grid-area: rating; justify-self: end; }
+  .driver-roster-table td.drv-roster-cell-wallet { grid-area: wallet; justify-self: end; }
+  .driver-roster-table td.drv-roster-cell-status {
+    grid-area: status;
+    justify-self: end;
+    align-self: start;
+  }
+
+  /* Top-left: avatar + name + tappable phone */
+  .driver-roster-table .drv-roster-id { gap: 9px; min-width: 0; }
+  .driver-roster-table .drv-roster-avatar {
+    width: 34px;
+    height: 34px;
+    font-size: 20px;
+  }
+  .driver-roster-table .drv-roster-name {
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.25;
+    color: #0f172a;
+    overflow-wrap: anywhere;
+  }
+  .driver-roster-table .drv-roster-phone {
+    margin-top: 1px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: #475569;
+    /* never break a phone number across lines */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Top-right: rating + wallet */
+  .driver-roster-table .rating-pill {
+    padding: 2px 7px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .driver-roster-table .drv-roster-wallet { font-size: 13px; }
+
+  /* Bottom: model + plate pill, one line */
+  .driver-roster-table .drv-roster-vehicle {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .driver-roster-table .drv-roster-model {
+    min-width: 0;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #475569;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .driver-roster-table .drv-plate-pill {
+    flex: 0 0 auto;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.6;
+    letter-spacing: 0.03em;
+    color: #0f172a;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  /* Presence: keep the status wording for assistive tech, but render it as a
+     compact dot so the vehicle line keeps its full width for model + colour. */
+  .driver-roster-table .drv-roster-cell-status .admin-badge {
+    width: 10px;
+    height: 10px;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 50%;
+    font-size: 0;
+    line-height: 0;
+    text-indent: -9999px;
+    background: #16a34a;
+    box-shadow: 0 0 0 3px #dcfce7;
+    vertical-align: middle;
+  }
+
+  /* Empty state stays a single flat panel, not a card shell */
+  .driver-roster-table tbody > tr[data-empty-row] {
+    display: block;
+    padding: 0;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    box-shadow: none;
+  }
+  .driver-roster-table tbody > tr[data-empty-row] td {
+    padding: 22px 14px !important;
+    color: #64748b;
+    text-align: center;
+  }
+}

@@ -3159,7 +3159,7 @@
                             <!-- Split Grid: Live Bidding & Recent Bookings -->
                             <div class="admin-card-grid-split">
                                 <!-- Active Drivers & Fleet -->
-                                <div class="card">
+                                <div class="card card-fleet-roster">
                                     <div class="card-header">
                                         <div>
                                             <h3 class="card-title">
@@ -3171,39 +3171,47 @@
                                         <button type="button" class="btn btn-sm btn-outline" onclick="switchAdminSection('fleet')">View All</button>
                                     </div>
                                     <div class="admin-table-responsive">
-                                        <table class="admin-data-table">
+                                        <table class="admin-data-table driver-roster-table">
                                             <thead>
                                                 <tr>
-                                                    <th>Driver</th>
-                                                    <th>Vehicle</th>
-                                                    <th>Rating</th>
-                                                    <th>Wallet</th>
-                                                    <th>Status</th>
+                                                    <th scope="col">Driver</th>
+                                                    <th scope="col">Vehicle</th>
+                                                    <th scope="col">Rating</th>
+                                                    <th scope="col">Wallet</th>
+                                                    <th scope="col">Status</th>
                                                 </tr>
                                             </thead>
                                             <tbody id="admin-dashboard-fleet-tbody">
                                                 @forelse($drivers as $driver)
+                                                @php
+                                                    $drvWallet = (float) ($driver->wallet_balance ?? 0);
+                                                    $drvTel = preg_replace('/[^0-9+]/', '', (string) ($driver->phone ?? ''));
+                                                @endphp
                                                 <tr>
-                                                    <td>
-                                                        <div style="display:flex; align-items:center; gap:8px;">
-                                                            <span style="font-size:18px; width:28px; height:28px; border-radius:50%; overflow:hidden; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">@include('partials.avatar', ['avatar' => $driver->avatar ?? null, 'fallback' => '👨🏽‍✈️', 'alt' => $driver->name])</span>
-                                                            <div>
-                                                                <div style="font-weight:700; font-size:12.5px;">{{ $driver->name }}</div>
-                                                                <div style="font-size:10.5px; color:#64748b;">{{ $driver->phone }}</div>
+                                                    <td class="drv-roster-cell-id">
+                                                        <div class="drv-roster-id">
+                                                            <span class="drv-roster-avatar">@include('partials.avatar', ['avatar' => $driver->avatar ?? null, 'fallback' => '👨🏽‍✈️', 'alt' => $driver->name])</span>
+                                                            <div class="drv-roster-idtext">
+                                                                <div class="drv-roster-name">{{ $driver->name }}</div>
+                                                                @if(! empty($driver->phone))
+                                                                    <a class="drv-roster-phone" href="tel:{{ $drvTel }}" title="Call {{ $driver->name }}">{{ $driver->phone }}</a>
+                                                                @endif
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td>
-                                                        <div style="font-size:12px; font-weight:600;">{{ $driver->vehicle_model }}</div>
-                                                        <div style="font-size:10px; color:#64748b; font-family:monospace;">{{ $driver->vehicle_plate }}</div>
+                                                    <td class="drv-roster-cell-vehicle">
+                                                        <div class="drv-roster-vehicle">
+                                                            <span class="drv-roster-model">{{ $driver->vehicle_model }}</span>
+                                                            <span class="drv-plate-pill">{{ $driver->vehicle_plate }}</span>
+                                                        </div>
                                                     </td>
-                                                    <td>
+                                                    <td class="drv-roster-cell-rating">
                                                         <span class="rating-pill">⭐ {{ number_format($driver->rating, 2) }}</span>
                                                     </td>
-                                                    <td style="font-weight:700; font-variant-numeric:tabular-nums; color:#16a34a;">
-                                                        ₹{{ number_format($driver->wallet_balance) }}
+                                                    <td class="drv-roster-cell-wallet">
+                                                        <span class="drv-roster-wallet {{ $drvWallet < 0 ? 'is-negative' : 'is-positive' }}">₹{{ number_format($drvWallet) }}</span>
                                                     </td>
-                                                    <td>
+                                                    <td class="drv-roster-cell-status">
                                                         <span class="admin-badge badge-success">Online</span>
                                                     </td>
                                                 </tr>
