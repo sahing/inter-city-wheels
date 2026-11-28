@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\DistanceUnresolvable;
 use App\Models\AirportHub;
+use App\Models\Booking;
 use App\Models\BookingTypeCarRate;
 use App\Models\CarType;
 use App\Models\Coupon;
@@ -396,10 +397,29 @@ class FareCalculatorService
         );
 
         $subtotal = $baseFare + $tollFare + $extraKmFare + $routeAdditionalFare + $addonFare + $customPriceFieldsFare;
-        $coupon = $this->resolveCoupon($options['coupon_code'] ?? null, $subtotal);
+
+        $couponContext = [
+            'trip_type' => $trip['trip_type'] ?? 'oneway',
+            'booking_type' => $bookingType,
+            'car_type' => $fleet,
+            'route_fare_id' => $route?->id,
+            'user_id' => $options['user_id'] ?? (auth()->check() ? auth()->id() : null),
+            'driver_id' => $options['driver_id'] ?? null,
+            'allow_auto_apply' => ! ($options['disable_auto_coupon'] ?? false),
+        ];
+
+        $coupon = $this->resolveCoupon($options['coupon_code'] ?? null, $subtotal, $couponContext);
+        $availablePromotions = $this->availablePromotions(
+            $subtotal,
+            $couponContext,
+            ! empty($coupon['applied']) ? ($coupon['coupon_id'] ?? null) : null
+        );
 
         if ($coupon['applied']) {
-            $lineItems[] = ['label' => 'Coupon '.$coupon['code'], 'amount' => -$coupon['discount']];
+            $promoLabel = ! empty($coupon['auto_applied'])
+                ? 'Auto-promo '.$coupon['code']
+                : 'Coupon '.$coupon['code'];
+            $lineItems[] = ['label' => $promoLabel, 'amount' => -$coupon['discount']];
         }
 
         $total = max(0, round($subtotal - $coupon['discount']));
@@ -431,6 +451,7 @@ class FareCalculatorService
             'discount_fare' => (float) round($coupon['discount']),
             'total_amount' => (float) $total,
             'coupon' => $coupon,
+            'available_promotions' => $availablePromotions,
             'line_items' => $lineItems,
             'distance_source' => $trip['source'] ?? 'unknown',
             'trip_type' => $trip['trip_type'],
@@ -487,7 +508,21 @@ class FareCalculatorService
         [$addonFare, $appliedAddons] = $this->computeAddons($options, $lineItems);
 
         $subtotal = $baseFare + $addonFare;
-        $coupon = $this->resolveCoupon($options['coupon_code'] ?? null, $subtotal);
+        $berthContext = [
+            'trip_type' => $options['trip_type'] ?? 'oneway',
+            'booking_type' => 'bus',
+            'car_type' => 'bus',
+            'route_fare_id' => null,
+            'user_id' => $options['user_id'] ?? (auth()->check() ? auth()->id() : null),
+            'driver_id' => $options['driver_id'] ?? null,
+            'allow_auto_apply' => ! ($options['disable_auto_coupon'] ?? false),
+        ];
+        $coupon = $this->resolveCoupon($options['coupon_code'] ?? null, $subtotal, $berthContext);
+        $availablePromotions = $this->availablePromotions(
+            $subtotal,
+            $berthContext,
+            ! empty($coupon['applied']) ? ($coupon['coupon_id'] ?? null) : null
+        );
         $total = max(0, round($subtotal - $coupon['discount']));
 
         return [
@@ -498,23 +533,27 @@ class FareCalculatorService
             'discount_fare' => (float) round($coupon['discount']),
             'total_amount' => (float) $total,
             'coupon' => $coupon,
+            'available_promotions' => $availablePromotions,
         ];
     }
 
     /**
-     * Validate a coupon against a subtotal without writing anything.
+     * Validate a coupon (or auto-apply the best eligible promotion when no code
+     * is supplied) against subtotal and full trip/user/driver conditions.
      *
-     * P0-4: expiry, usage ceiling and minimum spend are all enforced here, so
-     * the quote and the charge cannot disagree.
-     *
-     * @return array{code: ?string, applied: bool, discount: float, message: string, coupon_id: ?int}
+     * @param  array<string, mixed>  $context
+     * @return array{code: ?string, applied: bool, auto_applied: bool, title: ?string, discount: float, message: string, coupon_id: ?int}
      */
-    public function resolveCoupon(?string $rawCode, float $subtotal): array
+    public function resolveCoupon(?string $rawCode, float $subtotal, array $context = []): array
     {
         $code = strtoupper(trim((string) $rawCode));
 
         if ($code === '') {
-            return $this->couponResult(null, false, 0.0, '', null);
+            if (! ($context['allow_auto_apply'] ?? true)) {
+                return $this->couponResult(null, false, 0.0, '', null);
+            }
+
+            return $this->resolveBestAutoApplyCoupon($subtotal, $context);
         }
 
         $coupon = Coupon::where('code', $code)->where('is_active', true)->first();
@@ -523,38 +562,288 @@ class FareCalculatorService
             return $this->couponResult($code, false, 0.0, 'Coupon code is invalid or inactive.', null);
         }
 
-        if ($coupon->expires_at !== null && $coupon->expires_at->isPast()) {
-            return $this->couponResult(
-                $code,
-                false,
-                0.0,
-                'Coupon expired on '.$coupon->expires_at->format('d M Y').'.',
-                $coupon->id
-            );
+        $eval = $this->evaluateCouponEligibility($coupon, $subtotal, $context);
+
+        if (! $eval['ok']) {
+            return $this->couponResult($code, false, 0.0, $eval['reason'], $coupon->id, false, $coupon->title);
+        }
+
+        $discount = $eval['discount'];
+
+        return $this->couponResult(
+            $code,
+            $discount > 0,
+            $discount,
+            'Coupon applied.',
+            $coupon->id,
+            false,
+            $coupon->title
+        );
+    }
+
+    /**
+     * Find eligible auto-apply promotions for the given subtotal & context and
+     * return the one yielding the largest discount.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array{code: ?string, applied: bool, auto_applied: bool, title: ?string, discount: float, message: string, coupon_id: ?int}
+     */
+    public function resolveBestAutoApplyCoupon(float $subtotal, array $context = []): array
+    {
+        if (! Schema::hasTable('coupons') || ! Schema::hasColumn('coupons', 'auto_apply')) {
+            return $this->couponResult(null, false, 0.0, '', null);
+        }
+
+        $candidates = Coupon::where('is_active', true)
+            ->where('auto_apply', true)
+            ->orderByDesc('id')
+            ->get();
+
+        $bestCoupon = null;
+        $bestDiscount = 0.0;
+
+        foreach ($candidates as $coupon) {
+            if (! empty($context['require_driver_target']) && empty($coupon->target_driver_ids)) {
+                continue;
+            }
+            $eval = $this->evaluateCouponEligibility($coupon, $subtotal, $context);
+            if ($eval['ok'] && $eval['discount'] > $bestDiscount) {
+                $bestDiscount = $eval['discount'];
+                $bestCoupon = $coupon;
+            }
+        }
+
+        if (! $bestCoupon || $bestDiscount <= 0) {
+            return $this->couponResult(null, false, 0.0, '', null);
+        }
+
+        $title = trim((string) ($bestCoupon->title ?? '')) ?: $bestCoupon->code;
+
+        return $this->couponResult(
+            $bestCoupon->code,
+            true,
+            $bestDiscount,
+            "Auto-applied offer {$bestCoupon->code} ({$title}).",
+            $bestCoupon->id,
+            true,
+            $title
+        );
+    }
+
+    /**
+     * Return checkout-visible promotions matching the current trip/user/driver
+     * context (excluding coupons disqualified by date, usage, route, user, or driver).
+     *
+     * @param  array<string, mixed>  $context
+     * @return array<int, array<string, mixed>>
+     */
+    public function availablePromotions(float $subtotal, array $context = [], ?int $appliedCouponId = null): array
+    {
+        if (! Schema::hasTable('coupons')) {
+            return [];
+        }
+
+        $coupons = Coupon::where('is_active', true)->orderByDesc('id')->get();
+        $offers = [];
+
+        foreach ($coupons as $coupon) {
+            $showOnCheckout = Schema::hasColumn('coupons', 'show_on_checkout')
+                ? (bool) ($coupon->show_on_checkout ?? true)
+                : true;
+
+            if (! $showOnCheckout && $appliedCouponId !== (int) $coupon->id) {
+                continue;
+            }
+
+            // Evaluate ignoring min_spend first so near-eligible promos can still be shown with min spend note.
+            $staticEval = $this->evaluateCouponEligibility($coupon, $subtotal, $context, ignoreMinSpend: true);
+            if (! $staticEval['ok']) {
+                continue;
+            }
+
+            $minSpend = (float) ($coupon->min_spend ?? 0);
+            $eligibleNow = $subtotal >= $minSpend;
+            $estimatedDiscount = $this->computeCouponDiscountAmount($coupon, $subtotal);
+
+            $offers[] = [
+                'id' => $coupon->id,
+                'code' => $coupon->code,
+                'title' => trim((string) ($coupon->title ?? '')) ?: $coupon->code,
+                'description' => $coupon->description ?? null,
+                'type' => $coupon->type,
+                'value' => (float) $coupon->value,
+                'max_discount' => $coupon->max_discount !== null ? (float) $coupon->max_discount : null,
+                'min_spend' => $minSpend,
+                'estimated_discount' => $estimatedDiscount,
+                'eligible_now' => $eligibleNow,
+                'auto_apply' => (bool) ($coupon->auto_apply ?? false),
+                'applied' => $appliedCouponId === (int) $coupon->id,
+                'remaining_uses' => $coupon->remainingUses(),
+                'expires_at' => $coupon->expires_at?->toIso8601String(),
+                'condition_badges' => method_exists($coupon, 'conditionSummaryList') ? $coupon->conditionSummaryList() : [],
+            ];
+        }
+
+        return $offers;
+    }
+
+    /**
+     * Evaluate all date, usage, per-user, booking type, car type, route, user,
+     * driver, and minimum spend conditions for one coupon.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array{ok: bool, reason: string, discount: float}
+     */
+    private function evaluateCouponEligibility(
+        Coupon $coupon,
+        float $subtotal,
+        array $context = [],
+        bool $ignoreMinSpend = false
+    ): array {
+        if (! $coupon->is_active) {
+            return ['ok' => false, 'reason' => 'Coupon code is invalid or inactive.', 'discount' => 0.0];
+        }
+
+        $now = now();
+
+        if ($coupon->starts_at !== null && $now->lt($coupon->starts_at)) {
+            return [
+                'ok' => false,
+                'reason' => 'Coupon will be active from '.$coupon->starts_at->format('d M Y').'.',
+                'discount' => 0.0,
+            ];
+        }
+
+        if ($coupon->expires_at !== null && $now->gt($coupon->expires_at)) {
+            return [
+                'ok' => false,
+                'reason' => 'Coupon expired on '.$coupon->expires_at->format('d M Y').'.',
+                'discount' => 0.0,
+            ];
         }
 
         if ($coupon->usage_limit !== null && (int) $coupon->used_count >= (int) $coupon->usage_limit) {
-            return $this->couponResult(
-                $code,
-                false,
-                0.0,
-                'Coupon has reached its usage limit.',
-                $coupon->id
-            );
+            return [
+                'ok' => false,
+                'reason' => 'Coupon has reached its usage limit.',
+                'discount' => 0.0,
+            ];
+        }
+
+        $userId = isset($context['user_id']) && $context['user_id'] !== null ? (int) $context['user_id'] : null;
+
+        if ($coupon->per_user_limit !== null) {
+            if ($userId === null) {
+                return [
+                    'ok' => false,
+                    'reason' => 'Sign in to redeem this user-limited coupon.',
+                    'discount' => 0.0,
+                ];
+            }
+
+            if (Schema::hasColumn('bookings', 'coupon_id')) {
+                $userUses = Booking::where('coupon_id', $coupon->id)
+                    ->where('customer_user_id', $userId)
+                    ->where('status', '!=', 'Cancelled')
+                    ->count();
+
+                if ($userUses >= (int) $coupon->per_user_limit) {
+                    return [
+                        'ok' => false,
+                        'reason' => 'You have reached the maximum usage limit for this coupon.',
+                        'discount' => 0.0,
+                    ];
+                }
+            }
+        }
+
+        $allowedBookingTypes = array_values(array_filter(array_map(
+            fn ($v) => strtolower(trim((string) $v)),
+            (array) ($coupon->booking_types ?? [])
+        )));
+        if ($allowedBookingTypes !== [] && ! in_array('all', $allowedBookingTypes, true)) {
+            $bt = strtolower(trim((string) ($context['booking_type'] ?? 'oneway')));
+            $tt = strtolower(trim((string) ($context['trip_type'] ?? $bt)));
+            $matchesBt = in_array($bt, $allowedBookingTypes, true)
+                || in_array($tt, $allowedBookingTypes, true)
+                || ($bt === 'airport' && (in_array('airport_pickup', $allowedBookingTypes, true) || in_array('airport_drop', $allowedBookingTypes, true)))
+                || (in_array($bt, ['airport_pickup', 'airport_drop'], true) && in_array('airport', $allowedBookingTypes, true));
+
+            if (! $matchesBt) {
+                return [
+                    'ok' => false,
+                    'reason' => 'Coupon is not valid for this booking type.',
+                    'discount' => 0.0,
+                ];
+            }
+        }
+
+        $allowedCarTypes = array_values(array_filter(array_map(
+            fn ($v) => strtolower(trim((string) $v)),
+            (array) ($coupon->car_types ?? [])
+        )));
+        if ($allowedCarTypes !== [] && ! in_array('all', $allowedCarTypes, true)) {
+            $car = strtolower(trim((string) ($context['car_type'] ?? '')));
+            if ($car === '' || ! in_array($car, $allowedCarTypes, true)) {
+                return [
+                    'ok' => false,
+                    'reason' => 'Coupon is not valid for the selected car type.',
+                    'discount' => 0.0,
+                ];
+            }
+        }
+
+        $allowedRoutes = array_values(array_filter(array_map('intval', (array) ($coupon->route_fare_ids ?? []))));
+        if ($allowedRoutes !== []) {
+            $routeId = isset($context['route_fare_id']) ? (int) $context['route_fare_id'] : 0;
+            if ($routeId <= 0 || ! in_array($routeId, $allowedRoutes, true)) {
+                return [
+                    'ok' => false,
+                    'reason' => 'Coupon is not valid for this route.',
+                    'discount' => 0.0,
+                ];
+            }
+        }
+
+        $allowedUsers = array_values(array_filter(array_map('intval', (array) ($coupon->target_user_ids ?? []))));
+        if ($allowedUsers !== []) {
+            if ($userId === null || ! in_array($userId, $allowedUsers, true)) {
+                return [
+                    'ok' => false,
+                    'reason' => 'Coupon is only valid for designated customer accounts.',
+                    'discount' => 0.0,
+                ];
+            }
+        }
+
+        $allowedDrivers = array_values(array_filter(array_map('intval', (array) ($coupon->target_driver_ids ?? []))));
+        if ($allowedDrivers !== []) {
+            $driverId = isset($context['driver_id']) && $context['driver_id'] !== null ? (int) $context['driver_id'] : 0;
+            if ($driverId <= 0 || ! in_array($driverId, $allowedDrivers, true)) {
+                return [
+                    'ok' => false,
+                    'reason' => 'Coupon is restricted to designated driver trips.',
+                    'discount' => 0.0,
+                ];
+            }
         }
 
         $minSpend = (float) ($coupon->min_spend ?? 0);
-
-        if ($subtotal < $minSpend) {
-            return $this->couponResult(
-                $code,
-                false,
-                0.0,
-                'Coupon needs a minimum spend of ₹'.number_format($minSpend, 0).'.',
-                $coupon->id
-            );
+        if (! $ignoreMinSpend && $subtotal < $minSpend) {
+            return [
+                'ok' => false,
+                'reason' => 'Coupon needs a minimum spend of ₹'.number_format($minSpend, 0).'.',
+                'discount' => 0.0,
+            ];
         }
 
+        $discount = $this->computeCouponDiscountAmount($coupon, $subtotal);
+
+        return ['ok' => true, 'reason' => 'Coupon applied.', 'discount' => $discount];
+    }
+
+    private function computeCouponDiscountAmount(Coupon $coupon, float $subtotal): float
+    {
         if ($coupon->type === 'percentage') {
             $discount = $subtotal * ((float) $coupon->value / 100);
             if ($coupon->max_discount !== null) {
@@ -564,9 +853,7 @@ class FareCalculatorService
             $discount = (float) $coupon->value;
         }
 
-        $discount = round(max(0.0, min($discount, $subtotal)), 2);
-
-        return $this->couponResult($code, $discount > 0, $discount, 'Coupon applied.', $coupon->id);
+        return round(max(0.0, min($discount, $subtotal)), 2);
     }
 
     /**
@@ -1239,13 +1526,22 @@ class FareCalculatorService
     }
 
     /**
-     * @return array{code: ?string, applied: bool, discount: float, message: string, coupon_id: ?int}
+     * @return array{code: ?string, applied: bool, auto_applied: bool, title: ?string, discount: float, message: string, coupon_id: ?int}
      */
-    private function couponResult(?string $code, bool $applied, float $discount, string $message, ?int $couponId): array
-    {
+    private function couponResult(
+        ?string $code,
+        bool $applied,
+        float $discount,
+        string $message,
+        ?int $couponId,
+        bool $autoApplied = false,
+        ?string $title = null
+    ): array {
         return [
             'code' => $code,
             'applied' => $applied,
+            'auto_applied' => $autoApplied,
+            'title' => $title,
             'discount' => (float) $discount,
             'message' => $message,
             'coupon_id' => $couponId,

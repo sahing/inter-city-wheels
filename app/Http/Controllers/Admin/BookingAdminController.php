@@ -11,6 +11,7 @@ use App\Models\PlatformSetting;
 use App\Services\BiddingService;
 use App\Services\BookingReferenceGenerator;
 use App\Services\BookingWorkflow;
+use App\Services\FareCalculatorService;
 use App\Services\NotificationService;
 use App\Support\IndianPhone;
 use Illuminate\Http\Request;
@@ -441,6 +442,55 @@ class BookingAdminController extends Controller
         }
 
         $this->bidding->syncWithDriverAllotment($booking, $driverId);
+
+        // Apply any active driver-specific auto-apply coupon when no discount has been applied yet.
+        if ($driverId !== null && (float) $booking->discount_fare <= 0 && $booking->coupon_id === null) {
+            /** @var FareCalculatorService $fares */
+            $fares = app(FareCalculatorService::class);
+            $subtotal = (float) $booking->base_fare
+                + (float) $booking->toll_fare
+                + (float) ($booking->extra_km_fare ?? 0)
+                + (float) ($booking->route_additional_fare ?? 0)
+                + (float) $booking->addon_fare
+                + (float) ($booking->custom_price_fields_fare ?? 0);
+
+            $routeId = null;
+            if (str_contains((string) $booking->route_summary, '→')) {
+                [$fCity, $tCity] = array_map('trim', explode('→', (string) $booking->route_summary, 2));
+                $routeId = $fares->resolveRoute($fCity, $tCity)?->id;
+            }
+
+            $btKey = (string) ($booking->trip_type ?: 'oneway');
+            $driverAuto = $fares->resolveBestAutoApplyCoupon($subtotal, [
+                'trip_type' => $btKey,
+                'booking_type' => $btKey,
+                'car_type' => strtolower((string) ($booking->cab_type ?: 'sedan')),
+                'route_fare_id' => $routeId,
+                'user_id' => $booking->customer_user_id,
+                'driver_id' => $driverId,
+                'require_driver_target' => true,
+            ]);
+
+            if (! empty($driverAuto['applied']) && (float) $driverAuto['discount'] > 0) {
+                DB::transaction(function () use ($booking, $driverAuto, $fares, $subtotal) {
+                    $locked = Booking::whereKey($booking->id)->lockForUpdate()->firstOrFail();
+                    $discount = (float) $driverAuto['discount'];
+                    $newTotal = max(0.0, round($subtotal - $discount));
+                    $attrs = [
+                        'discount_fare' => $discount,
+                        'coupon_code' => $driverAuto['code'],
+                        'coupon_id' => $driverAuto['coupon_id'],
+                        'total_amount' => $newTotal,
+                    ];
+                    if ((float) $locked->balance_amount > 0 || $locked->payment_collection_by === 'driver') {
+                        $attrs['balance_amount'] = max(0.0, round($newTotal - (float) $locked->advance_amount, 2));
+                    }
+                    $locked->update($attrs);
+                    $fares->redeemCoupon($driverAuto);
+                });
+                $booking->refresh();
+            }
+        }
 
         $booking->load('driver');
         $this->notifications->driverAllotted($booking, $booking->driver);

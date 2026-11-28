@@ -911,11 +911,13 @@
                                 <span id="fare-discount" class="text-tabular">-₹0</span>
                             </div>
 
-                            <!-- Coupon Code Input -->
+                            <!-- Coupon Code Input & Conditional Promo Suggestions -->
                             <div style="margin-top:6px; margin-bottom:6px;">
+                                <div id="cab-checkout-offers-box" style="display:none; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:8px 10px; margin-bottom:8px; font-size:11.5px;"></div>
                                 <div style="display:flex; gap:6px;">
                                     <input type="text" id="cab-coupon-input" class="form-control" placeholder="COUPON (e.g. FIRSTWHEELS)" style="text-transform:uppercase; font-size:12px; height:36px;" value="">
                                     <button type="button" id="apply-coupon-btn" class="btn btn-secondary" onclick="applyRentalCoupon()" style="height:36px; padding:0 12px; font-size:12px;">Apply</button>
+                                    <button type="button" id="clear-coupon-btn" class="btn btn-outline" onclick="clearRentalCoupon()" style="display:none; height:36px; padding:0 10px; font-size:11.5px;">Remove</button>
                                 </div>
                                 <div id="coupon-msg" style="font-size:11px; font-weight:600; color:#16a34a; margin-top:3px; display:none;"></div>
                             </div>
@@ -3077,6 +3079,13 @@
                                         </a>
                                     </li>
                                     <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="coupons" onclick="switchAdminSection('coupons')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">local_offer</span>
+                                            <span class="admin-nav-text">Coupons &amp; Promotions</span>
+                                            <span class="admin-nav-badge badge-gold" id="admin-badge-coupons-count">{{ count($allCoupons ?? $coupons ?? []) }}</span>
+                                        </a>
+                                    </li>
+                                    <li>
                                         <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="payouts" onclick="switchAdminSection('payouts'); loadAdminPayoutRequests();" style="padding:6px 10px; font-size:12px;">
                                             <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">account_balance_wallet</span>
                                             <span class="admin-nav-text">Driver Payout Approvals</span>
@@ -4335,6 +4344,69 @@
                         </div>
 
                         <!-- ======================================================== -->
+                        <!-- 4C. COUPONS & CONDITIONAL PROMOTIONS -->
+                        <div class="admin-section" id="admin-sec-coupons">
+                            <div class="card" style="margin-bottom:20px;">
+                                <div class="card-header" style="flex-wrap:wrap; gap:12px;">
+                                    <div>
+                                        <h3 class="card-title">
+                                            <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px; vertical-align:middle;">local_offer</span>
+                                            <span>Discount Coupons &amp; Auto-Applied Promotions</span>
+                                        </h3>
+                                        <p class="card-subtitle">Design conditional discounts by date range, booking type, car type, route, customer, driver, max redemptions, and checkout auto-apply rules</p>
+                                    </div>
+                                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                        <button type="button" class="btn btn-sm btn-outline" onclick="loadAdminCoupons()">
+                                            <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
+                                            <span>Refresh</span>
+                                        </button>
+                                        <button type="button" id="admin-add-coupon-btn" class="btn btn-sm btn-primary" onclick="openAddCouponModal()">
+                                            <span class="material-symbols-outlined" style="font-size:16px;">add</span>
+                                            <span>Issue Discount Coupon</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="admin-bookings-toolbar">
+                                    <div class="admin-search-box">
+                                        <span class="material-symbols-outlined">search</span>
+                                        <input type="text" id="admin-coupon-search-input" placeholder="Search promo code or title..." oninput="loadAdminCoupons()">
+                                    </div>
+                                    <div class="admin-toolbar-filters">
+                                        <div class="admin-filter-item">
+                                            <label>Filter:</label>
+                                            <select id="admin-coupon-filter-status" onchange="loadAdminCoupons()">
+                                                <option value="all">All Coupons</option>
+                                                <option value="active">Active Only</option>
+                                                <option value="auto_apply">Auto-Applied Only</option>
+                                                <option value="inactive">Inactive</option>
+                                            </select>
+                                        </div>
+                                        <span class="admin-count-pill" id="admin-coupons-filter-count">{{ count($allCoupons ?? $coupons ?? []) }} Coupons</span>
+                                    </div>
+                                </div>
+
+                                <div class="admin-table-responsive">
+                                    <table class="admin-data-table admin-table-compact" id="admin-coupons-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Promo Code &amp; Title</th>
+                                                <th>Discount Value</th>
+                                                <th>Conditional Logic (Date / Type / Car / Route / User / Driver)</th>
+                                                <th>Max Redemptions &amp; Per User</th>
+                                                <th>Checkout Mode</th>
+                                                <th>Status</th>
+                                                <th style="text-align:right;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="admin-coupons-tbody">
+                                            <tr><td colspan="7" style="text-align:center; padding:24px; color:#94a3b8;">Click Refresh or Coupons tab to load promotions...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- 4B. BOOKING TYPES & PACKAGES MANAGEMENT (Admin Master)   -->
                         <!-- ======================================================== -->
                         @php
@@ -9561,6 +9633,160 @@
                             <span>Save Airport Hub</span>
                         </button>
                     </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: ADMIN ISSUE / EDIT DISCOUNT COUPON & PROMOTION   -->
+<!-- ======================================================== -->
+<div class="modal-overlay" id="admin-coupon-modal">
+    <div class="modal-dialog" style="max-width: 700px;">
+        <div class="modal-header">
+            <h3 class="modal-title" style="display:flex; align-items:center; gap:8px;">
+                <span class="material-symbols-outlined" style="color:var(--primary); font-size:20px;">local_offer</span>
+                <span id="admin-coupon-modal-title">Issue Conditional Discount Coupon</span>
+            </h3>
+            <button type="button" class="modal-close-btn" onclick="closeModal('admin-coupon-modal')">×</button>
+        </div>
+        <div class="modal-body" style="padding:16px 20px;">
+            <form id="admin-coupon-form" onsubmit="saveAdminCoupon(event)">
+                <input type="hidden" id="admin-coupon-id" value="">
+
+                <div style="display:grid; grid-template-columns: 1fr 1.6fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-coupon-code">Promo Code *</label>
+                        <input type="text" id="admin-coupon-code" class="form-control" placeholder="e.g. MONSOON20" style="text-transform:uppercase; font-family:monospace; font-weight:800;" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-coupon-title">Promotion Display Title</label>
+                        <input type="text" id="admin-coupon-title" class="form-control" placeholder="e.g. Weekend Highway 20% Off">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" for="admin-coupon-description">Checkout Description (Shown to Customer)</label>
+                    <input type="text" id="admin-coupon-description" class="form-control" placeholder="e.g. Auto-applied savings on Sedan round trips">
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:10px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-coupon-type">Discount Type *</label>
+                        <select id="admin-coupon-type" class="form-control">
+                            <option value="percentage">Percentage (%)</option>
+                            <option value="flat">Flat Amount (₹)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-coupon-value">Discount Value *</label>
+                        <input type="number" step="0.01" min="0.01" id="admin-coupon-value" class="form-control" placeholder="e.g. 15 or 200" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-coupon-max-discount">Max Cap (₹)</label>
+                        <input type="number" step="1" min="0" id="admin-coupon-max-discount" class="form-control" placeholder="No cap">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-coupon-min-spend">Min Spend (₹)</label>
+                        <input type="number" step="1" min="0" id="admin-coupon-min-spend" class="form-control" placeholder="0" value="0">
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:10px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" for="admin-coupon-starts-at">Valid From Date</label>
+                        <input type="datetime-local" id="admin-coupon-starts-at" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-coupon-expires-at">Expires At Date</label>
+                        <input type="datetime-local" id="admin-coupon-expires-at" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-coupon-usage-limit">Max Total Uses</label>
+                        <input type="number" min="1" step="1" id="admin-coupon-usage-limit" class="form-control" placeholder="Unlimited">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="admin-coupon-per-user-limit">Max Uses / Customer</label>
+                        <input type="number" min="1" step="1" id="admin-coupon-per-user-limit" class="form-control" placeholder="Unlimited">
+                    </div>
+                </div>
+
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px; margin-bottom:12px;">
+                    <div style="font-size:11px; font-weight:800; color:#334155; text-transform:uppercase; margin-bottom:8px;">Conditional Targeting Rules (Leave unselected for ALL)</div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:10px;">
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" for="admin-coupon-booking-types">Booking Type(s)</label>
+                            <select id="admin-coupon-booking-types" class="form-control" multiple size="4" style="height:auto;">
+                                <option value="oneway">One-Way</option>
+                                <option value="roundtrip">Round-Trip</option>
+                                <option value="local">Local Hourly</option>
+                                <option value="airport">All Airport Transfers</option>
+                                <option value="airport_pickup">Airport Pickup</option>
+                                <option value="airport_drop">Airport Drop</option>
+                                <option value="bus">Sleeper Bus / Berths</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" for="admin-coupon-car-types">Car Type(s)</label>
+                            <select id="admin-coupon-car-types" class="form-control" multiple size="4" style="height:auto;">
+                                @foreach($allCarTypes ?? [] as $ct)
+                                    <option value="{{ strtolower($ct->category_key) }}">{{ $ct->name }} ({{ $ct->category_key }})</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" for="admin-coupon-routes">Route(s)</label>
+                            <select id="admin-coupon-routes" class="form-control" multiple size="4" style="height:auto;">
+                                @foreach($allCabRoutes ?? [] as $cr)
+                                    <option value="{{ $cr->id }}">{{ $cr->from_city }} → {{ $cr->to_city }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" for="admin-coupon-users">Specific Customer(s)</label>
+                            <select id="admin-coupon-users" class="form-control" multiple size="4" style="height:auto;">
+                                @foreach(($allUsers ?? collect())->where('role', 'customer') as $u)
+                                    <option value="{{ $u->id }}">{{ $u->name }} ({{ $u->phone ?? $u->email }})</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" for="admin-coupon-drivers">Specific Driver(s)</label>
+                            <select id="admin-coupon-drivers" class="form-control" multiple size="4" style="height:auto;">
+                                @foreach($allDrivers ?? [] as $d)
+                                    <option value="{{ $d->id }}">{{ $d->name }} ({{ $d->vehicle_plate }})</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                    <div style="font-size:10.5px; color:#64748b; margin-top:6px;">Tip: Hold Ctrl/Cmd to pick multiple items, or leave blank to match all.</div>
+                </div>
+
+                <div style="display:flex; gap:18px; flex-wrap:wrap; margin-bottom:14px; padding:10px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px;">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px; font-weight:700; color:#92400e;">
+                        <input type="checkbox" id="admin-coupon-auto-apply">
+                        <span>Auto-Apply on Checkout when eligible</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px; font-weight:600; color:#334155;">
+                        <input type="checkbox" id="admin-coupon-show-checkout" checked>
+                        <span>Show Promotion on Checkout Screen</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12.5px; font-weight:600; color:#334155;">
+                        <input type="checkbox" id="admin-coupon-active" checked>
+                        <span>Active</span>
+                    </label>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--outline); padding-top:12px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('admin-coupon-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <span class="material-symbols-outlined" style="font-size:15px;">save</span>
+                        <span>Save Discount Coupon</span>
+                    </button>
                 </div>
             </form>
         </div>

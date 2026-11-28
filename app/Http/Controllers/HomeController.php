@@ -31,6 +31,7 @@ class HomeController extends Controller
         $allDynamicFields = DynamicFormField::with('routeFare')->orderBy('order_index')->get();
         $workflowStages = WorkflowStage::where('is_active', true)->orderBy('order_index')->get();
         $coupons = Coupon::where('is_active', true)->get();
+        $allCoupons = Coupon::orderByDesc('is_active')->orderByDesc('id')->get();
         $recentBookings = Booking::with('driver')->latest()->get();
         $dispatchBookings = Booking::with('driver')->dispatchOrder()->get();
         $allDrivers = Driver::all();
@@ -156,6 +157,7 @@ class HomeController extends Controller
             'allDynamicFields',
             'workflowStages',
             'coupons',
+            'allCoupons',
             'recentBookings',
             'dispatchBookings',
             'currentUser',

@@ -43,10 +43,13 @@ class RouteCalculationController extends Controller
             'night_allowance' => $request->boolean('night_allowance'),
             'luggage_carrier' => $request->boolean('luggage_carrier'),
             'coupon_code' => $request->query('coupon'),
+            'disable_auto_coupon' => $request->boolean('disable_auto_coupon'),
             'airport_type' => (string) $request->query('airport_type', 'pickup'),
             'actual_km' => $request->filled('actual_km') ? (int) $request->query('actual_km') : null,
             'extra_km' => $request->filled('extra_km') ? (int) $request->query('extra_km') : null,
             'selected_price_fields' => $selectedPriceFields,
+            'user_id' => auth()->check() ? auth()->id() : ($request->filled('user_id') ? (int) $request->query('user_id') : null),
+            'driver_id' => $request->filled('driver_id') ? (int) $request->query('driver_id') : null,
         ];
 
         try {
@@ -74,6 +77,7 @@ class RouteCalculationController extends Controller
         $fleetEstimates = [];
         $itemized = [];
         $availablePriceFields = [];
+        $availablePromotions = [];
         $routeAdditionalFare = 0.0;
         $routeAdditionalLabel = null;
 
@@ -84,10 +88,14 @@ class RouteCalculationController extends Controller
                 'actual_km' => $options['actual_km'],
                 'extra_km' => $options['extra_km'],
                 'selected_price_fields' => $options['selected_price_fields'],
+                'user_id' => $options['user_id'],
+                'driver_id' => $options['driver_id'],
+                'disable_auto_coupon' => $options['disable_auto_coupon'],
             ]);
 
             if ($availablePriceFields === []) {
                 $availablePriceFields = $quote['available_price_fields'] ?? [];
+                $availablePromotions = $quote['available_promotions'] ?? [];
                 $routeAdditionalFare = (float) ($quote['route_additional_fare'] ?? 0.0);
                 $routeAdditionalLabel = $quote['route_additional_label'] ?? null;
             }
@@ -109,6 +117,8 @@ class RouteCalculationController extends Controller
                 'extra_km_fare' => $quote['extra_km_fare'],
                 'route_additional_fare' => $quote['route_additional_fare'],
                 'custom_price_fields_fare' => $quote['custom_price_fields_fare'],
+                'discount_fare' => $quote['discount_fare'],
+                'coupon' => $quote['coupon'],
                 'total' => $quote['total_amount'],
             ];
         }
@@ -136,6 +146,7 @@ class RouteCalculationController extends Controller
             'fleet_estimates' => $fleetEstimates,
             'itemized_breakdown' => $itemized,
             'available_price_fields' => $availablePriceFields,
+            'available_promotions' => $availablePromotions,
             'addons' => $this->fares->addonRates(),
             'conditions' => $this->fares->pricingConditions(),
         ];
@@ -144,7 +155,9 @@ class RouteCalculationController extends Controller
         $selectedFleet = $request->query('fleet');
 
         if (is_string($selectedFleet) && $selectedFleet !== '') {
-            $payload['quote'] = $this->fares->quote($trip, $selectedFleet, $options);
+            $selectedQuote = $this->fares->quote($trip, $selectedFleet, $options);
+            $payload['quote'] = $selectedQuote;
+            $payload['available_promotions'] = $selectedQuote['available_promotions'] ?? $availablePromotions;
         }
 
         return response()->json($payload);
