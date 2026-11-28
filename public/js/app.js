@@ -13968,13 +13968,26 @@ window.printAdminInvoice = function () {
         };
       }
 
+      window.switchSystemSubTab = function (subId) {
+        const key = subId || 'overview';
+        document.querySelectorAll('.admin-system-tab-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.tab === key);
+        });
+        document.querySelectorAll('.admin-system-sublink').forEach(link => {
+          const isMatch = link.dataset.systemSub === key;
+          link.classList.toggle('active', isMatch);
+          link.style.background = isMatch ? 'rgba(212, 155, 76, 0.2)' : '';
+          link.style.color = isMatch ? '#fbbf24' : '#cbd5e1';
+        });
+        document.querySelectorAll('.admin-system-tab-panel').forEach(panel => {
+          panel.style.display = (panel.id === `admin-system-panel-${key}`) ? 'block' : 'none';
+        });
+      };
+
       window.openAdminInvoiceTemplateEditor = function () {
         if (typeof switchTab === 'function') switchTab('admin');
         if (typeof switchAdminSection === 'function') switchAdminSection('system');
-        window.setTimeout(() => {
-          const card = document.getElementById('admin-invoice-template-card');
-          if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 60);
+        if (typeof window.switchSystemSubTab === 'function') window.switchSystemSubTab('invoice');
       };
 
       window.selectInvoiceTemplateStyle = function (style) {

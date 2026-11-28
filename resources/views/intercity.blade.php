@@ -3047,18 +3047,43 @@
                                 </a>
                             </li>
                             <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="system" onclick="openAdminInvoiceTemplateEditor()">
-                                    <span class="material-symbols-outlined admin-nav-icon">receipt_long</span>
-                                    <span class="admin-nav-text">Invoice Template &amp; Pay</span>
-                                    <span class="admin-nav-badge badge-gold">4 Styles</span>
-                                </a>
-                            </li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="system" onclick="switchAdminSection('system')">
+                                <a href="javascript:void(0)" class="admin-nav-link" data-section="system" onclick="switchAdminSection('system'); switchSystemSubTab('overview');">
                                     <span class="material-symbols-outlined admin-nav-icon">admin_panel_settings</span>
                                     <span class="admin-nav-text">System Settings &amp; Health</span>
-                                    <span class="admin-nav-badge badge-success">OK</span>
+                                    <span class="admin-nav-badge badge-success">5</span>
                                 </a>
+                                <ul id="admin-system-subnav" style="list-style:none; padding:4px 0 6px 28px; margin:0; display:flex; flex-direction:column; gap:2px;">
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-system-sublink active" data-system-sub="overview" onclick="switchAdminSection('system'); switchSystemSubTab('overview');" style="display:flex; align-items:center; gap:6px; padding:5px 10px; border-radius:6px; font-size:11.5px; font-weight:600; color:#cbd5e1; text-decoration:none;">
+                                            <span class="material-symbols-outlined" style="font-size:14px;">tune</span>
+                                            <span>Overview &amp; Features</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-system-sublink" data-system-sub="payments" onclick="switchAdminSection('system'); switchSystemSubTab('payments');" style="display:flex; align-items:center; gap:6px; padding:5px 10px; border-radius:6px; font-size:11.5px; font-weight:600; color:#cbd5e1; text-decoration:none;">
+                                            <span class="material-symbols-outlined" style="font-size:14px;">payments</span>
+                                            <span>Payments &amp; Gateway</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-system-sublink" data-system-sub="invoice" onclick="switchAdminSection('system'); switchSystemSubTab('invoice');" style="display:flex; align-items:center; gap:6px; padding:5px 10px; border-radius:6px; font-size:11.5px; font-weight:600; color:#cbd5e1; text-decoration:none;">
+                                            <span class="material-symbols-outlined" style="font-size:14px;">receipt_long</span>
+                                            <span>Invoice Template</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-system-sublink" data-system-sub="legal" onclick="switchAdminSection('system'); switchSystemSubTab('legal');" style="display:flex; align-items:center; gap:6px; padding:5px 10px; border-radius:6px; font-size:11.5px; font-weight:600; color:#cbd5e1; text-decoration:none;">
+                                            <span class="material-symbols-outlined" style="font-size:14px;">policy</span>
+                                            <span>Legal &amp; Policy Pages</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-system-sublink" data-system-sub="auth" onclick="switchAdminSection('system'); switchSystemSubTab('auth');" style="display:flex; align-items:center; gap:6px; padding:5px 10px; border-radius:6px; font-size:11.5px; font-weight:600; color:#cbd5e1; text-decoration:none;">
+                                            <span class="material-symbols-outlined" style="font-size:14px;">passkey</span>
+                                            <span>Auth &amp; Clerk</span>
+                                        </a>
+                                    </li>
+                                </ul>
                             </li>
                         </ul>
                     </nav>
@@ -4044,7 +4069,7 @@
                                                     <span class="material-symbols-outlined">save</span>
                                                     <span>Save Night Stay, Hours & Conditions</span>
                                                 </button>
-                                                <button type="button" class="btn btn-sm btn-outline btn-block" onclick="switchAdminSection('system')" style="margin-top:6px;">
+                                                <button type="button" class="btn btn-sm btn-outline btn-block" onclick="switchAdminSection('system'); switchSystemSubTab('payments');" style="margin-top:6px;">
                                                     <span class="material-symbols-outlined" style="font-size:16px;">payments</span>
                                                     <span>Configure Checkout Payment Modes & Advance %</span>
                                                 </button>
@@ -5079,6 +5104,30 @@
 
                         <!-- 7. SYSTEM & HEALTH -->
                         <div class="admin-section" id="admin-sec-system">
+                            <div class="admin-sub-tabs" id="admin-system-subtabs" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; border-bottom:1px solid #e2e8f0; padding-bottom:10px;">
+                                <button type="button" class="admin-sub-tab-btn active admin-system-tab-btn" data-tab="overview" onclick="switchSystemSubTab('overview')">
+                                    <span class="material-symbols-outlined" style="font-size:16px;">tune</span>
+                                    <span>Overview &amp; Features</span>
+                                </button>
+                                <button type="button" class="admin-sub-tab-btn admin-system-tab-btn" data-tab="payments" onclick="switchSystemSubTab('payments')">
+                                    <span class="material-symbols-outlined" style="font-size:16px;">payments</span>
+                                    <span>Payments &amp; Gateway</span>
+                                </button>
+                                <button type="button" class="admin-sub-tab-btn admin-system-tab-btn" data-tab="invoice" onclick="switchSystemSubTab('invoice')">
+                                    <span class="material-symbols-outlined" style="font-size:16px;">receipt_long</span>
+                                    <span>Invoice Template</span>
+                                </button>
+                                <button type="button" class="admin-sub-tab-btn admin-system-tab-btn" data-tab="legal" onclick="switchSystemSubTab('legal')">
+                                    <span class="material-symbols-outlined" style="font-size:16px;">policy</span>
+                                    <span>Legal &amp; Policy Pages</span>
+                                </button>
+                                <button type="button" class="admin-sub-tab-btn admin-system-tab-btn" data-tab="auth" onclick="switchSystemSubTab('auth')">
+                                    <span class="material-symbols-outlined" style="font-size:16px;">passkey</span>
+                                    <span>Auth &amp; Clerk</span>
+                                </button>
+                            </div>
+
+                            <div id="admin-system-panel-overview" class="admin-system-tab-panel" style="display:block;">
                             <div class="admin-card-grid-split">
                                 <div class="card">
                                     <div class="card-header">
@@ -5190,14 +5239,16 @@
                                     </div>
                                 </div>
                             </div>
+                            </div>
 
+                            <div id="admin-system-panel-payments" class="admin-system-tab-panel" style="display:none;">
                             <!-- Checkout Payment Options & Advance Percentage Settings -->
                             @php
                                 $adminPaySettings = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
                                 $adminAdvPct = $adminPaySettings['payment_advance_pct'] ?? '20';
                                 $adminPayDefault = $adminPaySettings['payment_default_option'] ?? 'full_online';
     @endphp
-                            <div class="card" style="margin-top:20px;" id="admin-payment-options-card">
+                            <div class="card" id="admin-payment-options-card">
                                 <div class="card-header" style="flex-wrap:wrap; gap:10px;">
                                     <div>
                                         <h3 class="card-title" style="display:flex; align-items:center; gap:8px;">
@@ -5394,14 +5445,16 @@
                                     </div>
                                 </form>
                             </div>
+                            </div>
 
+                            <div id="admin-system-panel-invoice" class="admin-system-tab-panel" style="display:none;">
                             <!-- Invoice Template & Branding Settings -->
                             @php
                                 $invCfg = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
                                 $invStyle = $invCfg['invoice_template_style'] ?? 'classic_gst';
                                 $invAccent = $invCfg['invoice_accent_color'] ?? '#d49b4c';
     @endphp
-                            <div class="card" style="margin-top:20px;" id="admin-invoice-template-card">
+                            <div class="card" id="admin-invoice-template-card">
                                 <div class="card-header" style="flex-wrap:wrap; gap:10px;">
                                     <div>
                                         <h3 class="card-title" style="display:flex; align-items:center; gap:8px;">
@@ -5574,9 +5627,11 @@
                                     </div>
                                 </form>
                             </div>
+                            </div>
 
+                            <div id="admin-system-panel-legal" class="admin-system-tab-panel" style="display:none;">
                             <!-- Platform Legal & Policy URLs Settings -->
-                            <div class="card" style="margin-top:20px;">
+                            <div class="card">
                                 <div class="card-header" style="flex-wrap:wrap; gap:10px;">
                                     <div>
                                         <h3 class="card-title" style="display:flex; align-items:center; gap:8px;">
@@ -5721,7 +5776,10 @@
                                 $clerkPubKey = $clerkCfg['clerk_publishable_key'] ?? '';
                                 $clerkSecretSet = ($clerkCfg['clerk_secret_configured'] ?? '0') === '1';
     @endphp
-                            <div class="card" style="margin-top:20px;" id="admin-clerk-auth-card">
+                            </div>
+
+                            <div id="admin-system-panel-auth" class="admin-system-tab-panel" style="display:none;">
+                            <div class="card" id="admin-clerk-auth-card">
                                 <div class="card-header" style="flex-wrap:wrap; gap:10px;">
                                     <div>
                                         <h3 class="card-title" style="display:flex; align-items:center; gap:8px;">
@@ -5763,6 +5821,7 @@
                                         </button>
                                     </div>
                                 </form>
+                            </div>
                             </div>
                         </div>
 
