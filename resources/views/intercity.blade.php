@@ -37,6 +37,7 @@
     $allowedTabsForRole = match($userRole) {
         'admin' => ['admin', 'cabs', 'schedules', 'bidding'],
         'driver' => ['bidding', 'driver-trips', 'driver-wallet', 'driver-profile'],
+        'customer' => $isSchedulesOn ? ['cabs', 'schedules', 'my-bookings', 'customer-profile'] : ['cabs', 'my-bookings', 'customer-profile'],
         default => $isSchedulesOn ? ['cabs', 'schedules', 'my-bookings'] : ['cabs', 'my-bookings'],
     };
     $defaultTab = match($userRole) {
@@ -693,6 +694,26 @@
                             <span class="material-symbols-outlined" style="color:#20A9D2;">badge</span>
                             <span>Passenger & Pickup Coordinates</span>
                         </div>
+
+                        @if($userRole === 'customer')
+                        @php $savedTravellersList = $customerTravellers ?? collect(); @endphp
+                        <div id="cab-saved-travellers-bar" style="display:{{ count($savedTravellersList) > 0 ? 'flex' : 'none' }}; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px; padding:10px 12px; border-radius:10px; background:#f8fafc; border:1px solid #e2e8f0;">
+                            <span style="font-size:11px; font-weight:800; color:#475569; text-transform:uppercase;">Quick-fill Saved Traveller:</span>
+                            <div id="cab-saved-travellers-chips" style="display:flex; flex-wrap:wrap; gap:6px;">
+                                @foreach($savedTravellersList as $st)
+                                    @php
+                                        $stPayload = ['name' => $st->name, 'phone' => $st->phone, 'email' => $st->email];
+                                    @endphp
+                                    <button type="button" class="btn btn-xs btn-outline" style="min-height:30px; font-size:11.5px;" onclick='useTravellerForBooking(@json($stPayload))'>
+                                        <span>{{ $st->name }}</span>
+                                        @if($st->relation)
+                                            <span style="color:#64748b;">({{ $st->relation }})</span>
+                                        @endif
+                                    </button>
+                                @endforeach
+                            </div>
+                        </div>
+                        @endif
 
                         <div class="form-row">
                             <div class="form-group" style="flex:1;">
@@ -1563,6 +1584,192 @@
                 @endauth
             </div>
         </section>
+
+        @if($userRole === 'customer')
+        <!-- ======================================================== -->
+        <!-- TAB: CUSTOMER PROFILE, PHONE & SAVED TRAVELLERS          -->
+        <!-- ======================================================== -->
+        @php
+            $custTravellers = $customerTravellers ?? collect();
+            $custAvatarNow = Auth::user()->avatar ?: '👤';
+        @endphp
+        <section id="tab-customer-profile" class="tab-pane {{ $defaultTab === 'customer-profile' ? 'active' : '' }}">
+            <div class="card my-trips-shell">
+                <div class="card-header my-trips-header">
+                    <div>
+                        <h2 class="card-title my-trips-heading">
+                            <span class="material-symbols-outlined" style="color:var(--gold-dark); font-size:21px;">person</span>
+                            <span>My Profile &amp; Saved Travellers</span>
+                        </h2>
+                        <p class="card-subtitle">Manage your primary mobile number for chauffeur contact &amp; OTPs, plus your saved co-travellers for faster bookings.</p>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-primary" onclick="switchTab('cabs')">
+                        <span class="material-symbols-outlined" style="font-size:15px;">directions_car</span>
+                        <span>Book a Ride</span>
+                    </button>
+                </div>
+
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:18px; padding:16px 0 4px;">
+                    <!-- CARD 1: PERSONAL PROFILE & PHONE NUMBER -->
+                    <div style="background:#f8fafc; border:1px solid var(--outline); border-radius:14px; padding:16px;">
+                        <h3 style="font-family:var(--font-display); font-size:15px; font-weight:800; color:#0f172a; margin:0 0 4px;">Account &amp; Phone Number</h3>
+                        <p style="font-size:12px; color:#64748b; margin:0 0 14px;">Chauffeurs call this number at pickup and ride OTP updates are sent here.</p>
+
+                        <form id="customer-profile-form" onsubmit="saveCustomerProfile(event)" style="display:grid; gap:12px;">
+                            <div>
+                                <div style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:6px;">Profile Avatar</div>
+                                <div class="avatar-picker-grid" style="display:flex; gap:8px; flex-wrap:wrap;">
+                                    @foreach(['👤', '🧑🏻', '👩🏻', '👨🏽', '🧕🏽', '🧔🏻'] as $av)
+                                        <button type="button" class="btn btn-xs btn-outline cust-avatar-opt {{ $custAvatarNow === $av ? 'btn-primary' : '' }}" style="min-height:36px; min-width:36px; font-size:17px;" onclick="selectCustomerAvatar('{{ $av }}', this)">{{ $av }}</button>
+                                    @endforeach
+                                </div>
+                                <input type="hidden" id="cust-profile-avatar" value="{{ $custAvatarNow }}">
+                            </div>
+
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label" for="cust-profile-name">Full Name *</label>
+                                <input type="text" id="cust-profile-name" class="form-control" value="{{ Auth::user()->name }}" required style="min-height:44px;">
+                            </div>
+
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label" for="cust-profile-phone">Primary Phone Number *</label>
+                                <p id="cust-profile-phone-hint" style="font-size:11.5px; color:#64748b; margin:0 0 4px;">Include country code or 10-digit mobile (e.g. +91 98220 11920).</p>
+                                <input type="tel" id="cust-profile-phone" class="form-control" inputmode="tel" aria-describedby="cust-profile-phone-hint" value="{{ Auth::user()->phone }}" placeholder="+91 98220 11920" required style="min-height:44px; font-weight:700;">
+                            </div>
+
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label" for="cust-profile-email">Email Address</label>
+                                <input type="email" id="cust-profile-email" class="form-control" value="{{ Auth::user()->email }}" style="min-height:44px;">
+                            </div>
+
+                            <button type="submit" id="cust-profile-save-btn" class="btn btn-primary" style="min-height:44px; justify-content:center; font-weight:800;">
+                                <span class="material-symbols-outlined" style="font-size:17px;">save</span>
+                                <span>Save Profile &amp; Phone</span>
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- CARD 2: SAVED TRAVELLER LIST -->
+                    <div id="customer-travellers-card" style="background:#f8fafc; border:1px solid var(--outline); border-radius:14px; padding:16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+                            <div>
+                                <h3 style="font-family:var(--font-display); font-size:15px; font-weight:800; color:#0f172a; margin:0 0 2px;">Saved Traveller List</h3>
+                                <p style="font-size:12px; color:#64748b; margin:0;">Save family, colleagues, or yourself for 1-click booking autofill.</p>
+                            </div>
+                            <span class="admin-badge badge-primary" id="cust-travellers-count">{{ count($custTravellers) }} saved</span>
+                        </div>
+
+                        <form id="customer-traveller-form" onsubmit="saveCustomerTraveller(event)" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; margin-bottom:14px; display:grid; gap:10px;">
+                            <input type="hidden" id="traveller-edit-id" value="">
+                            <fieldset style="border:0; padding:0; margin:0; display:grid; gap:10px;">
+                                <legend id="traveller-form-legend" style="font-size:11.5px; font-weight:800; color:#334155; text-transform:uppercase; padding:0; margin-bottom:2px;">Add New Traveller</legend>
+                                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px;">
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" for="traveller-name" style="font-size:11px;">Traveller Name *</label>
+                                        <input type="text" id="traveller-name" class="form-control" placeholder="e.g. Riya Sharma" required style="min-height:40px;">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" for="traveller-phone" style="font-size:11px;">Phone Number *</label>
+                                        <input type="tel" id="traveller-phone" class="form-control" inputmode="tel" placeholder="+91 98765 43210" required style="min-height:40px;">
+                                    </div>
+                                </div>
+                                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:8px;">
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" for="traveller-relation" style="font-size:11px;">Relation</label>
+                                        <select id="traveller-relation" class="form-control" style="min-height:40px;">
+                                            <option value="Self">Self</option>
+                                            <option value="Spouse">Spouse</option>
+                                            <option value="Parent">Parent</option>
+                                            <option value="Child">Child</option>
+                                            <option value="Colleague">Colleague</option>
+                                            <option value="Friend">Friend</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" for="traveller-age" style="font-size:11px;">Age</label>
+                                        <input type="number" id="traveller-age" class="form-control" min="1" max="120" placeholder="Optional" style="min-height:40px;">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" for="traveller-gender" style="font-size:11px;">Gender</label>
+                                        <select id="traveller-gender" class="form-control" style="min-height:40px;">
+                                            <option value="">Prefer not to say</option>
+                                            <option value="Male">Male</option>
+                                            <option value="Female">Female</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-group" style="margin-bottom:0;">
+                                    <label class="form-label" for="traveller-email" style="font-size:11px;">Email (Optional)</label>
+                                    <input type="email" id="traveller-email" class="form-control" placeholder="traveller@example.com" style="min-height:40px;">
+                                </div>
+                                <label for="traveller-default" style="display:flex; align-items:center; gap:8px; font-size:12px; color:#334155; cursor:pointer;">
+                                    <input type="checkbox" id="traveller-default" style="width:16px; height:16px;">
+                                    <span>Set as Default Traveller for bookings</span>
+                                </label>
+                            </fieldset>
+                            <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+                                <button type="button" id="traveller-cancel-btn" class="btn btn-sm btn-outline" style="display:none; min-height:40px;" onclick="resetCustomerTravellerForm()">Cancel</button>
+                                <button type="submit" id="traveller-save-btn" class="btn btn-sm btn-primary" style="min-height:40px; font-weight:800;">
+                                    <span class="material-symbols-outlined" style="font-size:16px;">person_add</span>
+                                    <span id="traveller-save-label">Add Traveller</span>
+                                </button>
+                            </div>
+                        </form>
+
+                        <div id="customer-travellers-list" style="display:grid; gap:10px;">
+                            @forelse($custTravellers as $tr)
+                                @php
+                                    $trPayload = [
+                                        'id' => $tr->id,
+                                        'name' => $tr->name,
+                                        'phone' => $tr->phone,
+                                        'email' => $tr->email,
+                                        'age' => $tr->age,
+                                        'gender' => $tr->gender,
+                                        'relation' => $tr->relation,
+                                        'is_default' => (bool) $tr->is_default,
+                                    ];
+                                @endphp
+                                <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                                    <div>
+                                        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                            <strong style="font-size:13.5px; color:#0f172a;">{{ $tr->name }}</strong>
+                                            @if($tr->relation)
+                                                <span class="admin-badge badge-secondary" style="font-size:10px;">{{ $tr->relation }}</span>
+                                            @endif
+                                            @if($tr->is_default)
+                                                <span class="admin-badge badge-success" style="font-size:10px;">Default</span>
+                                            @endif
+                                        </div>
+                                        <div style="font-size:12px; color:#475569; margin-top:3px;">
+                                            <span>{{ $tr->phone }}</span>
+                                            @if($tr->age || $tr->gender)
+                                                <span> &bull; {{ implode(', ', array_filter([$tr->age ? $tr->age.' yrs' : null, $tr->gender])) }}</span>
+                                            @endif
+                                            @if($tr->email)
+                                                <span> &bull; {{ $tr->email }}</span>
+                                            @endif
+                                        </div>
+                                    </div>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                        <button type="button" class="btn btn-xs btn-outline" onclick='useTravellerForBooking(@json($trPayload))'>Use for Booking</button>
+                                        <button type="button" class="btn btn-xs btn-outline" onclick='editCustomerTraveller(@json($trPayload))'>Edit</button>
+                                        <button type="button" class="btn btn-xs btn-outline" style="color:#ef4444; border-color:#fca5a5;" onclick="deleteCustomerTraveller({{ $tr->id }})">Remove</button>
+                                    </div>
+                                </div>
+                            @empty
+                                <div style="text-align:center; padding:18px; color:#64748b; font-size:12.5px; background:#ffffff; border:1px dashed #cbd5e1; border-radius:10px;">
+                                    No saved travellers yet. Add your frequent co-travellers above for 1-click booking!
+                                </div>
+                            @endforelse
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        @endif
 
         @if($userRole === 'driver' || $userRole === 'admin')
         <!-- ======================================================== -->
@@ -6271,6 +6478,10 @@
                     <button type="button" class="mobile-dock-btn {{ $defaultTab === 'my-bookings' ? 'active' : '' }}" data-target="my-bookings">
                         <span class="material-symbols-outlined">confirmation_number</span>
                         <span>My Trips</span>
+                    </button>
+                    <button type="button" class="mobile-dock-btn {{ $defaultTab === 'customer-profile' ? 'active' : '' }}" data-target="customer-profile">
+                        <span class="material-symbols-outlined">person</span>
+                        <span>Profile</span>
                     </button>
                 @endauth
             @elseif($userRole === 'driver')

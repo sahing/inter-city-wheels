@@ -65,6 +65,7 @@ class HomeController extends Controller
         // each other's bookings. Ownership is now the account link, with a
         // precise phone match for bookings made before accounts were linked.
         $customerBookings = collect();
+        $customerTravellers = collect();
         $driverProfile = null;
         $driverTrips = collect();
         $driverMyVehicles = collect();
@@ -74,6 +75,7 @@ class HomeController extends Controller
         $adminDueSettlements = collect();
 
         if ($currentUser && $currentUser->role === 'customer') {
+            $customerTravellers = $currentUser->travellers()->get();
             $digits = preg_replace('/[^0-9]/', '', (string) $currentUser->phone) ?? '';
             $last10 = strlen($digits) >= 10 ? substr($digits, -10) : $digits;
             $email = strtolower(trim((string) $currentUser->email));
@@ -151,6 +153,7 @@ class HomeController extends Controller
             'recentBookings',
             'currentUser',
             'customerBookings',
+            'customerTravellers',
             'driverProfile',
             'driverTrips',
             'allUsers',

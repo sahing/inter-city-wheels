@@ -420,7 +420,7 @@ function switchTab(tabId, options = {}) {
   }
 
   if (userRole === 'customer') {
-    const customerTabs = isSchedulesEnabled ? ['cabs', 'schedules', 'my-bookings'] : ['cabs', 'my-bookings'];
+    const customerTabs = isSchedulesEnabled ? ['cabs', 'schedules', 'my-bookings', 'customer-profile'] : ['cabs', 'my-bookings', 'customer-profile'];
     if (!customerTabs.includes(tabId)) {
       tabId = 'cabs';
     }
@@ -478,6 +478,8 @@ function switchTab(tabId, options = {}) {
     renderBiddingList();
   } else if (tabId === 'my-bookings' && typeof window.refreshMyBookingsList === 'function') {
     window.refreshMyBookingsList();
+  } else if (tabId === 'customer-profile' && typeof window.loadCustomerProfile === 'function') {
+    window.loadCustomerProfile();
   } else if (tabId === 'driver-trips' && typeof window.refreshDriverTripsList === 'function') {
     window.refreshDriverTripsList();
   } else if (tabId === 'driver-wallet' && typeof window.refreshDriverPaymentHistory === 'function') {
@@ -10817,13 +10819,6 @@ window.printAdminInvoice = function () {
               },
               'admin-vehicles': {
                 tbodyId: 'admin-vehicles-tbody',
-                barId: 'pag-bar-admin-vehicles',
-                pageSize: 10,
-                sizes: [10, 25, 50],
-                page: 1,
-              },
-            };
-
             function getPaginatableRows(tbody) {
               if (!tbody) return [];
               return Array.from(tbody.querySelectorAll('tr')).filter(row => {
@@ -14007,3 +14002,294 @@ window.printAdminInvoice = function () {
           showToast('Network error while saving invoice template.', 'danger');
         }
       };
+
+      // ==========================================
+      // CUSTOMER PROFILE, PHONE & SAVED TRAVELLERS
+      // ==========================================
+      (function () {
+        const custEsc = (v) => String(v === null || v === undefined ? '' : v)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+
+        window.selectCustomerAvatar = function (avatar, btn) {
+          const input = document.getElementById('cust-profile-avatar');
+          if (input) input.value = avatar;
+          document.querySelectorAll('.cust-avatar-opt').forEach(el => {
+            el.classList.toggle('btn-primary', el === btn);
+          });
+        };
+
+        window.loadCustomerProfile = async function () {
+          try {
+            const res = await fetch('/api/customer/profile', { headers: { 'Accept': 'application/json' } });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!data.success) return;
+            if (data.profile) {
+              const p = data.profile;
+              const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+              setVal('cust-profile-name', p.name);
+              setVal('cust-profile-phone', p.phone);
+              setVal('cust-profile-email', p.email);
+              setVal('cust-profile-avatar', p.avatar || '👤');
+            }
+            if (Array.isArray(data.travellers)) {
+              window.renderCustomerTravellers(data.travellers);
+            }
+          } catch (err) {
+            console.error('loadCustomerProfile', err);
+          }
+        };
+
+        window.saveCustomerProfile = async function (e) {
+          if (e && e.preventDefault) e.preventDefault();
+          const name = document.getElementById('cust-profile-name')?.value.trim() || '';
+          const phone = document.getElementById('cust-profile-phone')?.value.trim() || '';
+          const email = document.getElementById('cust-profile-email')?.value.trim() || '';
+          const avatar = document.getElementById('cust-profile-avatar')?.value.trim() || '';
+          const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+          if (!name || phone.length < 8) {
+            showToast('Please enter your full name and a valid phone number.', 'warning');
+            return;
+          }
+
+          try {
+            const res = await fetch('/api/customer/profile', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+              },
+              body: JSON.stringify({
+                name,
+                phone,
+                email: email || undefined,
+                avatar: avatar || undefined,
+              }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              showToast(data.message || 'Profile updated!', 'success');
+              if (data.profile) {
+                if (window.CURRENT_USER) {
+                  window.CURRENT_USER.name = data.profile.name;
+                  window.CURRENT_USER.phone = data.profile.phone;
+                  window.CURRENT_USER.email = data.profile.email;
+                  window.CURRENT_USER.avatar = data.profile.avatar;
+                }
+                document.querySelectorAll('.user-meta-name, .dropdown-user-name').forEach(el => {
+                  el.textContent = data.profile.name;
+                });
+                const riderName = document.getElementById('cab-rider-name');
+                const riderPhone = document.getElementById('cab-rider-phone');
+                const riderEmail = document.getElementById('cab-rider-email');
+                if (riderName) riderName.value = data.profile.name || '';
+                if (riderPhone) riderPhone.value = data.profile.phone || '';
+                if (riderEmail && data.profile.email) riderEmail.value = data.profile.email;
+              }
+            } else {
+              showToast(data.message || 'Could not update profile.', 'warning');
+            }
+          } catch (err) {
+            console.error('saveCustomerProfile', err);
+            showToast('Network error while saving profile.', 'warning');
+          }
+        };
+
+        window.renderCustomerTravellers = function (list) {
+          const travellers = Array.isArray(list) ? list : [];
+          const countEl = document.getElementById('cust-travellers-count');
+          if (countEl) countEl.textContent = `${travellers.length} saved`;
+
+          const container = document.getElementById('customer-travellers-list');
+          if (container) {
+            if (travellers.length === 0) {
+              container.innerHTML = '<div style="text-align:center; padding:18px; color:#64748b; font-size:12.5px; background:#ffffff; border:1px dashed #cbd5e1; border-radius:10px;">No saved travellers yet. Add your frequent co-travellers above for 1-click booking!</div>';
+            } else {
+              container.innerHTML = travellers.map(tr => {
+                const payload = custEsc(JSON.stringify({
+                  id: tr.id,
+                  name: tr.name,
+                  phone: tr.phone,
+                  email: tr.email,
+                  age: tr.age,
+                  gender: tr.gender,
+                  relation: tr.relation,
+                  is_default: Boolean(tr.is_default),
+                }));
+                const metaParts = [
+                  tr.age ? `${tr.age} yrs` : null,
+                  tr.gender || null,
+                ].filter(Boolean);
+                return `
+            <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div>
+                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                  <strong style="font-size:13.5px; color:#0f172a;">${custEsc(tr.name)}</strong>
+                  ${tr.relation ? `<span class="admin-badge badge-secondary" style="font-size:10px;">${custEsc(tr.relation)}</span>` : ''}
+                  ${tr.is_default ? '<span class="admin-badge badge-success" style="font-size:10px;">Default</span>' : ''}
+                </div>
+                <div style="font-size:12px; color:#475569; margin-top:3px;">
+                  <span>${custEsc(tr.phone)}</span>
+                  ${metaParts.length ? ` &bull; ${custEsc(metaParts.join(', '))}` : ''}
+                  ${tr.email ? ` &bull; ${custEsc(tr.email)}` : ''}
+                </div>
+              </div>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-xs btn-outline" onclick='useTravellerForBooking(${payload})'>Use for Booking</button>
+                <button type="button" class="btn btn-xs btn-outline" onclick='editCustomerTraveller(${payload})'>Edit</button>
+                <button type="button" class="btn btn-xs btn-outline" style="color:#ef4444; border-color:#fca5a5;" onclick="deleteCustomerTraveller(${Number(tr.id)})">Remove</button>
+              </div>
+            </div>`;
+              }).join('');
+            }
+          }
+
+          const bar = document.getElementById('cab-saved-travellers-bar');
+          const chips = document.getElementById('cab-saved-travellers-chips');
+          if (bar && chips) {
+            bar.style.display = travellers.length > 0 ? 'flex' : 'none';
+            chips.innerHTML = travellers.map(tr => {
+              const payload = custEsc(JSON.stringify({ name: tr.name, phone: tr.phone, email: tr.email }));
+              return `<button type="button" class="btn btn-xs btn-outline" style="min-height:30px; font-size:11.5px;" onclick='useTravellerForBooking(${payload})'><span>${custEsc(tr.name)}</span>${tr.relation ? ` <span style="color:#64748b;">(${custEsc(tr.relation)})</span>` : ''}</button>`;
+            }).join('');
+          }
+        };
+
+        window.resetCustomerTravellerForm = function () {
+          const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+          setVal('traveller-edit-id', '');
+          setVal('traveller-name', '');
+          setVal('traveller-phone', '');
+          setVal('traveller-email', '');
+          setVal('traveller-age', '');
+          setVal('traveller-gender', '');
+          setVal('traveller-relation', 'Self');
+          const chk = document.getElementById('traveller-default');
+          if (chk) chk.checked = false;
+          const leg = document.getElementById('traveller-form-legend');
+          if (leg) leg.textContent = 'Add New Traveller';
+          const lbl = document.getElementById('traveller-save-label');
+          if (lbl) lbl.textContent = 'Add Traveller';
+          const cancelBtn = document.getElementById('traveller-cancel-btn');
+          if (cancelBtn) cancelBtn.style.display = 'none';
+        };
+
+        window.editCustomerTraveller = function (tr) {
+          if (!tr) return;
+          const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
+          setVal('traveller-edit-id', String(tr.id || ''));
+          setVal('traveller-name', tr.name || '');
+          setVal('traveller-phone', tr.phone || '');
+          setVal('traveller-email', tr.email || '');
+          setVal('traveller-age', tr.age ?? '');
+          setVal('traveller-gender', tr.gender || '');
+          setVal('traveller-relation', tr.relation || 'Self');
+          const chk = document.getElementById('traveller-default');
+          if (chk) chk.checked = Boolean(tr.is_default);
+          const leg = document.getElementById('traveller-form-legend');
+          if (leg) leg.textContent = `Edit Traveller: ${tr.name || ''}`;
+          const lbl = document.getElementById('traveller-save-label');
+          if (lbl) lbl.textContent = 'Update Traveller';
+          const cancelBtn = document.getElementById('traveller-cancel-btn');
+          if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+          document.getElementById('traveller-name')?.focus();
+        };
+
+        window.saveCustomerTraveller = async function (e) {
+          if (e && e.preventDefault) e.preventDefault();
+          const editId = document.getElementById('traveller-edit-id')?.value.trim() || '';
+          const name = document.getElementById('traveller-name')?.value.trim() || '';
+          const phone = document.getElementById('traveller-phone')?.value.trim() || '';
+          const email = document.getElementById('traveller-email')?.value.trim() || '';
+          const ageRaw = document.getElementById('traveller-age')?.value.trim() || '';
+          const gender = document.getElementById('traveller-gender')?.value || '';
+          const relation = document.getElementById('traveller-relation')?.value || 'Self';
+          const isDefault = Boolean(document.getElementById('traveller-default')?.checked);
+          const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+          if (!name || phone.length < 8) {
+            showToast('Enter traveller name and a valid phone number.', 'warning');
+            return;
+          }
+
+          const url = editId ? `/api/customer/travellers/${encodeURIComponent(editId)}` : '/api/customer/travellers';
+          const method = editId ? 'PUT' : 'POST';
+
+          try {
+            const res = await fetch(url, {
+              method,
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+              },
+              body: JSON.stringify({
+                name,
+                phone,
+                email: email || undefined,
+                age: ageRaw ? Number(ageRaw) : undefined,
+                gender: gender || undefined,
+                relation,
+                is_default: isDefault,
+              }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              showToast(data.message || 'Traveller saved!', 'success');
+              window.resetCustomerTravellerForm();
+              if (Array.isArray(data.travellers)) {
+                window.renderCustomerTravellers(data.travellers);
+              }
+            } else {
+              showToast(data.message || 'Could not save traveller.', 'warning');
+            }
+          } catch (err) {
+            console.error('saveCustomerTraveller', err);
+            showToast('Network error while saving traveller.', 'warning');
+          }
+        };
+
+        window.deleteCustomerTraveller = async function (id) {
+          if (!id) return;
+          const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+          try {
+            const res = await fetch(`/api/customer/travellers/${encodeURIComponent(id)}`, {
+              method: 'DELETE',
+              headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+              },
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              showToast(data.message || 'Traveller removed.', 'success');
+              if (Array.isArray(data.travellers)) {
+                window.renderCustomerTravellers(data.travellers);
+              }
+            } else {
+              showToast(data.message || 'Could not delete traveller.', 'warning');
+            }
+          } catch (err) {
+            console.error('deleteCustomerTraveller', err);
+            showToast('Network error while deleting traveller.', 'warning');
+          }
+        };
+
+        window.useTravellerForBooking = function (tr) {
+          if (!tr) return;
+          const setVal = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+          setVal('cab-rider-name', tr.name);
+          setVal('cab-rider-phone', tr.phone);
+          setVal('cab-rider-email', tr.email);
+          if (typeof window.switchTab === 'function') {
+            window.switchTab('cabs');
+          }
+          showToast(`Autofilled passenger details for ${tr.name}.`, 'success');
+        };
+      })();

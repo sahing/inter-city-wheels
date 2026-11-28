@@ -35,6 +35,7 @@
     $allowedTabsForRole = match($userRole) {
         'admin' => ['admin', 'cabs', 'schedules', 'bidding'],
         'driver' => ['bidding', 'driver-trips', 'driver-wallet', 'driver-profile'],
+        'customer' => $isSchedulesEnabled ? ['cabs', 'schedules', 'my-bookings', 'customer-profile'] : ['cabs', 'my-bookings', 'customer-profile'],
         default => $isSchedulesEnabled ? ['cabs', 'schedules', 'my-bookings'] : ['cabs', 'my-bookings'],
     };
 
@@ -143,6 +144,12 @@
                             <span class="nav-tab-badge badge-primary">{{ count($customerBookings ?? []) }}</span>
                         @endif
                     </button>
+                    @auth
+                    <button class="nav-tab-btn {{ $defaultTab === 'customer-profile' ? 'active' : '' }}" data-target="customer-profile">
+                        <span class="material-symbols-outlined">person</span>
+                        <span>My Profile</span>
+                    </button>
+                    @endauth
                 @elseif($userRole === 'driver')
                     {{-- DRIVER / CHAUFFEUR PARTNER VIEW --}}
                     <button class="nav-tab-btn {{ $defaultTab === 'bidding' ? 'active' : '' }}" data-target="bidding">
@@ -230,6 +237,13 @@
                                     <div class="dropdown-item-text">
                                         <span class="dropdown-item-title">My Trips & Tickets</span>
                                         <span class="dropdown-item-sub">Live passes, receipts & OTPs</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="dropdown-item-btn" onclick="switchTab('customer-profile'); toggleUserMenu();">
+                                    <span class="material-symbols-outlined dropdown-item-icon" style="font-size:18px; color:#d49b4c;">person</span>
+                                    <div class="dropdown-item-text">
+                                        <span class="dropdown-item-title">My Profile &amp; Travellers</span>
+                                        <span class="dropdown-item-sub">Phone number &amp; saved travellers</span>
                                     </div>
                                 </button>
                                 <button type="button" class="dropdown-item-btn" onclick="switchTab('cabs'); toggleUserMenu();">

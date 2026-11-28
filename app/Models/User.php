@@ -68,6 +68,11 @@ class User extends Authenticatable
         return $this->role === 'customer';
     }
 
+    public function travellers()
+    {
+        return $this->hasMany(CustomerTraveller::class)->orderByDesc('is_default')->orderBy('id');
+    }
+
     /**
      * The driver profile that belongs to this account.
      *

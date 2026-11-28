@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\RouteCalculationController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BiddingPageController;
 use App\Http\Controllers\BookingController;
+use App\Http\Controllers\CustomerProfileController;
 use App\Http\Controllers\DriverBiddingController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\NotificationController;
@@ -171,6 +172,12 @@ Route::prefix('api')->middleware(['auth'])->group(function () {
 
 Route::prefix('api')->middleware(['auth', 'role:customer,admin'])->group(function () {
     Route::post('/bids/accept', [DriverBiddingController::class, 'acceptBid'])->name('api.bids.accept');
+    Route::get('/customer/profile', [CustomerProfileController::class, 'show'])->name('api.customer.profile.show');
+    Route::post('/customer/profile', [CustomerProfileController::class, 'updateProfile'])->name('api.customer.profile.update');
+    Route::get('/customer/travellers', [CustomerProfileController::class, 'listTravellers'])->name('api.customer.travellers.index');
+    Route::post('/customer/travellers', [CustomerProfileController::class, 'storeTraveller'])->name('api.customer.travellers.store');
+    Route::put('/customer/travellers/{id}', [CustomerProfileController::class, 'updateTraveller'])->name('api.customer.travellers.update');
+    Route::delete('/customer/travellers/{id}', [CustomerProfileController::class, 'destroyTraveller'])->name('api.customer.travellers.destroy');
 });
 
 /*
