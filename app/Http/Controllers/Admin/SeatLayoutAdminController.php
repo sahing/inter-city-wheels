@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\SeatLayout;
+use Illuminate\Http\Request;
 
 class SeatLayoutAdminController extends Controller
 {
@@ -21,7 +21,7 @@ class SeatLayoutAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'berths' => $berths
+            'berths' => $berths,
         ]);
     }
 
@@ -49,7 +49,7 @@ class SeatLayoutAdminController extends Controller
         if ($exists) {
             return response()->json([
                 'success' => false,
-                'message' => "Berth '{$validated['berth_number']}' already exists on vehicle/coach {$validated['coach_code']}."
+                'message' => "Berth '{$validated['berth_number']}' already exists on vehicle/coach {$validated['coach_code']}.",
             ], 422);
         }
 
@@ -58,16 +58,17 @@ class SeatLayoutAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Berth '{$berth->berth_number}' added to vehicle {$berth->coach_code} successfully!",
-            'berth' => $berth
+            'berth' => $berth,
         ]);
     }
 
     public function show($id)
     {
         $berth = SeatLayout::findOrFail($id);
+
         return response()->json([
             'success' => true,
-            'berth' => $berth
+            'berth' => $berth,
         ]);
     }
 
@@ -94,7 +95,7 @@ class SeatLayoutAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Berth '{$berth->berth_number}' updated successfully!",
-            'berth' => $berth
+            'berth' => $berth,
         ]);
     }
 
@@ -107,8 +108,7 @@ class SeatLayoutAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Berth '{$num}' removed from vehicle {$coach}."
+            'message' => "Berth '{$num}' removed from vehicle {$coach}.",
         ]);
     }
 }
-

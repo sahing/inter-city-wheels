@@ -2,10 +2,9 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Models\User;
-use App\Models\Driver;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class AdminUserManagementTest extends TestCase
 {
@@ -32,9 +31,9 @@ class AdminUserManagementTest extends TestCase
                     'name',
                     'email',
                     'role',
-                    'phone'
-                ]
-            ]
+                    'phone',
+                ],
+            ],
         ]);
     }
 
@@ -51,7 +50,7 @@ class AdminUserManagementTest extends TestCase
             'password' => 'secret123',
             'vehicle_model' => 'Toyota Fortuner',
             'vehicle_plate' => 'MH 14 CC 9999',
-            'fleet_category' => 'suv'
+            'fleet_category' => 'suv',
         ];
 
         $response = $this->actingAs($admin)->postJson('/api/admin/users', $payload);
@@ -61,18 +60,18 @@ class AdminUserManagementTest extends TestCase
             'user' => [
                 'name' => 'Sanjay Manjrekar',
                 'email' => 'sanjay.driver@intercitywheels.com',
-                'role' => 'driver'
-            ]
+                'role' => 'driver',
+            ],
         ]);
 
         $this->assertDatabaseHas('users', [
             'email' => 'sanjay.driver@intercitywheels.com',
-            'role' => 'driver'
+            'role' => 'driver',
         ]);
 
         $this->assertDatabaseHas('drivers', [
             'vehicle_plate' => 'MH 14 CC 9999',
-            'name' => 'Sanjay Manjrekar'
+            'name' => 'Sanjay Manjrekar',
         ]);
     }
 
@@ -90,8 +89,8 @@ class AdminUserManagementTest extends TestCase
             'success' => true,
             'user' => [
                 'id' => $customer->id,
-                'email' => $customer->email
-            ]
+                'email' => $customer->email,
+            ],
         ]);
 
         // Update user
@@ -99,20 +98,20 @@ class AdminUserManagementTest extends TestCase
             'name' => 'Rahul Sharma Updated',
             'email' => 'rahul.updated@intercitywheels.com',
             'phone' => '+91 98765 00000',
-            'role' => 'customer'
+            'role' => 'customer',
         ]);
         $updateRes->assertStatus(200);
         $updateRes->assertJson([
             'success' => true,
             'user' => [
                 'name' => 'Rahul Sharma Updated',
-                'email' => 'rahul.updated@intercitywheels.com'
-            ]
+                'email' => 'rahul.updated@intercitywheels.com',
+            ],
         ]);
 
         $this->assertDatabaseHas('users', [
             'id' => $customer->id,
-            'name' => 'Rahul Sharma Updated'
+            'name' => 'Rahul Sharma Updated',
         ]);
     }
 
@@ -126,14 +125,14 @@ class AdminUserManagementTest extends TestCase
             'email' => 'temp@example.com',
             'phone' => '+91 90000 00000',
             'role' => 'customer',
-            'password' => bcrypt('password')
+            'password' => bcrypt('password'),
         ]);
 
         $response = $this->actingAs($admin)->deleteJson("/api/admin/users/{$tempUser->id}");
         $response->assertStatus(200);
 
         $this->assertDatabaseMissing('users', [
-            'id' => $tempUser->id
+            'id' => $tempUser->id,
         ]);
     }
 
@@ -155,6 +154,58 @@ class AdminUserManagementTest extends TestCase
         $response->assertSee('admin-add-user-modal', false);
         $response->assertSee('admin-edit-user-modal', false);
         $response->assertSee('admin-view-user-modal', false);
+        $response->assertSee('changeUserRole(', false);
+    }
+
+    public function test_admin_can_grant_driver_customer_or_admin_permission_to_any_user(): void
+    {
+        $admin = User::where('role', 'admin')->firstOrFail();
+        $user = User::where('role', 'customer')->firstOrFail();
+
+        // 1. Grant driver-level permission -> provisions verified Driver profile
+        $toDriver = $this->actingAs($admin)->patchJson("/api/admin/users/{$user->id}/role", [
+            'role' => 'driver',
+        ]);
+        $toDriver->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('user.role', 'driver')
+            ->assertJsonPath('driver.is_verified', true);
+
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'role' => 'driver']);
+        $this->assertNotNull($user->fresh()->driverProfile());
+
+        // Promoted user can immediately access driver auction feed with can_bid = true
+        $this->actingAs($user->fresh())
+            ->getJson('/api/driver/auctions')
+            ->assertStatus(200)
+            ->assertJsonPath('can_bid', true);
+
+        // 2. Grant admin-level permission -> user can reach admin APIs
+        $toAdmin = $this->actingAs($admin)->patchJson("/api/admin/users/{$user->id}/role", [
+            'role' => 'admin',
+        ]);
+        $toAdmin->assertStatus(200)
+            ->assertJsonPath('user.role', 'admin');
+
+        $this->actingAs($user->fresh())
+            ->getJson('/api/admin/users')
+            ->assertStatus(200);
+
+        // 3. Revert back to customer-level permission
+        $toCustomer = $this->actingAs($admin)->putJson("/api/admin/users/{$user->id}", [
+            'role' => 'customer',
+        ]);
+        $toCustomer->assertStatus(200)
+            ->assertJsonPath('user.role', 'customer');
+
+        $this->actingAs($user->fresh())
+            ->getJson('/api/admin/users')
+            ->assertStatus(403);
+
+        // 4. Admin cannot demote their own active admin session
+        $selfDemote = $this->actingAs($admin)->patchJson("/api/admin/users/{$admin->id}/role", [
+            'role' => 'customer',
+        ]);
+        $selfDemote->assertStatus(422);
     }
 }
-

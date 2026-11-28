@@ -2,11 +2,12 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use App\Models\User;
-use App\Models\Driver;
 use App\Models\Booking;
+use App\Models\Driver;
+use App\Models\PlatformSetting;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class RoleBasedAccessTest extends TestCase
 {
@@ -16,6 +17,7 @@ class RoleBasedAccessTest extends TestCase
     {
         parent::setUp();
         $this->seed();
+        PlatformSetting::set('enable_schedules_and_berths', '1');
     }
 
     public function test_customer_sees_only_customer_options(): void
@@ -26,16 +28,50 @@ class RoleBasedAccessTest extends TestCase
         $response = $this->actingAs($customer)->get('/');
         $response->assertStatus(200);
 
-        // Customer sees their relevant options
+        // Customer sees their relevant options in navigation and dropdown
         $response->assertSee('Outstation Cabs');
         $response->assertSee('Schedules & Berths', false);
         $response->assertSee('My Trips');
-        $response->assertSee('My Outstation Trips & Digital Tickets', false);
+        $response->assertSee('My Trips &amp; Booking History', false);
+        $response->assertSee('Customer Menu');
+        $response->assertSee('My Trips & Tickets', false);
+        $response->assertSee('Book Outstation Cab');
+        $response->assertSee('Luxury Sleeper Berths');
+        $response->assertSee('Sign Out');
 
-        // Customer DOES NOT see admin or driver controls
+        // Customer DOES NOT see admin or driver tabs or role perspective switch
         $response->assertDontSee('Admin Ops');
         $response->assertDontSee('data-target="admin"', false);
         $response->assertDontSee('data-target="driver-wallet"', false);
+        $response->assertDontSee('Quick Role Perspective Switch');
+        $response->assertDontSee('Chauffeur Partner');
+        $response->assertDontSee('Platform Admin');
+        $response->assertDontSee('id="tab-admin"', false);
+        $response->assertDontSee('id="tab-bidding"', false);
+        $response->assertDontSee('id="tab-driver-trips"', false);
+        $response->assertDontSee('id="tab-driver-wallet"', false);
+        $response->assertDontSee('id="tab-driver-profile"', false);
+        $response->assertDontSee('id="admin-allot-driver-modal"', false);
+        $response->assertDontSee('id="admin-add-booking-modal"', false);
+        $response->assertDontSee('id="driver-bid-modal"', false);
+    }
+
+    public function test_new_customer_with_no_bookings_does_not_leak_other_bookings(): void
+    {
+        $newCustomer = User::create([
+            'name' => 'Brand New Customer',
+            'email' => 'newcustomer@example.com',
+            'phone' => '+91 99999 88888',
+            'password' => bcrypt('password123'),
+            'role' => 'customer',
+        ]);
+
+        $response = $this->actingAs($newCustomer)->get('/');
+        $response->assertStatus(200);
+
+        // Shows clean empty state for customer
+        $response->assertSee('No trips booked yet');
+        $response->assertSee('Book a Trip');
     }
 
     public function test_driver_sees_only_driver_options(): void
@@ -50,11 +86,16 @@ class RoleBasedAccessTest extends TestCase
         $response->assertSee('Live Bids & Auctions', false);
         $response->assertSee('My Assigned Trips');
         $response->assertSee('Driver Wallet');
-        $response->assertSee('Chauffeur Wallet & Instant Payouts', false);
+        $response->assertSee('Chauffeur Wallet &amp; Payment History', false);
+        $response->assertSee('Chauffeur Console');
+        $response->assertSee('id="tab-bidding"', false);
+        $response->assertSee('id="tab-driver-trips"', false);
 
-        // Driver DOES NOT see admin panel or admin ops
+        // Driver DOES NOT see admin panel, admin ops, or perspective switcher
         $response->assertDontSee('Admin Ops');
         $response->assertDontSee('data-target="admin"', false);
+        $response->assertDontSee('id="tab-admin"', false);
+        $response->assertDontSee('Quick Role Perspective Switch');
     }
 
     public function test_admin_sees_admin_panel_and_supervisor_options(): void
@@ -94,25 +135,25 @@ class RoleBasedAccessTest extends TestCase
             'total_amount' => 3120,
             'status' => 'Driver Assigned',
             'start_otp' => '5566',
-            'assigned_driver_id' => $driverModel->id
+            'assigned_driver_id' => $driverModel->id,
         ]);
 
         // Wrong OTP fails
         $failRes = $this->actingAs($driverUser)->postJson("/api/driver/trips/{$booking->id}/verify-otp", [
-            'otp' => '0000'
+            'otp' => '0000',
         ]);
         $failRes->assertStatus(422);
 
         // Correct OTP succeeds
         $successRes = $this->actingAs($driverUser)->postJson("/api/driver/trips/{$booking->id}/verify-otp", [
-            'otp' => '5566'
+            'otp' => '5566',
         ]);
         $successRes->assertStatus(200);
         $successRes->assertJson([
             'success' => true,
             'booking' => [
-                'status' => 'Started'
-            ]
+                'status' => 'Started',
+            ],
         ]);
 
         // Complete trip
@@ -121,8 +162,8 @@ class RoleBasedAccessTest extends TestCase
         $completeRes->assertJson([
             'success' => true,
             'booking' => [
-                'status' => 'Completed'
-            ]
+                'status' => 'Completed',
+            ],
         ]);
     }
 

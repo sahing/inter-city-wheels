@@ -23,4 +23,3 @@ class ServiceLocation extends Model
         'longitude' => 'float',
     ];
 }
-

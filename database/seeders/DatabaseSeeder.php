@@ -2,14 +2,23 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\RouteFare;
-use App\Models\Driver;
-use App\Models\SeatLayout;
-use App\Models\DynamicFormField;
-use App\Models\WorkflowStage;
-use App\Models\Coupon;
+use App\Models\AirportHub;
+use App\Models\BerthRoute;
 use App\Models\Booking;
+use App\Models\CarType;
+use App\Models\Coupon;
+use App\Models\Driver;
+use App\Models\DriverVehicle;
+use App\Models\DynamicFormField;
+use App\Models\LocalPackage;
+use App\Models\PlatformSetting;
+use App\Models\RouteFare;
+use App\Models\SeatLayout;
+use App\Models\ServiceLocation;
+use App\Models\User;
+use App\Models\WorkflowStage;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -38,6 +47,13 @@ class DatabaseSeeder extends Seeder
             ['from_city' => 'Kandi', 'to_city' => 'Baharampur', 'from_lat' => 23.9556, 'from_lng' => 88.0378, 'to_lat' => 24.0988, 'to_lng' => 88.2514, 'distance_km' => 32, 'estimated_time' => '55m', 'base_toll' => 0],
             ['from_city' => 'Kolkata', 'to_city' => 'Mayapur', 'from_lat' => 22.6548, 'from_lng' => 88.4467, 'to_lat' => 23.4232, 'to_lng' => 88.3900, 'distance_km' => 132, 'estimated_time' => '3h 30m', 'base_toll' => 120],
             ['from_city' => 'Mayapur', 'to_city' => 'Kolkata', 'from_lat' => 23.4232, 'from_lng' => 88.3900, 'to_lat' => 22.6548, 'to_lng' => 88.4467, 'distance_km' => 132, 'estimated_time' => '3h 30m', 'base_toll' => 120],
+            // Digha & Berhampore Routes
+            ['from_city' => 'Berhampore', 'to_city' => 'Digha', 'from_lat' => 24.0988, 'from_lng' => 88.2514, 'to_lat' => 21.6266, 'to_lng' => 87.5074, 'distance_km' => 345, 'estimated_time' => '7h 30m', 'base_toll' => 320],
+            ['from_city' => 'Digha', 'to_city' => 'Berhampore', 'from_lat' => 21.6266, 'from_lng' => 87.5074, 'to_lat' => 24.0988, 'to_lng' => 88.2514, 'distance_km' => 345, 'estimated_time' => '7h 30m', 'base_toll' => 320],
+            ['from_city' => 'Baharampur', 'to_city' => 'Digha', 'from_lat' => 24.0988, 'from_lng' => 88.2514, 'to_lat' => 21.6266, 'to_lng' => 87.5074, 'distance_km' => 345, 'estimated_time' => '7h 30m', 'base_toll' => 320],
+            ['from_city' => 'Digha', 'to_city' => 'Baharampur', 'from_lat' => 21.6266, 'from_lng' => 87.5074, 'to_lat' => 24.0988, 'to_lng' => 88.2514, 'distance_km' => 345, 'estimated_time' => '7h 30m', 'base_toll' => 320],
+            ['from_city' => 'Kolkata', 'to_city' => 'Digha', 'from_lat' => 22.5726, 'from_lng' => 88.3639, 'to_lat' => 21.6266, 'to_lng' => 87.5074, 'distance_km' => 185, 'estimated_time' => '4h 15m', 'base_toll' => 180],
+            ['from_city' => 'Digha', 'to_city' => 'Kolkata', 'from_lat' => 21.6266, 'from_lng' => 87.5074, 'to_lat' => 22.5726, 'to_lng' => 88.3639, 'distance_km' => 185, 'estimated_time' => '4h 15m', 'base_toll' => 180],
         ];
         foreach ($routes as $r) {
             RouteFare::firstOrCreate(['from_city' => $r['from_city'], 'to_city' => $r['to_city']], $r);
@@ -122,7 +138,7 @@ class DatabaseSeeder extends Seeder
             'customer_email' => 'rahul@example.com',
             'passengers' => [
                 ['name' => 'Rahul Sharma', 'age' => 29, 'gender' => 'male', 'berth' => 'L4'],
-                ['name' => 'Sneha Verma', 'age' => 27, 'gender' => 'female', 'berth' => 'L5']
+                ['name' => 'Sneha Verma', 'age' => 27, 'gender' => 'female', 'berth' => 'L5'],
             ],
             'selected_units' => ['L4', 'L5'],
             'base_fare' => 1700.00,
@@ -131,42 +147,67 @@ class DatabaseSeeder extends Seeder
             'discount_fare' => 0.00,
             'total_amount' => 1700.00,
             'status' => 'Confirmed',
-            'start_otp' => '8492'
+            'start_otp' => '8492',
         ]);
 
-        // 8. Seed Role-Based Demo Accounts
-        \App\Models\User::firstOrCreate(
-            ['email' => 'admin@intercitywheels.com'],
-            [
-                'name' => 'Vikram Singhania (Ops Admin)',
-                'password' => \Illuminate\Support\Facades\Hash::make('password123'),
-                'role' => 'admin',
-                'phone' => '+91 99000 00001',
-                'avatar' => '🛡️'
-            ]
-        );
+        // 8. Accounts
+        // The demo accounts all share a published password, so they exist only in
+        // demo mode. A production deploy provisions its admin from environment
+        // values instead of shipping known credentials.
+        if (config('demo.enabled')) {
+            User::firstOrCreate(
+                ['email' => 'admin@intercitywheels.com'],
+                [
+                    'name' => 'Vikram Singhania (Ops Admin)',
+                    'password' => Hash::make('password123'),
+                    'role' => 'admin',
+                    'phone' => '+91 99000 00001',
+                    'avatar' => '🛡️',
+                ]
+            );
 
-        \App\Models\User::firstOrCreate(
-            ['email' => 'driver@intercitywheels.com'],
-            [
-                'name' => 'Ramesh Patil (Partner Chauffeur)',
-                'password' => \Illuminate\Support\Facades\Hash::make('password123'),
-                'role' => 'driver',
-                'phone' => '+91 98220 11920',
-                'avatar' => '👨🏽‍✈️'
-            ]
-        );
+            User::firstOrCreate(
+                ['email' => 'driver@intercitywheels.com'],
+                [
+                    'name' => 'Ramesh Patil (Partner Chauffeur)',
+                    'password' => Hash::make('password123'),
+                    'role' => 'driver',
+                    'phone' => '+91 98220 11920',
+                    'avatar' => '👨🏽‍✈️',
+                ]
+            );
 
-        \App\Models\User::firstOrCreate(
-            ['email' => 'customer@intercitywheels.com'],
-            [
-                'name' => 'Rahul Sharma (Traveler)',
-                'password' => \Illuminate\Support\Facades\Hash::make('password123'),
-                'role' => 'customer',
-                'phone' => '+91 98765 43210',
-                'avatar' => '👤'
-            ]
-        );
+            User::firstOrCreate(
+                ['email' => 'customer@intercitywheels.com'],
+                [
+                    'name' => 'Rahul Sharma (Traveler)',
+                    'password' => Hash::make('password123'),
+                    'role' => 'customer',
+                    'phone' => '+91 98765 43210',
+                    'avatar' => '👤',
+                ]
+            );
+        } else {
+            $adminEmail = env('ADMIN_EMAIL');
+            $adminPassword = env('ADMIN_PASSWORD');
+
+            if ($adminEmail && $adminPassword) {
+                User::firstOrCreate(
+                    ['email' => $adminEmail],
+                    [
+                        'name' => env('ADMIN_NAME', 'Platform Admin'),
+                        'password' => Hash::make($adminPassword),
+                        'role' => 'admin',
+                        'phone' => env('ADMIN_PHONE', ''),
+                        'avatar' => '🛡️',
+                    ]
+                );
+            } else {
+                $this->command?->warn(
+                    'Demo mode is off and ADMIN_EMAIL/ADMIN_PASSWORD are unset — no admin account was created.'
+                );
+            }
+        }
 
         // 9. Seed Service Locations (Setup by Admin for Cabs & Transit)
         $locations = [
@@ -180,6 +221,14 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Chennai', 'state' => 'Tamil Nadu', 'latitude' => 13.0827, 'longitude' => 80.2707, 'airport_code' => 'MAA', 'has_airport_service' => true, 'is_active' => true],
             // West Bengal - Murshidabad Centric Network Hubs
             ['name' => 'Baharampur', 'state' => 'West Bengal (Murshidabad)', 'latitude' => 24.0988, 'longitude' => 88.2514, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Berhampore', 'state' => 'West Bengal (Murshidabad)', 'latitude' => 24.0988, 'longitude' => 88.2514, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Digha', 'state' => 'West Bengal (Purba Medinipur)', 'latitude' => 21.6266, 'longitude' => 87.5074, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Mandarmani', 'state' => 'West Bengal (Purba Medinipur)', 'latitude' => 21.6667, 'longitude' => 87.7000, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Siliguri', 'state' => 'West Bengal', 'latitude' => 26.7271, 'longitude' => 88.3953, 'airport_code' => 'IXB', 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Darjeeling', 'state' => 'West Bengal (Queen of Hills)', 'latitude' => 27.0410, 'longitude' => 88.2663, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Durgapur', 'state' => 'West Bengal', 'latitude' => 23.5204, 'longitude' => 87.3119, 'airport_code' => 'RDP', 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Asansol', 'state' => 'West Bengal', 'latitude' => 23.6889, 'longitude' => 86.9661, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
+            ['name' => 'Bolpur', 'state' => 'West Bengal (Santiniketan)', 'latitude' => 23.6700, 'longitude' => 87.7200, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
             ['name' => 'Murshidabad', 'state' => 'West Bengal (Heritage City)', 'latitude' => 24.1750, 'longitude' => 88.2800, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
             ['name' => 'Jangipur', 'state' => 'West Bengal (Murshidabad)', 'latitude' => 24.4686, 'longitude' => 88.0700, 'airport_code' => null, 'has_airport_service' => false, 'is_active' => true],
             ['name' => 'Farakka', 'state' => 'West Bengal (Murshidabad)', 'latitude' => 24.8167, 'longitude' => 87.9000, 'airport_code' => null, 'has_airport_service' => false, 'is_active' => true],
@@ -188,7 +237,7 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Mayapur', 'state' => 'West Bengal (Nadia)', 'latitude' => 23.4232, 'longitude' => 88.3900, 'airport_code' => null, 'has_airport_service' => true, 'is_active' => true],
         ];
         foreach ($locations as $loc) {
-            \App\Models\ServiceLocation::firstOrCreate(['name' => $loc['name']], $loc);
+            ServiceLocation::firstOrCreate(['name' => $loc['name']], $loc);
         }
 
         // 10. Seed Berth Routes (Setup by Admin for Sleeper Bus / Berth Van System)
@@ -203,7 +252,7 @@ class DatabaseSeeder extends Seeder
                 'arrival_time' => '06:45 AM',
                 'base_price' => 850.00,
                 'total_berths' => 30,
-                'is_active' => true
+                'is_active' => true,
             ],
             [
                 'from_city' => 'Mumbai',
@@ -215,7 +264,7 @@ class DatabaseSeeder extends Seeder
                 'arrival_time' => '07:30 AM',
                 'base_price' => 950.00,
                 'total_berths' => 32,
-                'is_active' => true
+                'is_active' => true,
             ],
             [
                 'from_city' => 'Bengaluru',
@@ -227,7 +276,7 @@ class DatabaseSeeder extends Seeder
                 'arrival_time' => '06:00 AM',
                 'base_price' => 800.00,
                 'total_berths' => 30,
-                'is_active' => true
+                'is_active' => true,
             ],
             [
                 'from_city' => 'Pune',
@@ -239,7 +288,7 @@ class DatabaseSeeder extends Seeder
                 'arrival_time' => '09:30 AM',
                 'base_price' => 550.00,
                 'total_berths' => 7,
-                'is_active' => true
+                'is_active' => true,
             ],
             [
                 'from_city' => 'Baharampur',
@@ -251,7 +300,7 @@ class DatabaseSeeder extends Seeder
                 'arrival_time' => '05:30 AM',
                 'base_price' => 450.00,
                 'total_berths' => 30,
-                'is_active' => true
+                'is_active' => true,
             ],
             [
                 'from_city' => 'Kolkata',
@@ -263,11 +312,11 @@ class DatabaseSeeder extends Seeder
                 'arrival_time' => '11:00 AM',
                 'base_price' => 450.00,
                 'total_berths' => 30,
-                'is_active' => true
-            ]
+                'is_active' => true,
+            ],
         ];
         foreach ($berthRoutes as $br) {
-            \App\Models\BerthRoute::firstOrCreate(['coach_code' => $br['coach_code']], $br);
+            BerthRoute::firstOrCreate(['coach_code' => $br['coach_code']], $br);
         }
 
         // Additional berths for Coach 5510 (Force Urbania 7-Berth Van)
@@ -281,12 +330,12 @@ class DatabaseSeeder extends Seeder
             ['coach_code' => '5510', 'operator_name' => 'Executive Urbania Transit', 'deck' => 'lower', 'berth_number' => 'B7', 'berth_type' => 'window', 'price' => 550, 'is_ladies_quota' => false, 'is_booked' => false],
         ];
         foreach ($vanBerths as $vb) {
-            \App\Models\SeatLayout::firstOrCreate(['coach_code' => $vb['coach_code'], 'berth_number' => $vb['berth_number']], $vb);
+            SeatLayout::firstOrCreate(['coach_code' => $vb['coach_code'], 'berth_number' => $vb['berth_number']], $vb);
         }
 
         // 11. Seed Driver Vehicles (Driver Listed Vehicles & Pending Approvals)
-        $ramesh = \App\Models\Driver::first();
-        \App\Models\DriverVehicle::firstOrCreate(
+        $ramesh = Driver::first();
+        DriverVehicle::firstOrCreate(
             ['vehicle_plate' => 'MH 12 QX 4920'],
             [
                 'driver_id' => $ramesh ? $ramesh->id : null,
@@ -302,11 +351,11 @@ class DatabaseSeeder extends Seeder
                 'rc_number' => 'RC-MH12-984129',
                 'status' => 'Approved',
                 'admin_notes' => 'Verified commercial taxi permit and fastag active.',
-                'is_active' => true
+                'is_active' => true,
             ]
         );
 
-        \App\Models\DriverVehicle::firstOrCreate(
+        DriverVehicle::firstOrCreate(
             ['vehicle_plate' => 'MH 12 TS 9901'],
             [
                 'driver_id' => $ramesh ? $ramesh->id : null,
@@ -322,11 +371,11 @@ class DatabaseSeeder extends Seeder
                 'rc_number' => 'RC-MH12-110022',
                 'status' => 'Pending',
                 'admin_notes' => 'Uploaded RC copy and insurance certificate pending physical inspection.',
-                'is_active' => false
+                'is_active' => false,
             ]
         );
 
-        \App\Models\DriverVehicle::firstOrCreate(
+        DriverVehicle::firstOrCreate(
             ['vehicle_plate' => 'MH 14 CL 7720'],
             [
                 'driver_id' => null,
@@ -342,12 +391,258 @@ class DatabaseSeeder extends Seeder
                 'rc_number' => 'RC-MH14-883921',
                 'status' => 'Pending',
                 'admin_notes' => '7 sleeper berths fitted. Pending berth safety certificate check.',
-                'is_active' => false
+                'is_active' => false,
             ]
         );
 
-        // 12. Seed Platform Settings (Policy URLs)
-        \App\Models\PlatformSetting::set('privacy_policy_url', '/privacy-policy');
-        \App\Models\PlatformSetting::set('terms_conditions_url', '/terms-conditions');
+        // 12. Seed Platform Settings (Policy URLs & Feature Toggles)
+        PlatformSetting::set('privacy_policy_url', '/privacy-policy');
+        PlatformSetting::set('terms_conditions_url', '/terms-conditions');
+        // Initial state: Off by default per platform admin settings
+        PlatformSetting::set('enable_schedules_and_berths', '0');
+
+        // 13. Seed Configured Local Rental Packages (Hourly & KM)
+        $localPackages = [
+            [
+                'package_code' => '4_40',
+                'city' => 'All Cities',
+                'name' => '4 Hours / 40 KM',
+                'duration_hours' => 4,
+                'included_km' => 40,
+                'sedan_fare' => 1400.00,
+                'suv_fare' => 1900.00,
+                'extra_km_rate' => 14.00,
+                'extra_hour_rate' => 150.00,
+                'is_active' => true,
+            ],
+            [
+                'package_code' => '8_80',
+                'city' => 'All Cities',
+                'name' => '8 Hours / 80 KM (Half Day)',
+                'duration_hours' => 8,
+                'included_km' => 80,
+                'sedan_fare' => 2400.00,
+                'suv_fare' => 3200.00,
+                'extra_km_rate' => 14.00,
+                'extra_hour_rate' => 150.00,
+                'is_active' => true,
+            ],
+            [
+                'package_code' => '10_100',
+                'city' => 'All Cities',
+                'name' => '10 Hours / 100 KM (Full Day)',
+                'duration_hours' => 10,
+                'included_km' => 100,
+                'sedan_fare' => 2900.00,
+                'suv_fare' => 3800.00,
+                'extra_km_rate' => 14.00,
+                'extra_hour_rate' => 150.00,
+                'is_active' => true,
+            ],
+            [
+                'package_code' => '12_120',
+                'city' => 'All Cities',
+                'name' => '12 Hours / 120 KM (Extended Day)',
+                'duration_hours' => 12,
+                'included_km' => 120,
+                'sedan_fare' => 3400.00,
+                'suv_fare' => 4400.00,
+                'extra_km_rate' => 14.00,
+                'extra_hour_rate' => 150.00,
+                'is_active' => true,
+            ],
+        ];
+        foreach ($localPackages as $lp) {
+            LocalPackage::firstOrCreate(['package_code' => $lp['package_code']], $lp);
+        }
+
+        // 14. Seed Configured Airport Transit Hubs
+        $airportHubs = [
+            [
+                'airport_name' => 'Netaji Subhash Chandra Bose International Airport',
+                'iata_code' => 'CCU',
+                'city' => 'Kolkata',
+                'terminals' => 'Terminal 1 (Domestic & International)',
+                'pickup_surcharge' => 250.00,
+                'drop_surcharge' => 150.00,
+                'sedan_base_fare' => 950.00,
+                'suv_base_fare' => 1450.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Indira Gandhi International Airport',
+                'iata_code' => 'DEL',
+                'city' => 'New Delhi',
+                'terminals' => 'Terminal 1, Terminal 2, Terminal 3',
+                'pickup_surcharge' => 300.00,
+                'drop_surcharge' => 180.00,
+                'sedan_base_fare' => 1100.00,
+                'suv_base_fare' => 1650.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Chhatrapati Shivaji Maharaj International Airport',
+                'iata_code' => 'BOM',
+                'city' => 'Mumbai',
+                'terminals' => 'Terminal 1 (Santacruz) & Terminal 2 (Sahar)',
+                'pickup_surcharge' => 300.00,
+                'drop_surcharge' => 180.00,
+                'sedan_base_fare' => 1200.00,
+                'suv_base_fare' => 1750.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Pune International Airport',
+                'iata_code' => 'PNQ',
+                'city' => 'Pune',
+                'terminals' => 'Terminal 1 (Lohegaon New Integrated Terminal)',
+                'pickup_surcharge' => 200.00,
+                'drop_surcharge' => 120.00,
+                'sedan_base_fare' => 850.00,
+                'suv_base_fare' => 1300.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Kempegowda International Airport',
+                'iata_code' => 'BLR',
+                'city' => 'Bengaluru',
+                'terminals' => 'Terminal 1 & Terminal 2 (Garden Terminal)',
+                'pickup_surcharge' => 300.00,
+                'drop_surcharge' => 180.00,
+                'sedan_base_fare' => 1250.00,
+                'suv_base_fare' => 1800.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Rajiv Gandhi International Airport',
+                'iata_code' => 'HYD',
+                'city' => 'Hyderabad',
+                'terminals' => 'Main Integrated Passenger Terminal (Shamshabad)',
+                'pickup_surcharge' => 250.00,
+                'drop_surcharge' => 150.00,
+                'sedan_base_fare' => 1050.00,
+                'suv_base_fare' => 1550.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Kazi Nazrul Islam Airport',
+                'iata_code' => 'RDP',
+                'city' => 'Durgapur',
+                'terminals' => 'Domestic Passenger Terminal',
+                'pickup_surcharge' => 200.00,
+                'drop_surcharge' => 120.00,
+                'sedan_base_fare' => 800.00,
+                'suv_base_fare' => 1250.00,
+                'is_active' => true,
+            ],
+            [
+                'airport_name' => 'Bagdogra International Airport',
+                'iata_code' => 'IXB',
+                'city' => 'Siliguri',
+                'terminals' => 'Main Terminal Building',
+                'pickup_surcharge' => 250.00,
+                'drop_surcharge' => 150.00,
+                'sedan_base_fare' => 950.00,
+                'suv_base_fare' => 1400.00,
+                'is_active' => true,
+            ],
+        ];
+        foreach ($airportHubs as $ah) {
+            AirportHub::firstOrCreate(['iata_code' => $ah['iata_code']], $ah);
+        }
+
+        // 15. Seed Configured Car Types / Fleet Categories
+        $carTypes = [
+            [
+                'name' => 'Compact Hatchback',
+                'category_key' => 'hatchback',
+                'badge' => 'Budget Friendly',
+                'models' => 'WagonR, Swift, Tiago, Celerio',
+                'seats' => '4 Seats',
+                'luggage' => '2 Bags',
+                'rate_per_km' => 11.00,
+                'extra_km_rate' => 11.00,
+                'base_fare_min' => 750.00,
+                'image_url' => 'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&w=400&q=80',
+                'order_index' => 1,
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Comfort Sedan',
+                'category_key' => 'sedan',
+                'badge' => 'Most Popular',
+                'models' => 'Dzire, Etios, Aura, Tigor',
+                'seats' => '4 Seats',
+                'luggage' => '3 Bags',
+                'rate_per_km' => 12.50,
+                'extra_km_rate' => 12.50,
+                'base_fare_min' => 950.00,
+                'image_url' => 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80',
+                'order_index' => 2,
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Family SUV',
+                'category_key' => 'suv',
+                'badge' => 'Spacious Ride',
+                'models' => 'Ertiga, Carens, Triber, Scorpio',
+                'seats' => '6-7 Seats',
+                'luggage' => '4 Bags',
+                'rate_per_km' => 18.00,
+                'extra_km_rate' => 18.00,
+                'base_fare_min' => 1400.00,
+                'image_url' => 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=400&q=80',
+                'order_index' => 3,
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Innova Crysta',
+                'category_key' => 'innova',
+                'badge' => 'Executive Luxury',
+                'models' => 'Innova Crysta, Innova Hycross',
+                'seats' => '7 Seats',
+                'luggage' => '5 Bags',
+                'rate_per_km' => 22.00,
+                'extra_km_rate' => 22.00,
+                'base_fare_min' => 1800.00,
+                'image_url' => 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=400&q=80',
+                'order_index' => 4,
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Tempo Traveller',
+                'category_key' => 'tempo',
+                'badge' => 'Group Tour',
+                'models' => 'Force Traveller 12-Seater, 17-Seater',
+                'seats' => '12+ Seats',
+                'luggage' => '10 Bags',
+                'rate_per_km' => 28.00,
+                'extra_km_rate' => 28.00,
+                'base_fare_min' => 2500.00,
+                'image_url' => 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=400&q=80',
+                'order_index' => 5,
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Luxury Limousine',
+                'category_key' => 'luxury',
+                'badge' => 'VIP Chauffeur',
+                'models' => 'BMW 5 Series, Mercedes E-Class, Audi A6',
+                'seats' => '4 Seats',
+                'luggage' => '3 Bags',
+                'rate_per_km' => 32.00,
+                'extra_km_rate' => 32.00,
+                'base_fare_min' => 3500.00,
+                'image_url' => 'https://images.unsplash.com/photo-1555353540-64580b51c258?auto=format&fit=crop&w=400&q=80',
+                'order_index' => 6,
+                'is_active' => true,
+            ],
+        ];
+        foreach ($carTypes as $ct) {
+            CarType::firstOrCreate(['category_key' => $ct['category_key']], $ct);
+        }
+
+        // 16. Seed Regional Fleet Scale-Out (100 partner drivers / 500 cars with amenities)
+        $this->call(FleetSeeder::class);
     }
 }

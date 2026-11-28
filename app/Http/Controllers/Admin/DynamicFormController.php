@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\DynamicFormField;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class DynamicFormController extends Controller
@@ -21,7 +21,7 @@ class DynamicFormController extends Controller
             'field_type' => 'required|in:text,number,select,checkbox',
             'applies_to' => 'nullable|string',
             'conditional_logic' => 'nullable|string',
-            'is_required' => 'nullable|boolean'
+            'is_required' => 'nullable|boolean',
         ]);
 
         $fieldKey = Str::slug($validated['label'], '_');
@@ -34,13 +34,13 @@ class DynamicFormController extends Controller
             'conditional_logic' => $validated['conditional_logic'] ?? 'All Bookings',
             'is_required' => $request->boolean('is_required'),
             'order_index' => DynamicFormField::max('order_index') + 1,
-            'is_active' => true
+            'is_active' => true,
         ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Dynamic field created!',
-            'field' => $field
+            'field' => $field,
         ]);
     }
 
@@ -51,7 +51,7 @@ class DynamicFormController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Dynamic field deleted!'
+            'message' => 'Dynamic field deleted!',
         ]);
     }
 }
