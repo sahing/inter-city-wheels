@@ -38,6 +38,16 @@ class Driver extends Model
         return $this->hasMany(DriverPayoutRequest::class)->latest('id');
     }
 
+    public function dueSettlements()
+    {
+        return $this->hasMany(DriverDueSettlement::class)->latest('id');
+    }
+
+    public function companyDueAmount(): float
+    {
+        return round(max(0.0, -(float) ($this->wallet_balance ?? 0)), 2);
+    }
+
     public function hasUpiPayoutConfigured(): bool
     {
         return trim((string) ($this->payout_upi_id ?? '')) !== '';

@@ -2019,11 +2019,77 @@
                     @php
                         $payoutProfile = $payHistoryData['payout_profile'] ?? [];
                         $payoutReqs = $payHistoryData['payout_requests'] ?? [];
+                        $dueSettlements = $payHistoryData['due_settlements'] ?? [];
                         $prefMethod = $payoutProfile['preferred_payout_method'] ?? ($driverProfile->preferred_payout_method ?? 'upi');
                         $hasUpiCfg = ! empty($payoutProfile['has_upi']);
                         $hasBankCfg = ! empty($payoutProfile['has_bank']);
                         $availWalletBal = (float) ($paySummary['wallet_balance'] ?? ($driverProfile->wallet_balance ?? 0));
+                        $companyDueAmt = (float) ($paySummary['company_due_amount'] ?? max(0, -$availWalletBal));
+                        $companyUpiId = $platformSettings['upi_id'] ?? 'intercitywheels@upi';
+                        $companyUpiName = $platformSettings['upi_payee_name'] ?? 'Intercity Wheels';
+                        $razorpayReadyForDue = ($platformSettings['razorpay_active'] ?? '0') === '1';
                     @endphp
+                    <!-- Company Due Settlement Card (Shown when Wallet Balance < 0) -->
+                    <div id="driver-company-due-card" style="display:{{ $companyDueAmt > 0 ? 'block' : 'none' }}; background:#fef2f2; border:1.5px solid #fca5a5; border-radius:12px; padding:16px; margin-bottom:18px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <span class="material-symbols-outlined" style="color:#dc2626; font-size:24px;">account_balance_wallet</span>
+                                <div>
+                                    <div style="font-weight:800; font-size:14px; color:#991b1b;">Company Due Payable: <span id="driver-company-due-amount-display">₹{{ number_format($companyDueAmt) }}</span></div>
+                                    <div style="font-size:12px; color:#7f1d1d;">You collected more than your winning bid / payout on customer-pay trips. Pay the remaining company share via Gateway or Manual UPI.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <form id="driver-due-settlement-form" onsubmit="submitDriverDueSettlement(event)" style="display:grid; gap:12px; accent-color:#0f172a;">
+                            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px; align-items:end;">
+                                <div class="form-group" style="margin-bottom:0;">
+                                    <label class="form-label" for="driver-due-amount-input" style="font-size:11px; font-weight:700; color:#7f1d1d; text-transform:uppercase;">Amount to Pay Company (₹)</label>
+                                    <input type="number" id="driver-due-amount-input" class="form-control" min="1" step="0.01" value="{{ $companyDueAmt > 0 ? $companyDueAmt : '' }}" style="min-height:42px; font-weight:800;" required oninput="updateDriverDueUpiLink()">
+                                </div>
+                                <fieldset style="border:0; padding:0; margin:0;">
+                                    <legend style="font-size:11px; font-weight:700; color:#7f1d1d; text-transform:uppercase; margin-bottom:4px; padding:0;">Payment Mode</legend>
+                                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                        @if($razorpayReadyForDue)
+                                        <label for="due-channel-gateway" style="display:flex; align-items:center; gap:6px; padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; background:#ffffff; cursor:pointer; font-size:12.5px; min-height:42px; flex:1;">
+                                            <input type="radio" id="due-channel-gateway" name="driver_due_channel" value="gateway" checked onchange="toggleDriverDueChannel()" style="width:16px; height:16px;">
+                                            <span>Payment Gateway</span>
+                                        </label>
+                                        @endif
+                                        <label for="due-channel-upi" style="display:flex; align-items:center; gap:6px; padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; background:#ffffff; cursor:pointer; font-size:12.5px; min-height:42px; flex:1;">
+                                            <input type="radio" id="due-channel-upi" name="driver_due_channel" value="upi_manual" {{ $razorpayReadyForDue ? '' : 'checked' }} onchange="toggleDriverDueChannel()" style="width:16px; height:16px;">
+                                            <span>Manual UPI (QR / UTR)</span>
+                                        </label>
+                                    </div>
+                                </fieldset>
+                            </div>
+
+                            <div id="driver-due-upi-box" style="display:{{ $razorpayReadyForDue ? 'none' : 'grid' }}; grid-template-columns:auto 1fr; gap:12px; align-items:center; background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:12px;">
+                                <div id="driver-due-upi-qr" style="width:92px; height:92px; display:flex; align-items:center; justify-content:center; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;"></div>
+                                <div style="display:grid; gap:8px;">
+                                    <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
+                                        <span style="font-size:12px; color:#334155;">Company UPI ID: <strong id="driver-due-company-upi" style="font-family:monospace;">{{ $companyUpiId }}</strong></span>
+                                        <a id="driver-due-upi-deep-link" href="upi://pay?pa={{ urlencode($companyUpiId) }}&pn={{ urlencode($companyUpiName) }}&am={{ $companyDueAmt }}&cu=INR" class="btn btn-xs btn-outline" style="min-height:30px; text-decoration:none;">
+                                            <span class="material-symbols-outlined" style="font-size:14px;">open_in_new</span>
+                                            <span>Open UPI App</span>
+                                        </a>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" for="driver-due-upi-utr" style="font-size:11px; font-weight:700; color:#475569;">12-Digit UPI UTR / Transaction Reference *</label>
+                                        <input type="text" id="driver-due-upi-utr" class="form-control" placeholder="e.g. 432198765432" style="min-height:40px; font-family:monospace; text-transform:uppercase;">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="display:flex; justify-content:flex-end;">
+                                <button type="submit" id="driver-due-submit-btn" class="btn btn-primary" style="min-height:44px; font-weight:800;">
+                                    <span class="material-symbols-outlined" style="font-size:17px;">payments</span>
+                                    <span>Pay Remaining Due to Company</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
                     <!-- Request Payout Card (Deducts Wallet & Sends for Admin Approval) -->
                     <div style="background:#f8fafc; border:1px solid var(--outline); border-radius:12px; padding:14px 16px; margin-bottom:18px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
@@ -2124,6 +2190,56 @@
                                 @endforelse
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- Company Due Settlements History -->
+                    <div id="driver-due-settlements-section" style="display:{{ count($dueSettlements) > 0 ? 'block' : 'none' }}; margin-bottom:18px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                            <div>
+                                <span id="driver-due-settlements-caption" style="font-family:var(--font-display); font-weight:800; font-size:13.5px; color:var(--text-main);">Company Due Settlements</span>
+                                <div class="cell-subtext">Payments submitted to clear negative wallet balances from excess customer collections</div>
+                            </div>
+                            <span class="cell-subtext" id="driver-due-settlements-count">{{ count($dueSettlements) }} records</span>
+                        </div>
+                        <div tabindex="0" role="region" aria-labelledby="driver-due-settlements-caption" class="driver-responsive-table-wrap">
+                            <table class="admin-data-table admin-table-compact driver-responsive-table">
+                                <caption>Driver company due settlement submissions</caption>
+                                <thead>
+                                    <tr>
+                                        <th>Settlement Ref</th>
+                                        <th>Channel &amp; UTR / Payment ID</th>
+                                        <th>Amount</th>
+                                        <th>Status</th>
+                                        <th>Verification Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="driver-due-settlements-body">
+                                    @foreach($dueSettlements as $ds)
+                                        <tr>
+                                            <th>
+                                                <div class="booking-ref-link">{{ $ds['settlement_reference'] }}</div>
+                                                <div class="cell-subtext">{{ $ds['submitted_at_label'] ?? '—' }}</div>
+                                            </th>
+                                            <td data-col-label="Channel & Ref">
+                                                <div class="cell-primary-text">{{ $ds['payment_channel'] === 'gateway' ? 'Payment Gateway' : 'Manual UPI' }}</div>
+                                                <div class="cell-subtext" style="font-family:monospace;">{{ $ds['upi_utr'] ?: ($ds['razorpay_payment_id'] ?: '—') }}</div>
+                                            </td>
+                                            <td data-col-label="Amount" class="text-tabular"><strong>₹{{ number_format((float) $ds['amount']) }}</strong></td>
+                                            <td data-col-label="Status">
+                                                @if($ds['status'] === 'paid')
+                                                    <span class="admin-badge badge-success" style="font-size:10px;">SETTLED &amp; CREDITED</span>
+                                                @elseif($ds['status'] === 'rejected')
+                                                    <span class="admin-badge badge-danger" style="font-size:10px;">REJECTED</span>
+                                                @else
+                                                    <span class="admin-badge badge-warning" style="font-size:10px;">PENDING VERIFICATION</span>
+                                                @endif
+                                            </td>
+                                            <td data-col-label="Notes"><div class="cell-subtext">{{ $ds['admin_notes'] ?? 'Awaiting Admin verification' }}</div></td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
                     <!-- Trip-Wise Payment Parts & Bidding Breakdown -->
@@ -4625,6 +4741,79 @@
                                             @empty
                                                 <tr>
                                                     <td colspan="6" style="text-align:center; padding:24px; color:#64748b;">No driver payout requests yet.</td>
+                                                </tr>
+                                            @endforelse
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Driver Company Due Settlements (Manual UPI Verification) -->
+                            <div class="card" style="margin-top:16px;">
+                                <div class="card-header" style="flex-wrap:wrap; gap:10px;">
+                                    <div>
+                                        <h3 class="card-title">
+                                            <span class="material-symbols-outlined" style="color:#0284c7; font-size:18px;">payments</span>
+                                            <span>Driver Company Due Settlements</span>
+                                        </h3>
+                                        <p class="card-subtitle">Verify Manual UPI UTRs (or view Gateway settlements) from drivers clearing excess customer collections</p>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline" onclick="loadAdminDueSettlements()">
+                                        <span class="material-symbols-outlined" style="font-size:15px;">refresh</span>
+                                        <span>Refresh</span>
+                                    </button>
+                                </div>
+                                <div class="driver-responsive-table-wrap" tabindex="0" role="region" aria-label="Driver Due Settlements">
+                                    <table class="admin-data-table admin-table-compact driver-responsive-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Settlement Ref</th>
+                                                <th>Driver</th>
+                                                <th>Channel &amp; UTR / Payment ID</th>
+                                                <th>Amount</th>
+                                                <th>Status</th>
+                                                <th style="text-align:right;">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="admin-due-settlements-tbody">
+                                            @forelse(($adminDueSettlements ?? []) as $ds)
+                                                <tr>
+                                                    <th>
+                                                        <div class="booking-ref-link">{{ $ds->settlement_reference }}</div>
+                                                        <div class="cell-subtext">{{ $ds->submitted_at ? $ds->submitted_at->format('d M Y, h:i A') : $ds->created_at?->format('d M Y, h:i A') }}</div>
+                                                    </th>
+                                                    <td data-col-label="Driver">
+                                                        <div class="cell-primary-text">{{ $ds->driver?->name ?? 'Driver' }}</div>
+                                                        <div class="cell-subtext">Wallet: ₹{{ number_format((float) ($ds->driver?->wallet_balance ?? 0)) }}</div>
+                                                    </td>
+                                                    <td data-col-label="Channel & UTR">
+                                                        <div class="cell-primary-text">{{ $ds->payment_channel === 'gateway' ? 'Payment Gateway' : 'Manual UPI' }}</div>
+                                                        <div class="cell-subtext" style="font-family:monospace;">{{ $ds->upi_utr ?: ($ds->razorpay_payment_id ?: '—') }}</div>
+                                                    </td>
+                                                    <td data-col-label="Amount" class="text-tabular"><strong>₹{{ number_format((float) $ds->amount) }}</strong></td>
+                                                    <td data-col-label="Status">
+                                                        @if($ds->status === 'paid')
+                                                            <span class="admin-badge badge-success" style="font-size:10px;">SETTLED</span>
+                                                        @elseif($ds->status === 'rejected')
+                                                            <span class="admin-badge badge-danger" style="font-size:10px;">REJECTED</span>
+                                                        @else
+                                                            <span class="admin-badge badge-warning" style="font-size:10px;">PENDING VERIFICATION</span>
+                                                        @endif
+                                                    </td>
+                                                    <td data-col-label="Action" style="text-align:right;">
+                                                        @if($ds->status === 'pending_verification')
+                                                            <div style="display:inline-flex; gap:6px;">
+                                                                <button type="button" class="btn btn-xs btn-primary" onclick="processAdminDueSettlement({{ $ds->id }}, 'approve')">Verify &amp; Credit</button>
+                                                                <button type="button" class="btn btn-xs btn-outline" style="color:#ef4444; border-color:#fca5a5;" onclick="processAdminDueSettlement({{ $ds->id }}, 'reject')">Reject</button>
+                                                            </div>
+                                                        @else
+                                                            <span class="cell-subtext">{{ $ds->verified_at?->format('d M, h:i A') ?? 'Processed' }}</span>
+                                                        @endif
+                                                    </td>
+                                                </tr>
+                                            @empty
+                                                <tr>
+                                                    <td colspan="6" style="text-align:center; padding:22px; color:#64748b;">No driver due settlements submitted yet.</td>
                                                 </tr>
                                             @endforelse
                                         </tbody>

@@ -733,6 +733,79 @@ class NotificationService
         ));
     }
 
+    public function dueSettlementSubmitted(\App\Models\DriverDueSettlement $settlement): void
+    {
+        $settlement->loadMissing('driver');
+        $driver = $settlement->driver;
+        if (! $driver) {
+            return;
+        }
+
+        $amountText = '₹'.number_format((float) $settlement->amount);
+        $utr = $settlement->upi_utr ?: 'N/A';
+
+        $this->notifyAdmins(new PlatformAlertNotification(
+            event: 'wallet.due_submitted',
+            title: "Driver Due Verification ({$settlement->settlement_reference}): {$driver->name} ({$amountText})",
+            message: "{$driver->name} submitted a company due payment of {$amountText} via Manual UPI (UTR: {$utr}). Verify & credit wallet.",
+            category: 'wallet',
+            meta: [
+                'driver_id' => $driver->id,
+                'settlement_id' => $settlement->id,
+                'settlement_reference' => $settlement->settlement_reference,
+                'amount' => (float) $settlement->amount,
+                'tab' => 'admin',
+                'section' => 'payouts',
+                'focus' => 'wallet',
+            ],
+            actionUrl: url('/?tab=admin&section=payouts'),
+            sendEmail: true,
+        ));
+    }
+
+    public function dueSettlementVerified(\App\Models\DriverDueSettlement $settlement, bool $approved): void
+    {
+        $settlement->loadMissing('driver');
+        $driver = $settlement->driver;
+        if (! $driver) {
+            return;
+        }
+
+        $driverUser = $this->resolveDriverUser($driver);
+        if (! $driverUser) {
+            return;
+        }
+
+        $amountText = '₹'.number_format((float) $settlement->amount);
+        $ref = $settlement->settlement_reference;
+        $channelLabel = $settlement->payment_channel === \App\Models\DriverDueSettlement::CHANNEL_GATEWAY ? 'Payment Gateway' : 'Manual UPI';
+
+        $title = $approved
+            ? "Company Due Settled ({$ref}): {$amountText}"
+            : "Company Due UTR Rejected ({$ref}): {$amountText}";
+
+        $message = $approved
+            ? "Your {$channelLabel} payment of {$amountText} ({$ref}) has been verified and credited to your driver wallet."
+            : "Your Manual UPI due submission {$ref} for {$amountText} was rejected ({$settlement->admin_notes}). Please re-check and submit a valid UTR.";
+
+        $this->notifyUser($driverUser, new PlatformAlertNotification(
+            event: 'wallet.due_settled',
+            title: $title,
+            message: $message,
+            category: 'wallet',
+            meta: [
+                'settlement_id' => $settlement->id,
+                'settlement_reference' => $ref,
+                'status' => $settlement->status,
+                'tab' => 'driver-wallet',
+                'focus' => 'wallet',
+            ],
+            actionLabel: 'View Driver Wallet',
+            actionUrl: url('/?tab=driver-wallet'),
+            sendEmail: true,
+        ));
+    }
+
     public function vehicleSubmitted(DriverVehicle $vehicle): void
     {
         $this->notifyAdmins(new PlatformAlertNotification(

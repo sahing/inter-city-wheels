@@ -6881,6 +6881,40 @@ window.printAdminInvoice = function () {
           if (panelBal) panelBal.textContent = balText;
           if (withdrawBtn) withdrawBtn.dataset.walletBalance = String(bal);
 
+          const dueAmt = Number(sum.company_due_amount ?? Math.max(0, -bal));
+          const dueCard = document.getElementById('driver-company-due-card');
+          const dueAmtDisplay = document.getElementById('driver-company-due-amount-display');
+          const dueAmtInput = document.getElementById('driver-due-amount-input');
+          if (dueCard) dueCard.style.display = dueAmt > 0 ? 'block' : 'none';
+          if (dueAmtDisplay) dueAmtDisplay.textContent = `₹${Math.round(dueAmt).toLocaleString('en-IN')}`;
+          if (dueAmtInput && dueAmt > 0 && !dueAmtInput.value) dueAmtInput.value = String(dueAmt);
+          if (dueAmt > 0 && typeof window.updateDriverDueUpiLink === 'function') {
+            window.updateDriverDueUpiLink();
+          }
+
+          const dueSection = document.getElementById('driver-due-settlements-section');
+          const dueBody = document.getElementById('driver-due-settlements-body');
+          const dueCountEl = document.getElementById('driver-due-settlements-count');
+          const dueList = Array.isArray(data.due_settlements) ? data.due_settlements : [];
+          if (dueSection) dueSection.style.display = dueList.length > 0 ? 'block' : 'none';
+          if (dueCountEl) dueCountEl.textContent = `${dueList.length} records`;
+          if (dueBody) {
+            dueBody.innerHTML = dueList.map(ds => {
+              let stBadge = '<span class="admin-badge badge-warning" style="font-size:10px;">PENDING VERIFICATION</span>';
+              if (ds.status === 'paid') stBadge = '<span class="admin-badge badge-success" style="font-size:10px;">SETTLED &amp; CREDITED</span>';
+              else if (ds.status === 'rejected') stBadge = '<span class="admin-badge badge-danger" style="font-size:10px;">REJECTED</span>';
+              const refCode = ds.upi_utr || ds.razorpay_payment_id || '—';
+              return `
+            <tr>
+              <th><div class="booking-ref-link">${escapeHtml(ds.settlement_reference || '')}</div><div class="cell-subtext">${escapeHtml(ds.submitted_at_label || '—')}</div></th>
+              <td data-col-label="Channel & Ref"><div class="cell-primary-text">${ds.payment_channel === 'gateway' ? 'Payment Gateway' : 'Manual UPI'}</div><div class="cell-subtext" style="font-family:monospace;">${escapeHtml(refCode)}</div></td>
+              <td data-col-label="Amount" class="text-tabular"><strong>₹${Number(ds.amount || 0).toLocaleString('en-IN')}</strong></td>
+              <td data-col-label="Status">${stBadge}</td>
+              <td data-col-label="Notes"><div class="cell-subtext">${escapeHtml(ds.admin_notes || 'Awaiting Admin verification')}</div></td>
+            </tr>`;
+            }).join('');
+          }
+
           const colEl = document.getElementById('driver-wallet-collected-display');
           const earnEl = document.getElementById('driver-wallet-earnings-display');
           const tripsEl = document.getElementById('driver-wallet-trips-display');
@@ -7021,6 +7055,113 @@ window.printAdminInvoice = function () {
         const amount = Number(amtInput ? amtInput.value : 0);
         const method = document.querySelector('input[name="driver_withdraw_method"]:checked')?.value || 'upi';
         window.requestDriverPayout(amount, method);
+      };
+
+      window.toggleDriverDueChannel = function () {
+        const channel = document.querySelector('input[name="driver_due_channel"]:checked')?.value || 'upi_manual';
+        const upiBox = document.getElementById('driver-due-upi-box');
+        if (upiBox) {
+          upiBox.style.display = channel === 'upi_manual' ? 'grid' : 'none';
+        }
+        if (channel === 'upi_manual') {
+          window.updateDriverDueUpiLink();
+        }
+      };
+
+      window.updateDriverDueUpiLink = function () {
+        const upiId = (window.PLATFORM_SETTINGS && window.PLATFORM_SETTINGS.upi_id) ? window.PLATFORM_SETTINGS.upi_id : 'intercitywheels@upi';
+        const payee = (window.PLATFORM_SETTINGS && window.PLATFORM_SETTINGS.upi_payee_name) ? window.PLATFORM_SETTINGS.upi_payee_name : 'Intercity Wheels';
+        const amt = Number(document.getElementById('driver-due-amount-input')?.value || 0);
+        const uri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(payee)}&am=${amt > 0 ? amt.toFixed(2) : ''}&cu=INR`;
+        const link = document.getElementById('driver-due-upi-deep-link');
+        if (link) link.href = uri;
+        const qrWrap = document.getElementById('driver-due-upi-qr');
+        if (qrWrap && typeof window.QRCode === 'function') {
+          qrWrap.innerHTML = '';
+          try {
+            new window.QRCode(qrWrap, { text: uri, width: 84, height: 84 });
+          } catch (_) { }
+        }
+      };
+
+      window.submitDriverDueSettlement = async function (e) {
+        if (e && e.preventDefault) e.preventDefault();
+        const amount = Number(document.getElementById('driver-due-amount-input')?.value || 0);
+        const channel = document.querySelector('input[name="driver_due_channel"]:checked')?.value || 'upi_manual';
+        const utrInput = document.getElementById('driver-due-upi-utr');
+        const utr = utrInput ? utrInput.value.trim().toUpperCase() : '';
+
+        if (!amount || amount < 1) {
+          showToast('Please enter a valid settlement amount.', 'warning');
+          return;
+        }
+        if (channel === 'upi_manual' && utr.length < 6) {
+          showToast('Please enter your 12-digit UPI UTR / Reference ID.', 'warning');
+          if (utrInput) utrInput.focus();
+          return;
+        }
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        try {
+          const res = await fetch('/api/driver/wallet/due-settlement', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-TOKEN': csrfToken
+            },
+            body: JSON.stringify({
+              amount,
+              payment_channel: channel,
+              upi_utr: channel === 'upi_manual' ? utr : undefined,
+            })
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            showToast(data.message || 'Could not submit company due payment.', 'warning');
+            return;
+          }
+
+          if (channel === 'gateway' && data.razorpay_order && window.Razorpay) {
+            const order = data.razorpay_order;
+            const settlementId = data.settlement?.id;
+            const rzp = new window.Razorpay({
+              key: order.key_id,
+              amount: order.amount_paise,
+              currency: order.currency || 'INR',
+              name: order.display_name || 'Intercity Wheels',
+              description: `Company Due Settlement ${data.settlement?.settlement_reference || ''}`,
+              order_id: order.order_id,
+              handler: async function (rzpResp) {
+                const vRes = await fetch(`/api/driver/wallet/due-settlement/${settlementId}/verify-gateway`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken
+                  },
+                  body: JSON.stringify(rzpResp)
+                });
+                const vData = await vRes.json();
+                if (vRes.ok && vData.success) {
+                  showToast(vData.message || 'Company due settled!', 'success');
+                  if (typeof window.refreshDriverPaymentHistory === 'function') window.refreshDriverPaymentHistory();
+                } else {
+                  showToast(vData.message || 'Payment verification failed.', 'warning');
+                }
+              }
+            });
+            rzp.open();
+            return;
+          }
+
+          if (utrInput) utrInput.value = '';
+          showToast(data.message || 'UTR submitted for Admin verification.', 'success');
+          if (typeof window.refreshDriverPaymentHistory === 'function') window.refreshDriverPaymentHistory();
+        } catch (err) {
+          console.error('submitDriverDueSettlement', err);
+          showToast('Network error while submitting due payment.', 'warning');
+        }
       };
 
       window.requestDriverPayout = async function (balance, payoutMethod = null) {
@@ -10993,6 +11134,9 @@ window.printAdminInvoice = function () {
           };
 
           window.loadAdminPayoutRequests = async function (statusFilter = null) {
+            if (typeof window.loadAdminDueSettlements === 'function') {
+              window.loadAdminDueSettlements();
+            }
             const tbody = document.getElementById('admin-payouts-tbody');
             if (!tbody) return;
             const status = statusFilter || document.getElementById('admin-payouts-status-filter')?.value || 'all';
@@ -11095,6 +11239,69 @@ window.printAdminInvoice = function () {
             } catch (err) {
               console.error('submitAdminProcessPayout', err);
               showToast('Network error while processing payout.', 'warning');
+            }
+          };
+
+          window.loadAdminDueSettlements = async function () {
+            const tbody = document.getElementById('admin-due-settlements-tbody');
+            if (!tbody) return;
+            try {
+              const res = await fetch('/api/admin/due-settlements', { headers: { 'Accept': 'application/json' } });
+              const data = await res.json();
+              if (!res.ok || !data.success) return;
+              const list = Array.isArray(data.due_settlements) ? data.due_settlements : [];
+              if (list.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:22px; color:#64748b;">No driver due settlements submitted yet.</td></tr>';
+                return;
+              }
+              tbody.innerHTML = list.map(ds => {
+                let stHtml = '<span class="admin-badge badge-warning" style="font-size:10px;">PENDING VERIFICATION</span>';
+                if (ds.status === 'paid') stHtml = '<span class="admin-badge badge-success" style="font-size:10px;">SETTLED</span>';
+                else if (ds.status === 'rejected') stHtml = '<span class="admin-badge badge-danger" style="font-size:10px;">REJECTED</span>';
+                const refCode = ds.upi_utr || ds.razorpay_payment_id || '—';
+                const actHtml = ds.status === 'pending_verification'
+                  ? `<div style="display:inline-flex; gap:6px;"><button type="button" class="btn btn-xs btn-primary" onclick="processAdminDueSettlement(${ds.id}, 'approve')">Verify &amp; Credit</button><button type="button" class="btn btn-xs btn-outline" style="color:#ef4444; border-color:#fca5a5;" onclick="processAdminDueSettlement(${ds.id}, 'reject')">Reject</button></div>`
+                  : `<span class="cell-subtext">${escapeHtml(ds.verified_at_label || 'Processed')}</span>`;
+                return `
+        <tr>
+          <th><div class="booking-ref-link">${escapeHtml(ds.settlement_reference || '')}</div><div class="cell-subtext">${escapeHtml(ds.submitted_at_label || '')}</div></th>
+          <td data-col-label="Driver"><div class="cell-primary-text">${escapeHtml(ds.driver_name || 'Driver')}</div><div class="cell-subtext">Wallet: ₹${Number(ds.driver_wallet_balance || 0).toLocaleString('en-IN')}</div></td>
+          <td data-col-label="Channel & UTR"><div class="cell-primary-text">${ds.payment_channel === 'gateway' ? 'Payment Gateway' : 'Manual UPI'}</div><div class="cell-subtext" style="font-family:monospace;">${escapeHtml(refCode)}</div></td>
+          <td data-col-label="Amount" class="text-tabular"><strong>₹${Number(ds.amount || 0).toLocaleString('en-IN')}</strong></td>
+          <td data-col-label="Status">${stHtml}</td>
+          <td data-col-label="Action" style="text-align:right;">${actHtml}</td>
+        </tr>`;
+              }).join('');
+            } catch (err) {
+              console.error('loadAdminDueSettlements', err);
+            }
+          };
+
+          window.processAdminDueSettlement = async function (id, action) {
+            let notes = '';
+            if (action === 'reject') {
+              notes = window.prompt('Reason for rejecting this UTR (shown to driver):', 'UTR not matched in bank statement') || '';
+            }
+            try {
+              const res = await fetch(`/api/admin/due-settlements/${encodeURIComponent(id)}/process`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'X-CSRF-TOKEN': getAdminCsrfToken(),
+                },
+                body: JSON.stringify({ action, admin_notes: notes || undefined }),
+              });
+              const data = await res.json();
+              if (res.ok && data.success) {
+                showToast(data.message || 'Settlement updated!', 'success');
+                window.loadAdminDueSettlements();
+              } else {
+                showToast(data.message || 'Could not process due settlement.', 'danger');
+              }
+            } catch (err) {
+              console.error('processAdminDueSettlement', err);
+              showToast('Network error while processing due settlement.', 'warning');
             }
           };
 

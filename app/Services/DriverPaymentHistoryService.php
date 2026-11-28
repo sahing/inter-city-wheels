@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Booking;
 use App\Models\Driver;
+use App\Models\DriverDueSettlement;
 use App\Models\DriverPayoutRequest;
 use App\Models\WalletTransaction;
 
@@ -27,6 +28,7 @@ class DriverPaymentHistoryService
             return [
                 'summary' => [
                     'wallet_balance' => 0.0,
+                    'company_due_amount' => 0.0,
                     'total_driver_collected' => 0.0,
                     'total_driver_earnings' => 0.0,
                     'total_platform_received' => 0.0,
@@ -39,6 +41,7 @@ class DriverPaymentHistoryService
                 'trip_records' => [],
                 'transactions' => [],
                 'payout_requests' => [],
+                'due_settlements' => [],
                 'payout_profile' => [
                     'preferred_payout_method' => 'upi',
                     'has_upi' => false,
@@ -78,6 +81,26 @@ class DriverPaymentHistoryService
                 'admin_notes' => $pr->admin_notes,
                 'requested_at_label' => $pr->requested_at?->format('d M Y, h:i A') ?? $pr->created_at?->format('d M Y, h:i A'),
                 'processed_at_label' => $pr->processed_at?->format('d M Y, h:i A'),
+            ])
+            ->values()
+            ->all();
+
+        $dueSettlements = DriverDueSettlement::with('verifier')
+            ->where('driver_id', $driver->id)
+            ->latest('id')
+            ->take(20)
+            ->get()
+            ->map(fn (DriverDueSettlement $ds) => [
+                'id' => $ds->id,
+                'settlement_reference' => $ds->settlement_reference,
+                'amount' => round((float) $ds->amount, 2),
+                'payment_channel' => $ds->payment_channel,
+                'status' => $ds->status,
+                'upi_utr' => $ds->upi_utr,
+                'razorpay_payment_id' => $ds->razorpay_payment_id,
+                'admin_notes' => $ds->admin_notes,
+                'submitted_at_label' => $ds->submitted_at?->format('d M Y, h:i A') ?? $ds->created_at?->format('d M Y, h:i A'),
+                'verified_at_label' => $ds->verified_at?->format('d M Y, h:i A'),
             ])
             ->values()
             ->all();
@@ -132,6 +155,7 @@ class DriverPaymentHistoryService
         return [
             'summary' => [
                 'wallet_balance' => round((float) $driver->wallet_balance, 2),
+                'company_due_amount' => $driver->companyDueAmount(),
                 'total_driver_collected' => $totalCollected,
                 'total_driver_earnings' => $totalEarnings,
                 'total_platform_received' => $totalPlatformReceived,
@@ -144,6 +168,7 @@ class DriverPaymentHistoryService
             'trip_records' => $tripRecords,
             'transactions' => $enrichedTransactions,
             'payout_requests' => $payoutRequests,
+            'due_settlements' => $dueSettlements,
             'payout_profile' => [
                 'preferred_payout_method' => $driver->preferred_payout_method ?: 'upi',
                 'has_upi' => $driver->hasUpiPayoutConfigured(),

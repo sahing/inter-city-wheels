@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\BookingAdminController;
 use App\Http\Controllers\Admin\CabRouteAdminController;
 use App\Http\Controllers\Admin\CarTypeAdminController;
 use App\Http\Controllers\Admin\CouponAdminController;
+use App\Http\Controllers\Admin\DriverDueSettlementAdminController;
 use App\Http\Controllers\Admin\DriverPayoutAdminController;
 use App\Http\Controllers\Admin\DynamicFormController;
 use App\Http\Controllers\Admin\LocalPackageAdminController;
@@ -217,6 +218,8 @@ Route::prefix('api')->middleware(['auth', 'role:driver,admin'])->group(function 
     Route::post('/driver/trips/{id}/verify-otp', [DriverBiddingController::class, 'verifyStartOtp'])->name('api.driver.trips.verifyOtp');
     Route::post('/driver/trips/{id}/complete', [DriverBiddingController::class, 'completeTrip'])->name('api.driver.trips.complete');
     Route::post('/driver/wallet/withdraw', [DriverBiddingController::class, 'withdrawPayout'])->name('api.driver.wallet.withdraw');
+    Route::post('/driver/wallet/due-settlement', [DriverBiddingController::class, 'submitDueSettlement'])->name('api.driver.wallet.dueSettlement');
+    Route::post('/driver/wallet/due-settlement/{id}/verify-gateway', [DriverBiddingController::class, 'verifyDueSettlementGateway'])->name('api.driver.wallet.dueSettlement.verifyGateway');
     Route::get('/driver/profile', [DriverBiddingController::class, 'getProfile'])->name('api.driver.profile.get');
     Route::post('/driver/profile', [DriverBiddingController::class, 'updateProfile'])->name('api.driver.profile.update');
     Route::post('/driver/profile/payout-details', [DriverBiddingController::class, 'updatePayoutDetails'])->name('api.driver.profile.payoutDetails');
@@ -348,6 +351,8 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::get('/admin/biddings', [BiddingAdminController::class, 'index'])->name('api.admin.biddings.index');
     Route::get('/admin/payout-requests', [DriverPayoutAdminController::class, 'index'])->name('api.admin.payoutRequests.index');
     Route::post('/admin/payout-requests/{id}/process', [DriverPayoutAdminController::class, 'process'])->name('api.admin.payoutRequests.process');
+    Route::get('/admin/due-settlements', [DriverDueSettlementAdminController::class, 'index'])->name('api.admin.dueSettlements.index');
+    Route::post('/admin/due-settlements/{id}/process', [DriverDueSettlementAdminController::class, 'process'])->name('api.admin.dueSettlements.process');
     Route::post('/admin/bookings/{bookingId}/bidding', [BiddingAdminController::class, 'store'])->name('api.admin.bidding.store');
     Route::post('/admin/bookings/{bookingId}/bidding/share', [BiddingAdminController::class, 'share'])->name('api.admin.bidding.share');
     Route::get('/admin/biddings/{id}', [BiddingAdminController::class, 'show'])->name('api.admin.biddings.show');

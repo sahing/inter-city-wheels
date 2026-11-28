@@ -25,6 +25,25 @@ class RazorpayService
      */
     public function createOrder(Booking $booking, float $amountInr): array
     {
+        return $this->createCustomOrder(
+            receipt: substr((string) $booking->booking_reference, 0, 40),
+            amountInr: $amountInr,
+            notes: [
+                'booking_reference' => (string) $booking->booking_reference,
+                'payment_mode' => (string) ($booking->payment_mode ?? 'full_online'),
+                'route_summary' => (string) $booking->route_summary,
+            ],
+        );
+    }
+
+    /**
+     * Create a Razorpay Order for a generic platform receipt (e.g. driver company-due settlement).
+     *
+     * @param  array<string, string>  $notes
+     * @return array{order_id: string, amount_paise: int, currency: string, key_id: string, display_name: string, mode: string}
+     */
+    public function createCustomOrder(string $receipt, float $amountInr, array $notes = []): array
+    {
         $creds = PlatformSetting::razorpayCredentials();
 
         if (! $creds['enabled'] || $creds['key_id'] === '' || $creds['key_secret'] === '') {
@@ -40,12 +59,8 @@ class RazorpayService
             ->post('https://api.razorpay.com/v1/orders', [
                 'amount' => $amountPaise,
                 'currency' => 'INR',
-                'receipt' => substr((string) $booking->booking_reference, 0, 40),
-                'notes' => [
-                    'booking_reference' => (string) $booking->booking_reference,
-                    'payment_mode' => (string) ($booking->payment_mode ?? 'full_online'),
-                    'route_summary' => (string) $booking->route_summary,
-                ],
+                'receipt' => substr($receipt, 0, 40),
+                'notes' => $notes,
             ]);
 
         if (! $response->successful()) {

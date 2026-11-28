@@ -6,6 +6,7 @@ use App\Exceptions\InvalidBookingTransition;
 use App\Models\Booking;
 use App\Models\Driver;
 use App\Models\DriverBid;
+use App\Models\DriverDueSettlement;
 use App\Models\DriverPayoutRequest;
 use App\Models\PaymentAttempt;
 use App\Models\User;
@@ -14,6 +15,7 @@ use App\Services\BookingReferenceGenerator;
 use App\Services\BookingWorkflow;
 use App\Services\DriverPaymentHistoryService;
 use App\Services\NotificationService;
+use App\Services\RazorpayService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -28,6 +30,7 @@ class DriverBiddingController extends Controller
         private readonly BookingReferenceGenerator $references,
         private readonly NotificationService $notifications,
         private readonly DriverPaymentHistoryService $paymentHistory,
+        private readonly RazorpayService $razorpay,
     ) {}
 
     public function myTrips(Request $request)
@@ -524,6 +527,196 @@ class DriverBiddingController extends Controller
                 'destination_summary' => $payoutRequest->destinationSummary(),
                 'status' => $payoutRequest->status,
             ],
+        ]);
+    }
+
+    /**
+     * Submit a payment to settle a negative wallet balance (company due)
+     * via Payment Gateway (Razorpay) or Manual UPI UTR.
+     */
+    public function submitDueSettlement(Request $request)
+    {
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:1',
+            'payment_channel' => 'required|string|in:gateway,upi_manual',
+            'upi_utr' => 'nullable|string|max:80',
+            'driver_notes' => 'nullable|string|max:500',
+        ]);
+
+        $driver = $this->driverForUser($request->user());
+        if (! $driver) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No driver profile is linked to this account.',
+            ], 403);
+        }
+
+        $companyDue = $driver->companyDueAmount();
+        if ($companyDue <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your wallet has no pending company dues to settle.',
+            ], 422);
+        }
+
+        $amount = round((float) $validated['amount'], 2);
+        if ($amount > $companyDue + 0.01) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Settlement amount cannot exceed your current company due of ₹'.number_format($companyDue, 2).'.',
+            ], 422);
+        }
+
+        $channel = $validated['payment_channel'];
+        $utr = strtoupper(trim((string) ($validated['upi_utr'] ?? '')));
+
+        if ($channel === DriverDueSettlement::CHANNEL_UPI_MANUAL && strlen($utr) < 6) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please enter a valid UPI UTR / Transaction Reference ID (at least 6 characters).',
+            ], 422);
+        }
+
+        if ($channel === DriverDueSettlement::CHANNEL_GATEWAY && ! $this->razorpay->isReady()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment Gateway is not active right now. Please use Manual UPI transfer.',
+            ], 422);
+        }
+
+        $reference = 'DUE-'.now()->format('Ymd').'-'.strtoupper(substr(bin2hex(random_bytes(3)), 0, 6));
+
+        $settlement = DriverDueSettlement::create([
+            'settlement_reference' => $reference,
+            'driver_id' => $driver->id,
+            'user_id' => $request->user()?->id,
+            'amount' => $amount,
+            'payment_channel' => $channel,
+            'status' => DriverDueSettlement::STATUS_PENDING_VERIFICATION,
+            'upi_utr' => $channel === DriverDueSettlement::CHANNEL_UPI_MANUAL ? $utr : null,
+            'driver_notes' => trim((string) ($validated['driver_notes'] ?? '')) ?: null,
+            'submitted_at' => now(),
+        ]);
+
+        if ($channel === DriverDueSettlement::CHANNEL_GATEWAY) {
+            try {
+                $order = $this->razorpay->createCustomOrder(
+                    receipt: $settlement->settlement_reference,
+                    amountInr: $amount,
+                    notes: [
+                        'settlement_reference' => $settlement->settlement_reference,
+                        'driver_id' => (string) $driver->id,
+                        'driver_name' => (string) $driver->name,
+                        'purpose' => 'driver_company_due_settlement',
+                    ]
+                );
+            } catch (\Throwable $e) {
+                $settlement->delete();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Could not initiate Payment Gateway order: '.$e->getMessage(),
+                ], 422);
+            }
+
+            $settlement->forceFill(['razorpay_order_id' => $order['order_id']])->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Complete the payment in Razorpay to settle your company due.',
+                'settlement' => $settlement->fresh(),
+                'razorpay_order' => $order,
+            ], 201);
+        }
+
+        $this->notifications->dueSettlementSubmitted($settlement);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Company due payment {$settlement->settlement_reference} (UTR: {$utr}) submitted for Admin verification.",
+            'settlement' => $settlement->fresh(),
+        ], 201);
+    }
+
+    /**
+     * Verify Razorpay signature for a driver's company due settlement and credit wallet immediately.
+     */
+    public function verifyDueSettlementGateway(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'razorpay_order_id' => 'required|string|max:120',
+            'razorpay_payment_id' => 'required|string|max:120',
+            'razorpay_signature' => 'required|string|max:200',
+        ]);
+
+        $driver = $this->driverForUser($request->user());
+        if (! $driver) {
+            return response()->json(['success' => false, 'message' => 'No driver profile is linked to this account.'], 403);
+        }
+
+        $settlement = DriverDueSettlement::where('id', $id)
+            ->where('driver_id', $driver->id)
+            ->firstOrFail();
+
+        if ($settlement->status === DriverDueSettlement::STATUS_PAID) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Company due settlement already verified.',
+                'settlement' => $settlement,
+                'wallet_balance' => round((float) $driver->wallet_balance, 2),
+            ]);
+        }
+
+        if ($settlement->razorpay_order_id && $settlement->razorpay_order_id !== $validated['razorpay_order_id']) {
+            return response()->json(['success' => false, 'message' => 'Order ID mismatch for due settlement.'], 422);
+        }
+
+        if (! $this->razorpay->verifySignature(
+            $validated['razorpay_order_id'],
+            $validated['razorpay_payment_id'],
+            $validated['razorpay_signature']
+        )) {
+            return response()->json(['success' => false, 'message' => 'Payment signature verification failed.'], 422);
+        }
+
+        $updated = DB::transaction(function () use ($settlement, $driver, $validated) {
+            $locked = DriverDueSettlement::whereKey($settlement->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status === DriverDueSettlement::STATUS_PAID) {
+                return $locked;
+            }
+
+            $lockedDriver = Driver::whereKey($driver->id)->lockForUpdate()->firstOrFail();
+            $lockedDriver->wallet_balance = round((float) $lockedDriver->wallet_balance + (float) $locked->amount, 2);
+            $lockedDriver->save();
+
+            $tx = WalletTransaction::create([
+                'driver_id' => $lockedDriver->id,
+                'booking_id' => null,
+                'type' => WalletTransaction::TYPE_CREDIT,
+                'reason' => WalletTransaction::REASON_ADJUSTMENT,
+                'amount' => (float) $locked->amount,
+                'balance_after' => $lockedDriver->wallet_balance,
+                'description' => "Company due settled via Payment Gateway {$locked->settlement_reference} (Pay ID {$validated['razorpay_payment_id']})",
+            ]);
+
+            $locked->forceFill([
+                'status' => DriverDueSettlement::STATUS_PAID,
+                'razorpay_payment_id' => $validated['razorpay_payment_id'],
+                'razorpay_signature' => $validated['razorpay_signature'],
+                'wallet_transaction_id' => $tx->id,
+                'verified_at' => now(),
+            ])->save();
+
+            return $locked->fresh('driver');
+        });
+
+        $this->notifications->dueSettlementVerified($updated, true);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment verified! ₹'.number_format((float) $updated->amount, 2).' credited to your wallet.',
+            'settlement' => $updated,
+            'wallet_balance' => round((float) ($updated->driver?->wallet_balance ?? 0), 2),
         ]);
     }
 

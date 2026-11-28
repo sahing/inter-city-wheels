@@ -6,6 +6,7 @@ use App\Models\BerthRoute;
 use App\Models\Booking;
 use App\Models\Coupon;
 use App\Models\Driver;
+use App\Models\DriverDueSettlement;
 use App\Models\DriverPayoutRequest;
 use App\Models\DriverVehicle;
 use App\Models\DynamicFormField;
@@ -70,6 +71,7 @@ class HomeController extends Controller
         $driverWalletTransactions = collect();
         $driverPaymentHistory = app(DriverPaymentHistoryService::class)->buildForDriver(null);
         $adminPayoutRequests = collect();
+        $adminDueSettlements = collect();
 
         if ($currentUser && $currentUser->role === 'customer') {
             $digits = preg_replace('/[^0-9]/', '', (string) $currentUser->phone) ?? '';
@@ -117,6 +119,7 @@ class HomeController extends Controller
             }
         } elseif ($currentUser && $currentUser->role === 'admin') {
             $adminPayoutRequests = DriverPayoutRequest::with(['driver', 'processor'])->latest('id')->limit(100)->get();
+            $adminDueSettlements = DriverDueSettlement::with(['driver', 'verifier'])->latest('id')->limit(100)->get();
             $driverProfile = Driver::first();
             if ($driverProfile) {
                 $driverMyVehicles = DriverVehicle::where('driver_id', $driverProfile->id)->latest()->get();
@@ -160,6 +163,7 @@ class HomeController extends Controller
             'driverWalletTransactions',
             'driverPaymentHistory',
             'adminPayoutRequests',
+            'adminDueSettlements',
             'localPackages',
             'airportHubs',
             'allCarTypes',

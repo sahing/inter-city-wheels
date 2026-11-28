@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::table('drivers', function (Blueprint $table) {
             if (! Schema::hasColumn('drivers', 'preferred_payout_method')) {
-                $table->string('preferred_payout_method', 20)->default('upi')->after('city');
+                $table->string('preferred_payout_method', 20)->default('upi');
             }
             if (! Schema::hasColumn('drivers', 'payout_upi_id')) {
                 $table->string('payout_upi_id', 120)->nullable()->after('preferred_payout_method');

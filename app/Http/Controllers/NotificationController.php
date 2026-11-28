@@ -99,7 +99,7 @@ class NotificationController extends Controller
             'trip.completed' => ($meta['tab'] ?? '') === 'driver-wallet' ? 'wallet' : 'receipt',
             'booking.created' => ! empty($meta['is_beyond_region']) ? 'status' : 'otp',
             'booking.status_updated', 'booking.cancelled', 'trip.started' => 'status',
-            'wallet.withdrawal', 'wallet.payout_processed' => 'wallet',
+            'wallet.withdrawal', 'wallet.payout_processed', 'wallet.due_submitted', 'wallet.due_settled' => 'wallet',
             'bidding.opened', 'bidding.bid_placed' => 'bidding',
             default => str_starts_with($event, 'vehicle.') ? 'fleet' : 'summary',
         };

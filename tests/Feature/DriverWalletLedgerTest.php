@@ -493,4 +493,120 @@ class DriverWalletLedgerTest extends TestCase
         $this->assertStringContainsString('id="admin-sec-payouts"', $adminHtml);
         $this->assertStringContainsString('id="admin-process-payout-modal"', $adminHtml);
     }
+
+    public function test_driver_can_settle_negative_company_due_via_manual_upi_and_gateway(): void
+    {
+        $driver = Driver::create([
+            'name' => 'Karan Mehta',
+            'phone' => '9822001122',
+            'vehicle_model' => 'Innova Crysta',
+            'vehicle_plate' => 'MH12ZZ8899',
+            'fleet_category' => 'suv',
+            'wallet_balance' => 0,
+            'is_online' => true,
+            'is_verified' => true,
+        ]);
+        $driverUser = User::factory()->create([
+            'role' => 'driver',
+            'name' => 'Karan Mehta',
+            'phone' => '9822001122',
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        // Driver collects ₹1,400 on a trip where winning bid was ₹1,000 -> wallet goes to -₹400
+        $booking = Booking::create([
+            'booking_reference' => 'ICW-DUE-7701',
+            'service_type' => 'cab',
+            'trip_type' => 'oneway',
+            'route_summary' => 'Pune → Mumbai',
+            'pickup_location' => 'Kothrud',
+            'drop_location' => 'Andheri',
+            'customer_name' => 'Neha Kulkarni',
+            'customer_phone' => '9876512345',
+            'passengers' => [['name' => 'Neha Kulkarni']],
+            'selected_units' => ['suv'],
+            'base_fare' => 1400,
+            'toll_fare' => 0,
+            'addon_fare' => 0,
+            'discount_fare' => 0,
+            'total_amount' => 1400,
+            'payment_mode' => 'cash',
+            'payment_status' => 'driver_collect',
+            'payment_collection_by' => 'driver',
+            'status' => 'Started',
+            'assigned_driver_id' => $driver->id,
+            'driver_payout_amount' => 1000.0,
+            'start_otp' => '4321',
+        ]);
+
+        $this->actingAs($driverUser)
+            ->postJson("/api/driver/trips/{$booking->id}/complete", ['collected_by_driver' => true])
+            ->assertOk()
+            ->assertJsonPath('net_wallet_delta', -400)
+            ->assertJsonPath('wallet_balance', -400);
+
+        $this->actingAs($driverUser)->getJson('/api/driver/payment-history')
+            ->assertOk()
+            ->assertJsonPath('summary.wallet_balance', -400)
+            ->assertJsonPath('summary.company_due_amount', 400);
+
+        // 1. Driver submits Manual UPI UTR for ₹250, Admin rejects -> wallet remains -₹400
+        $rejectSub = $this->actingAs($driverUser)->postJson('/api/driver/wallet/due-settlement', [
+            'amount' => 250,
+            'payment_channel' => 'upi_manual',
+            'upi_utr' => 'BADUTR000111',
+        ])->assertStatus(201);
+        $badId = (int) $rejectSub->json('settlement.id');
+
+        $this->actingAs($admin)->postJson("/api/admin/due-settlements/{$badId}/process", [
+            'action' => 'reject',
+            'admin_notes' => 'UTR not found',
+        ])->assertOk()->assertJsonPath('due_settlement.status', 'rejected');
+        $this->assertEquals(-400.0, (float) $driver->fresh()->wallet_balance);
+
+        // 2. Driver submits valid Manual UPI UTR for ₹250, Admin approves -> wallet becomes -₹150
+        $upiSub = $this->actingAs($driverUser)->postJson('/api/driver/wallet/due-settlement', [
+            'amount' => 250,
+            'payment_channel' => 'upi_manual',
+            'upi_utr' => '432198765432',
+        ])->assertStatus(201);
+        $upiId = (int) $upiSub->json('settlement.id');
+
+        $this->actingAs($admin)->postJson("/api/admin/due-settlements/{$upiId}/process", [
+            'action' => 'approve',
+        ])->assertOk()->assertJsonPath('due_settlement.status', 'paid');
+        $this->assertEquals(-150.0, (float) $driver->fresh()->wallet_balance);
+
+        // 3. Remaining ₹150 settled via Razorpay Payment Gateway -> wallet becomes ₹0
+        PlatformSetting::set('payment_gateway', 'razorpay');
+        PlatformSetting::set('razorpay_key_id', 'rzp_test_due_123');
+        PlatformSetting::set('razorpay_key_secret', 'rzp_secret_due_456');
+
+        Http::fake([
+            'https://api.razorpay.com/v1/orders' => Http::response([
+                'id' => 'order_due_999',
+                'amount' => 15000,
+                'currency' => 'INR',
+            ], 200),
+        ]);
+
+        $gwSub = $this->actingAs($driverUser)->postJson('/api/driver/wallet/due-settlement', [
+            'amount' => 150,
+            'payment_channel' => 'gateway',
+        ])->assertStatus(201)
+            ->assertJsonPath('razorpay_order.order_id', 'order_due_999');
+
+        $gwId = (int) $gwSub->json('settlement.id');
+        $payId = 'pay_due_888';
+        $sig = hash_hmac('sha256', 'order_due_999|'.$payId, 'rzp_secret_due_456');
+
+        $this->actingAs($driverUser)->postJson("/api/driver/wallet/due-settlement/{$gwId}/verify-gateway", [
+            'razorpay_order_id' => 'order_due_999',
+            'razorpay_payment_id' => $payId,
+            'razorpay_signature' => $sig,
+        ])->assertOk()
+            ->assertJsonPath('wallet_balance', 0);
+
+        $this->assertEquals(0.0, (float) $driver->fresh()->wallet_balance);
+    }
 }
