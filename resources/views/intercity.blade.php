@@ -2916,143 +2916,180 @@
                             </li>
 
                             <!-- 2. BOOKINGS & DISPATCH -->
-                            <li class="admin-nav-header">BOOKINGS & DISPATCH</li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="bookings" onclick="switchAdminSection('bookings')">
+                            <li class="admin-nav-item admin-nav-group" data-nav-group="dispatch">
+                                <a href="javascript:void(0)" class="admin-nav-link admin-nav-parent" onclick="toggleAdminNavGroup('dispatch')">
                                     <span class="material-symbols-outlined admin-nav-icon">receipt_long</span>
-                                    <span class="admin-nav-text">Bookings Management</span>
-                                    <span class="admin-nav-badge badge-primary" id="admin-badge-bookings-count">{{ count($recentBookings) }}</span>
+                                    <span class="admin-nav-text">Bookings &amp; Dispatch</span>
+                                    <span class="material-symbols-outlined admin-nav-chevron" id="admin-chevron-dispatch" style="font-size:17px; margin-left:auto; transition:transform 0.2s; transform:rotate(180deg);">expand_more</span>
                                 </a>
-                            </li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="bidding" onclick="switchAdminSection('bidding')">
-                                    <span class="material-symbols-outlined admin-nav-icon">gavel</span>
-                                    <span class="admin-nav-text">Driver Bidding</span>
-                                    <span class="admin-nav-badge badge-gold">Auction</span>
-                                </a>
-                            </li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="booking-types" onclick="switchAdminSection('booking-types')">
-                                    <span class="material-symbols-outlined admin-nav-icon">category</span>
-                                    <span class="admin-nav-text">Booking Types & Packages</span>
-                                    <span class="admin-nav-badge badge-gold">4 Types</span>
-                                </a>
-                            </li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="workflow" onclick="switchAdminSection('workflow')">
-                                    <span class="material-symbols-outlined admin-nav-icon">linear_scale</span>
-                                    <span class="admin-nav-text">Trip Pipeline Stages</span>
-                                    <span class="admin-nav-badge badge-info">{{ count($workflowStages) }} Stages</span>
-                                </a>
+                                <ul id="admin-subnav-dispatch" class="admin-nav-sublist" style="list-style:none; padding:4px 0 6px 26px; margin:0; display:flex; flex-direction:column; gap:2px;">
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="bookings" onclick="switchAdminSection('bookings')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">receipt_long</span>
+                                            <span class="admin-nav-text">Bookings Management</span>
+                                            <span class="admin-nav-badge badge-primary" id="admin-badge-bookings-count">{{ count($recentBookings) }}</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="bidding" onclick="switchAdminSection('bidding')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">gavel</span>
+                                            <span class="admin-nav-text">Driver Bidding</span>
+                                            <span class="admin-nav-badge badge-gold">Auction</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="booking-types" onclick="switchAdminSection('booking-types')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">category</span>
+                                            <span class="admin-nav-text">Booking Types &amp; Packages</span>
+                                            <span class="admin-nav-badge badge-gold">4 Types</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="workflow" onclick="switchAdminSection('workflow')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">linear_scale</span>
+                                            <span class="admin-nav-text">Trip Pipeline Stages</span>
+                                            <span class="admin-nav-badge badge-info">{{ count($workflowStages) }} Stages</span>
+                                        </a>
+                                    </li>
+                                </ul>
                             </li>
 
                             <!-- 3. FLEET & CAR TYPES -->
-                            <li class="admin-nav-header">FLEET & CAR TYPES</li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="car-types" onclick="switchAdminSection('car-types')">
+                            @php $pendingVehiclesCount = $driverVehicles->where('status', 'Pending')->count(); @endphp
+                            <li class="admin-nav-item admin-nav-group" data-nav-group="fleet">
+                                <a href="javascript:void(0)" class="admin-nav-link admin-nav-parent" onclick="toggleAdminNavGroup('fleet')">
                                     <span class="material-symbols-outlined admin-nav-icon">directions_car</span>
-                                    <span class="admin-nav-text">Car Types & Fleet Setup</span>
-                                    <span class="admin-nav-badge badge-primary" id="admin-badge-car-types-count">{{ count($allCarTypes ?? []) }} Types</span>
+                                    <span class="admin-nav-text">Fleet &amp; Vehicles</span>
+                                    <span class="material-symbols-outlined admin-nav-chevron" id="admin-chevron-fleet" style="font-size:17px; margin-left:auto; transition:transform 0.2s;">expand_more</span>
                                 </a>
-                            </li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="fleet" onclick="switchAdminSection('fleet')">
-                                    <span class="material-symbols-outlined admin-nav-icon">local_taxi</span>
-                                    <span class="admin-nav-text">Drivers & Bidding Marketplace</span>
-                                    <span class="admin-nav-badge badge-success">{{ count($drivers) }} Online</span>
-                                </a>
-                            </li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="vehicles" onclick="switchAdminSection('vehicles')">
-                                    <span class="material-symbols-outlined admin-nav-icon">no_crash</span>
-                                    <span class="admin-nav-text">Driver Vehicles & Approvals</span>
-                                    @php $pendingVehiclesCount = $driverVehicles->where('status', 'Pending')->count(); @endphp
-                                    @if($pendingVehiclesCount > 0)
-                                        <span class="admin-nav-badge badge-danger" id="admin-badge-pending-vehicles">{{ $pendingVehiclesCount }} Pending</span>
-                                    @else
-                                        <span class="admin-nav-badge badge-success" id="admin-badge-pending-vehicles">{{ count($driverVehicles) }} Cars</span>
-                                    @endif
-                                </a>
+                                <ul id="admin-subnav-fleet" class="admin-nav-sublist" style="list-style:none; padding:4px 0 6px 26px; margin:0; display:none; flex-direction:column; gap:2px;">
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="car-types" onclick="switchAdminSection('car-types')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">directions_car</span>
+                                            <span class="admin-nav-text">Car Types & Fleet Setup</span>
+                                            <span class="admin-nav-badge badge-primary" id="admin-badge-car-types-count">{{ count($allCarTypes ?? []) }} Types</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="fleet" onclick="switchAdminSection('fleet')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">local_taxi</span>
+                                            <span class="admin-nav-text">Drivers &amp; Bidding Marketplace</span>
+                                            <span class="admin-nav-badge badge-success">{{ count($drivers) }} Online</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="vehicles" onclick="switchAdminSection('vehicles')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">no_crash</span>
+                                            <span class="admin-nav-text">Driver Vehicles &amp; Approvals</span>
+                                            @if($pendingVehiclesCount > 0)
+                                                <span class="admin-nav-badge badge-danger" id="admin-badge-pending-vehicles">{{ $pendingVehiclesCount }} Pending</span>
+                                            @else
+                                                <span class="admin-nav-badge badge-success" id="admin-badge-pending-vehicles">{{ count($driverVehicles) }} Cars</span>
+                                            @endif
+                                        </a>
+                                    </li>
+                                </ul>
                             </li>
 
-                            <!-- 4. NETWORK & HIGHWAY ROUTES -->
-                            <li class="admin-nav-header">NETWORK & ROUTES</li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="cab-routes" onclick="switchAdminSection('cab-routes')">
+                            <!-- 4. NETWORK & ROUTES -->
+                            @php $pendingDiscoveredCount = ($discoveredLocations ?? collect())->where('approval_status', 'pending')->count(); @endphp
+                            <li class="admin-nav-item admin-nav-group" data-nav-group="network">
+                                <a href="javascript:void(0)" class="admin-nav-link admin-nav-parent" onclick="toggleAdminNavGroup('network')">
                                     <span class="material-symbols-outlined admin-nav-icon">alt_route</span>
-                                    <span class="admin-nav-text">Outstation Cab Routes</span>
-                                    <span class="admin-nav-badge badge-primary" id="admin-badge-cab-routes-count">{{ count($allCabRoutes) }}</span>
+                                    <span class="admin-nav-text">Network &amp; Routes</span>
+                                    <span class="material-symbols-outlined admin-nav-chevron" id="admin-chevron-network" style="font-size:17px; margin-left:auto; transition:transform 0.2s;">expand_more</span>
                                 </a>
-                            </li>
-                            @php
-                                $pendingDiscoveredCount = ($discoveredLocations ?? collect())->where('approval_status', 'pending')->count();
-    @endphp
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="locations" onclick="switchAdminSection('locations')">
-                                    <span class="material-symbols-outlined admin-nav-icon">pin_drop</span>
-                                    <span class="admin-nav-text">Service Locations & Hubs</span>
-                                    <span class="admin-nav-badge badge-primary" id="admin-badge-locations-count">{{ count($serviceLocations) }}</span>
-                                    <span class="admin-nav-badge" id="admin-badge-discovered-pending" style="background:#f59e0b; color:#fff; margin-left:4px; {{ $pendingDiscoveredCount > 0 ? '' : 'display:none;' }}" title="Beyond-region cities pending approval">{{ $pendingDiscoveredCount }}</span>
-                                </a>
-                            </li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="berth-routes" onclick="switchAdminSection('berth-routes')">
-                                    <span class="material-symbols-outlined admin-nav-icon">directions_bus</span>
-                                    <span class="admin-nav-text">Berth Routes & Schedules</span>
-                                    <span class="admin-nav-badge badge-info" id="admin-badge-berth-routes-count">{{ count($berthRoutes) }}</span>
-                                </a>
-                            </li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="berth-layouts" onclick="switchAdminSection('berth-layouts')">
-                                    <span class="material-symbols-outlined admin-nav-icon">airline_seat_recline_extra</span>
-                                    <span class="admin-nav-text">Berth & Seat Layouts</span>
-                                    <span class="admin-nav-badge badge-gold" id="admin-badge-berths-count">{{ count($allSeatLayouts) }}</span>
-                                </a>
+                                <ul id="admin-subnav-network" class="admin-nav-sublist" style="list-style:none; padding:4px 0 6px 26px; margin:0; display:none; flex-direction:column; gap:2px;">
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="cab-routes" onclick="switchAdminSection('cab-routes')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">alt_route</span>
+                                            <span class="admin-nav-text">Outstation Cab Routes</span>
+                                            <span class="admin-nav-badge badge-primary" id="admin-badge-cab-routes-count">{{ count($allCabRoutes) }}</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="locations" onclick="switchAdminSection('locations')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">pin_drop</span>
+                                            <span class="admin-nav-text">Service Locations &amp; Hubs</span>
+                                            <span class="admin-nav-badge badge-primary" id="admin-badge-locations-count">{{ count($serviceLocations) }}</span>
+                                            <span class="admin-nav-badge" id="admin-badge-discovered-pending" style="background:#f59e0b; color:#fff; margin-left:4px; {{ $pendingDiscoveredCount > 0 ? '' : 'display:none;' }}" title="Beyond-region cities pending approval">{{ $pendingDiscoveredCount }}</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="berth-routes" onclick="switchAdminSection('berth-routes')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">directions_bus</span>
+                                            <span class="admin-nav-text">Berth Routes &amp; Schedules</span>
+                                            <span class="admin-nav-badge badge-info" id="admin-badge-berth-routes-count">{{ count($berthRoutes) }}</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="berth-layouts" onclick="switchAdminSection('berth-layouts')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">airline_seat_recline_extra</span>
+                                            <span class="admin-nav-text">Berth &amp; Seat Layouts</span>
+                                            <span class="admin-nav-badge badge-gold" id="admin-badge-berths-count">{{ count($allSeatLayouts) }}</span>
+                                        </a>
+                                    </li>
+                                </ul>
                             </li>
 
                             <!-- 5. PRICING & FINANCIALS -->
-                            <li class="admin-nav-header">PRICING & FINANCIALS</li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="pricing" onclick="switchAdminSection('pricing')">
-                                    <span class="material-symbols-outlined admin-nav-icon">currency_rupee</span>
-                                    <span class="admin-nav-text">Fares & Surcharges</span>
-                                </a>
-                            </li>
                             @php $pendingPayoutsCount = ($adminPayoutRequests ?? collect())->where('status', 'pending')->count(); @endphp
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="payouts" onclick="switchAdminSection('payouts'); loadAdminPayoutRequests();">
-                                    <span class="material-symbols-outlined admin-nav-icon">account_balance_wallet</span>
-                                    <span class="admin-nav-text">Driver Payout Approvals</span>
-                                    <span class="admin-nav-badge {{ $pendingPayoutsCount > 0 ? 'badge-danger' : 'badge-success' }}" id="admin-badge-pending-payouts">{{ $pendingPayoutsCount }} Pending</span>
+                            <li class="admin-nav-item admin-nav-group" data-nav-group="financials">
+                                <a href="javascript:void(0)" class="admin-nav-link admin-nav-parent" onclick="toggleAdminNavGroup('financials')">
+                                    <span class="material-symbols-outlined admin-nav-icon">currency_rupee</span>
+                                    <span class="admin-nav-text">Pricing &amp; Financials</span>
+                                    <span class="material-symbols-outlined admin-nav-chevron" id="admin-chevron-financials" style="font-size:17px; margin-left:auto; transition:transform 0.2s;">expand_more</span>
                                 </a>
+                                <ul id="admin-subnav-financials" class="admin-nav-sublist" style="list-style:none; padding:4px 0 6px 26px; margin:0; display:none; flex-direction:column; gap:2px;">
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="pricing" onclick="switchAdminSection('pricing')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">currency_rupee</span>
+                                            <span class="admin-nav-text">Fares &amp; Surcharges</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="payouts" onclick="switchAdminSection('payouts'); loadAdminPayoutRequests();" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">account_balance_wallet</span>
+                                            <span class="admin-nav-text">Driver Payout Approvals</span>
+                                            <span class="admin-nav-badge {{ $pendingPayoutsCount > 0 ? 'badge-danger' : 'badge-success' }}" id="admin-badge-pending-payouts">{{ $pendingPayoutsCount }} Pending</span>
+                                        </a>
+                                    </li>
+                                </ul>
                             </li>
 
-                            <!-- 6. USERS & ACCESS CONTROL -->
-                            <li class="admin-nav-header">USERS & ACCESS</li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="users" onclick="switchAdminSection('users')">
+                            <!-- 6. USERS & FORM SETUP -->
+                            <li class="admin-nav-item admin-nav-group" data-nav-group="users">
+                                <a href="javascript:void(0)" class="admin-nav-link admin-nav-parent" onclick="toggleAdminNavGroup('users')">
                                     <span class="material-symbols-outlined admin-nav-icon">manage_accounts</span>
-                                    <span class="admin-nav-text">Users & Drivers</span>
-                                    <span class="admin-nav-badge badge-info" id="admin-badge-users-count">{{ count($allUsers) }}</span>
+                                    <span class="admin-nav-text">Users &amp; Form Setup</span>
+                                    <span class="material-symbols-outlined admin-nav-chevron" id="admin-chevron-users" style="font-size:17px; margin-left:auto; transition:transform 0.2s;">expand_more</span>
                                 </a>
+                                <ul id="admin-subnav-users" class="admin-nav-sublist" style="list-style:none; padding:4px 0 6px 26px; margin:0; display:none; flex-direction:column; gap:2px;">
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="users" onclick="switchAdminSection('users')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">manage_accounts</span>
+                                            <span class="admin-nav-text">Users & Drivers</span>
+                                            <span class="admin-nav-badge badge-info" id="admin-badge-users-count">{{ count($allUsers) }}</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:void(0)" class="admin-nav-link admin-nav-sublink" data-section="form-builder" onclick="switchAdminSection('form-builder')" style="padding:6px 10px; font-size:12px;">
+                                            <span class="material-symbols-outlined admin-nav-icon" style="font-size:16px;">dynamic_form</span>
+                                            <span class="admin-nav-text">Dynamic Form Builder</span>
+                                            <span class="admin-nav-badge badge-primary" id="admin-badge-fields-count">{{ count($dynamicFields) }}</span>
+                                        </a>
+                                    </li>
+                                </ul>
                             </li>
 
                             <!-- 7. SETTINGS & SYSTEM -->
-                            <li class="admin-nav-header">SETTINGS & PLATFORM</li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="form-builder" onclick="switchAdminSection('form-builder')">
-                                    <span class="material-symbols-outlined admin-nav-icon">dynamic_form</span>
-                                    <span class="admin-nav-text">Dynamic Form Builder</span>
-                                    <span class="admin-nav-badge badge-primary" id="admin-badge-fields-count">{{ count($dynamicFields) }}</span>
-                                </a>
-                            </li>
-                            <li class="admin-nav-item">
-                                <a href="javascript:void(0)" class="admin-nav-link" data-section="system" onclick="switchAdminSection('system'); switchSystemSubTab('overview');">
+                            <li class="admin-nav-item admin-nav-group" data-nav-group="system">
+                                <a href="javascript:void(0)" class="admin-nav-link" data-section="system" onclick="toggleAdminNavGroup('system'); switchAdminSection('system'); switchSystemSubTab('overview');">
                                     <span class="material-symbols-outlined admin-nav-icon">admin_panel_settings</span>
                                     <span class="admin-nav-text">System Settings &amp; Health</span>
-                                    <span class="admin-nav-badge badge-success">5</span>
+                                    <span class="material-symbols-outlined admin-nav-chevron" id="admin-chevron-system" style="font-size:17px; margin-left:auto; transition:transform 0.2s;">expand_more</span>
                                 </a>
-                                <ul id="admin-system-subnav" style="list-style:none; padding:4px 0 6px 28px; margin:0; display:flex; flex-direction:column; gap:2px;">
+                                <ul id="admin-subnav-system" class="admin-nav-sublist" style="list-style:none; padding:4px 0 6px 28px; margin:0; display:none; flex-direction:column; gap:2px;">
                                     <li>
                                         <a href="javascript:void(0)" class="admin-system-sublink active" data-system-sub="overview" onclick="switchAdminSection('system'); switchSystemSubTab('overview');" style="display:flex; align-items:center; gap:6px; padding:5px 10px; border-radius:6px; font-size:11.5px; font-weight:600; color:#cbd5e1; text-decoration:none;">
                                             <span class="material-symbols-outlined" style="font-size:14px;">tune</span>
@@ -5770,6 +5807,9 @@
                             </div>
 
                             <!-- Optional Clerk Authentication Configuration (Hidden on Login Screen by Default) -->
+                            </div>
+
+                            <div id="admin-system-panel-auth" class="admin-system-tab-panel" style="display:none;">
                             @php
                                 $clerkCfg = $platformSettings ?? \App\Models\PlatformSetting::allAdminSettings();
                                 $clerkEnabled = ($clerkCfg['clerk_login_enabled'] ?? '0') === '1';
@@ -5825,6 +5865,7 @@
                             </div>
                         </div>
 
+                            </div>
                         <!-- ======================================================== -->
                         <!-- 5. SERVICE LOCATIONS SETUP (Admin)                       -->
                         <!-- ======================================================== -->

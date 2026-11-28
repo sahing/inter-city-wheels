@@ -3783,11 +3783,29 @@ window.toggleAdminSidebar = function (forceState) {
   }
 };
 
+window.toggleAdminNavGroup = function (groupKey, forceOpen = null) {
+  const list = document.getElementById(`admin-subnav-${groupKey}`);
+  const chevron = document.getElementById(`admin-chevron-${groupKey}`);
+  if (!list) return;
+  const isOpen = forceOpen !== null ? forceOpen : (list.style.display === 'none' || list.style.display === '');
+  list.style.display = isOpen ? 'flex' : 'none';
+  if (chevron) {
+    chevron.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+  }
+};
+
 // AdminLTE 3 Section Switcher
 window.switchAdminSection = function (sectionId) {
-  // 1. Update active nav link
+  // 1. Update active nav link & auto-expand parent group
   document.querySelectorAll('.admin-nav-link').forEach(link => {
-    link.classList.toggle('active', link.dataset.section === sectionId);
+    const isMatch = link.dataset.section === sectionId;
+    link.classList.toggle('active', isMatch);
+    if (isMatch) {
+      const parentGroup = link.closest('.admin-nav-group');
+      if (parentGroup && parentGroup.dataset.navGroup) {
+        window.toggleAdminNavGroup(parentGroup.dataset.navGroup, true);
+      }
+    }
   });
 
   // 2. Update active content section
