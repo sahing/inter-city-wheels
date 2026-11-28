@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\AlternateAuthService;
 use App\Services\Fast2SmsService;
 use App\Services\OtpService;
+use App\Support\IndianPhone;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -195,7 +196,7 @@ class AuthController extends Controller
             'vehicle_plate' => 'nullable|string|max:30',
         ]);
 
-        $phone = trim($validated['phone']);
+        $phone = IndianPhone::format($validated['phone']);
 
         $user = User::create([
             'name' => trim($validated['name']),
@@ -363,7 +364,7 @@ class AuthController extends Controller
             $user = User::create([
                 'name' => ($role === 'driver' ? 'Chauffeur ' : 'Customer ').substr($cleanPhone, -4),
                 'email' => "user{$cleanPhone}@intercitywheels.com",
-                'phone' => "+91 {$cleanPhone}",
+                'phone' => IndianPhone::format($cleanPhone),
                 'password' => Hash::make('otp_'.bin2hex(random_bytes(6))),
                 'role' => $role,
                 'avatar' => $role === 'driver' ? '👨🏽‍✈️' : ($role === 'admin' ? '🛡️' : '👤'),

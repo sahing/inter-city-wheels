@@ -68,7 +68,7 @@ class UserRegistrationAndOtpLoginTest extends TestCase
         ]);
 
         $this->assertDatabaseHas('drivers', [
-            'phone' => '9832233445',
+            'phone' => '+91 98322 33445',
             'vehicle_model' => 'Toyota Innova Crysta',
             'vehicle_plate' => 'WB 06 QX 7788',
         ]);
@@ -206,7 +206,7 @@ class UserRegistrationAndOtpLoginTest extends TestCase
 
         $this->assertAuthenticated();
         $this->assertDatabaseHas('users', [
-            'phone' => '+91 '.$phone,
+            'phone' => '+91 98399 88776',
         ]);
     }
 

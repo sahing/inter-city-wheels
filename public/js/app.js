@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // Intercity Wheels - Interactive Platform Engine
 // ==========================================
 
@@ -14021,6 +14021,35 @@ window.printAdminInvoice = function () {
           .replace(/"/g, '&quot;')
           .replace(/'/g, '&#39;');
 
+        window.formatIndianPhone = function (raw) {
+          const trimmed = String(raw || '').trim();
+          if (!trimmed) return '';
+          const digits = trimmed.replace(/\D/g, '');
+          if (digits.length === 10) {
+            return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+          }
+          if (digits.length === 11 && digits.startsWith('0')) {
+            const core = digits.slice(1);
+            return `+91 ${core.slice(0, 5)} ${core.slice(5)}`;
+          }
+          if (digits.length === 12 && digits.startsWith('91')) {
+            const core = digits.slice(2);
+            return `+91 ${core.slice(0, 5)} ${core.slice(5)}`;
+          }
+          return trimmed;
+        };
+
+        document.addEventListener('focusout', function (ev) {
+          const el = ev.target;
+          if (!el || el.tagName !== 'INPUT') return;
+          if (el.type === 'tel' || el.dataset.indianPhone === '1') {
+            const formatted = window.formatIndianPhone(el.value);
+            if (formatted && formatted !== el.value) {
+              el.value = formatted;
+            }
+          }
+        });
+
         window.selectCustomerAvatar = function (avatar, btn) {
           const input = document.getElementById('cust-profile-avatar');
           if (input) input.value = avatar;
@@ -14054,7 +14083,9 @@ window.printAdminInvoice = function () {
         window.saveCustomerProfile = async function (e) {
           if (e && e.preventDefault) e.preventDefault();
           const name = document.getElementById('cust-profile-name')?.value.trim() || '';
-          const phone = document.getElementById('cust-profile-phone')?.value.trim() || '';
+          const phoneEl = document.getElementById('cust-profile-phone');
+          const phone = window.formatIndianPhone(phoneEl?.value || '');
+          if (phoneEl && phone) phoneEl.value = phone;
           const email = document.getElementById('cust-profile-email')?.value.trim() || '';
           const avatar = document.getElementById('cust-profile-avatar')?.value.trim() || '';
           const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -14212,7 +14243,9 @@ window.printAdminInvoice = function () {
           if (e && e.preventDefault) e.preventDefault();
           const editId = document.getElementById('traveller-edit-id')?.value.trim() || '';
           const name = document.getElementById('traveller-name')?.value.trim() || '';
-          const phone = document.getElementById('traveller-phone')?.value.trim() || '';
+          const phoneEl = document.getElementById('traveller-phone');
+          const phone = window.formatIndianPhone(phoneEl?.value || '');
+          if (phoneEl && phone) phoneEl.value = phone;
           const email = document.getElementById('traveller-email')?.value.trim() || '';
           const ageRaw = document.getElementById('traveller-age')?.value.trim() || '';
           const gender = document.getElementById('traveller-gender')?.value || '';
@@ -14292,7 +14325,7 @@ window.printAdminInvoice = function () {
           if (!tr) return;
           const setVal = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
           setVal('cab-rider-name', tr.name);
-          setVal('cab-rider-phone', tr.phone);
+          setVal('cab-rider-phone', window.formatIndianPhone(tr.phone));
           setVal('cab-rider-email', tr.email);
           if (typeof window.switchTab === 'function') {
             window.switchTab('cabs');

@@ -15,6 +15,7 @@ use App\Services\FareCalculatorService;
 use App\Services\GeoCacheService;
 use App\Services\NotificationService;
 use App\Services\RazorpayService;
+use App\Support\IndianPhone;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -320,7 +321,7 @@ class BookingController extends Controller
                         ? date('Y-m-d H:i:s', strtotime($validated['departure_time']))
                         : null,
                     'customer_name' => $validated['customer_name'],
-                    'customer_phone' => $validated['customer_phone'],
+                    'customer_phone' => IndianPhone::format($validated['customer_phone']),
                     'customer_email' => $validated['customer_email'] ?? null,
                     'passengers' => $validated['passengers'] ?? [],
                     'selected_units' => $isBus ? $selectedUnits : [$fleet],

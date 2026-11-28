@@ -16,6 +16,7 @@ use App\Services\BookingWorkflow;
 use App\Services\DriverPaymentHistoryService;
 use App\Services\NotificationService;
 use App\Services\RazorpayService;
+use App\Support\IndianPhone;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -773,7 +774,7 @@ class DriverBiddingController extends Controller
         ]);
 
         $driver->name = trim($validated['name']);
-        $driver->phone = trim($validated['phone']);
+        $driver->phone = IndianPhone::format($validated['phone']);
         $driver->vehicle_model = trim($validated['vehicle_model']);
         $driver->vehicle_plate = strtoupper(trim($validated['vehicle_plate']));
         $driver->fleet_category = strtolower(trim($validated['fleet_category']));

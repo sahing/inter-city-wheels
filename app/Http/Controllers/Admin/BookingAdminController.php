@@ -12,6 +12,7 @@ use App\Services\BiddingService;
 use App\Services\BookingReferenceGenerator;
 use App\Services\BookingWorkflow;
 use App\Services\NotificationService;
+use App\Support\IndianPhone;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -106,7 +107,7 @@ class BookingAdminController extends Controller
             'drop_location' => $validated['drop_location'],
             'departure_time' => ! empty($validated['departure_time'] ?? null) ? date('Y-m-d H:i:s', strtotime($validated['departure_time'])) : now()->addHours(2),
             'customer_name' => $validated['customer_name'],
-            'customer_phone' => $validated['customer_phone'],
+            'customer_phone' => IndianPhone::format($validated['customer_phone']),
             'customer_email' => $validated['customer_email'] ?? null,
             'base_fare' => $baseFare,
             'toll_fare' => $tollFare,
@@ -207,6 +208,10 @@ class BookingAdminController extends Controller
 
         $cabType = $validated['cab_type'] ?? null;
         unset($validated['cab_type']);
+
+        if (isset($validated['customer_phone'])) {
+            $validated['customer_phone'] = IndianPhone::format($validated['customer_phone']);
+        }
 
         $effectiveServiceType = $validated['service_type'] ?? $booking->service_type;
         if ($effectiveServiceType === 'cab' && ! empty($cabType)) {

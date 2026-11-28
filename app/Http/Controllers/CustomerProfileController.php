@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CustomerTraveller;
+use App\Support\IndianPhone;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -37,7 +38,7 @@ class CustomerProfileController extends Controller
         ]);
 
         $user->name = trim($validated['name']);
-        $user->phone = trim($validated['phone']);
+        $user->phone = IndianPhone::format($validated['phone']);
 
         if (array_key_exists('email', $validated) && trim((string) $validated['email']) !== '') {
             $user->email = strtolower(trim((string) $validated['email']));
@@ -77,7 +78,7 @@ class CustomerProfileController extends Controller
             return CustomerTraveller::create([
                 'user_id' => $user->id,
                 'name' => trim($validated['name']),
-                'phone' => trim($validated['phone']),
+                'phone' => IndianPhone::format($validated['phone']),
                 'email' => ! empty($validated['email']) ? strtolower(trim((string) $validated['email'])) : null,
                 'age' => $validated['age'] ?? null,
                 'gender' => $validated['gender'] ?? null,
@@ -113,7 +114,7 @@ class CustomerProfileController extends Controller
 
             $traveller->forceFill([
                 'name' => trim($validated['name']),
-                'phone' => trim($validated['phone']),
+                'phone' => IndianPhone::format($validated['phone']),
                 'email' => ! empty($validated['email']) ? strtolower(trim((string) $validated['email'])) : null,
                 'age' => $validated['age'] ?? null,
                 'gender' => $validated['gender'] ?? null,

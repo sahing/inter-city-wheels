@@ -135,4 +135,37 @@ class CustomerProfileAndTravellersTest extends TestCase
             'phone' => '9876543210',
         ])->assertStatus(403);
     }
+
+    public function test_ten_digit_indian_numbers_are_uniformly_formatted_to_plus_91(): void
+    {
+        $customer = User::factory()->create([
+            'role' => 'customer',
+            'name' => 'Priya Das',
+            'phone' => '9812345678',
+        ]);
+
+        // 10-digit profile update -> +91 XXXXX XXXXX
+        $this->actingAs($customer)->postJson('/api/customer/profile', [
+            'name' => 'Priya Das',
+            'phone' => '9876543210',
+        ])->assertOk()
+            ->assertJsonPath('profile.phone', '+91 98765 43210');
+
+        // 11-digit with leading 0 on traveller -> +91 XXXXX XXXXX
+        $t1 = $this->actingAs($customer)->postJson('/api/customer/travellers', [
+            'name' => 'Amit Das',
+            'phone' => '09811122233',
+            'relation' => 'Spouse',
+        ])->assertStatus(201)
+            ->assertJsonPath('traveller.phone', '+91 98111 22233');
+
+        // 12-digit with 91 prefix on traveller update -> +91 XXXXX XXXXX
+        $t1Id = (int) $t1->json('traveller.id');
+        $this->actingAs($customer)->putJson("/api/customer/travellers/{$t1Id}", [
+            'name' => 'Amit Das',
+            'phone' => '919988776655',
+            'relation' => 'Spouse',
+        ])->assertOk()
+            ->assertJsonPath('traveller.phone', '+91 99887 76655');
+    }
 }
