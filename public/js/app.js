@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // Intercity Wheels - Interactive Platform Engine
 // ==========================================
 
@@ -78,7 +78,7 @@ function escapeHtml(val) {
     .replace(/'/g, '&#39;');
 }
 
-// Pre-defined Cities & Route Matrix (mutable — synced from DB at runtime)
+// Pre-defined Cities & Route Matrix (mutable â€” synced from DB at runtime)
 let CITY_DATABASE = {
   "pune": { name: "Pune", state: "Maharashtra", lat: 18.5204, lng: 73.8567 },
   "goa": { name: "Goa (Panjim)", state: "Goa", lat: 15.4909, lng: 73.8278 },
@@ -120,7 +120,7 @@ let CITY_DATABASE = {
   "bhubaneswar": { name: "Bhubaneswar", state: "Odisha", lat: 20.2961, lng: 85.8245 }
 };
 
-// Route Distances (km) and base highway times (mutable — synced from DB at runtime)
+// Route Distances (km) and base highway times (mutable â€” synced from DB at runtime)
 let ROUTE_MATRIX = {
   "berhampore-digha": { dist: 345, time: "7h 30m", toll: 320 },
   "digha-berhampore": { dist: 345, time: "7h 30m", toll: 320 },
@@ -178,7 +178,7 @@ const state = {
 
   // Schedules / Berth Selection State (From screen.png & code.html)
   schedules: {
-    route: 'Pune → Goa',
+    route: 'Pune â†’ Goa',
     operator: 'INTERCITY EXPRESS #8092',
     busType: 'Volvo Multi-Axle AC Sleeper',
     activeDeck: 'lower',
@@ -234,7 +234,7 @@ const state = {
     {
       id: 'ICW-90412',
       type: 'Bus Berth',
-      route: 'Pune → Goa',
+      route: 'Pune â†’ Goa',
       date: 'Tonight, 09:30 PM',
       operator: 'Intercity Express #8092',
       berths: ['L4', 'L5'],
@@ -384,7 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.syncAllLocationDropdowns(list);
       }
     })
-    .catch(() => { }); // silent — offline / server error is not critical
+    .catch(() => { }); // silent â€” offline / server error is not critical
 });
 
 // ==========================================
@@ -1001,7 +1001,7 @@ function renderCityPickerDropdownItems(inputId, filterText = '', serverLocations
       return `
         <div class="city-picker-item${isSelected ? ' highlighted' : ''}" ${hasCoords
           ? `onmousedown="event.preventDefault(); selectCityFromPicker('${inputId}', '${safeName}', '${safeState}', ${numericLat}, ${numericLng}, { fromPointer: true })"`
-          : 'style="opacity:.55; cursor:not-allowed;" title="No coordinates for this place — type a nearby town or city"'}>
+          : 'style="opacity:.55; cursor:not-allowed;" title="No coordinates for this place â€” type a nearby town or city"'}>
           <div class="city-picker-item-main">
             <span class="material-symbols-outlined" style="font-size:16px; color:${l.is_custom ? '#f59e0b' : '#64748b'};">${icon}</span>
             <div>
@@ -1796,7 +1796,7 @@ async function refreshCabQuote() {
         state.cab.appliedCoupon = null;
         const msgEl = document.getElementById('coupon-msg');
         if (msgEl) {
-          msgEl.textContent = '❌ ' + (data.quote.coupon.message || 'Coupon could not be applied.');
+          msgEl.textContent = 'âŒ ' + (data.quote.coupon.message || 'Coupon could not be applied.');
           msgEl.style.color = '#dc2626';
         }
       }
@@ -1805,7 +1805,7 @@ async function refreshCabQuote() {
       state.cab.quoteError = (data && data.message) || 'We could not price this trip.';
       const msgEl = document.getElementById('coupon-msg');
       if (msgEl && state.cab.appliedCoupon) {
-        msgEl.textContent = '❌ ' + state.cab.quoteError;
+        msgEl.textContent = 'âŒ ' + state.cab.quoteError;
         msgEl.style.color = '#dc2626';
       }
     }
@@ -2024,14 +2024,14 @@ window.renderRentalVehicles = function (filterCat = 'all', sortBy = 'recommended
             <span class="rental-spec-chip"><span class="material-symbols-outlined" style="font-size:14px;">ac_unit</span> AC</span>
           </div>
           <div class="rental-policy-strip">
-            <span>✓ Tolls &amp; taxes included</span>
-            <span>✓ Free cancellation</span>
+            <span>âœ“ Tolls &amp; taxes included</span>
+            <span>âœ“ Free cancellation</span>
           </div>
         </div>
         <div class="rental-vehicle-footer">
           <div class="rental-fare-block">
-            <div class="rental-fare-total">₹${f.totalFare.toLocaleString('en-IN')}</div>
-            <div class="rental-fare-sub">up to ${dist} km • ₹${f.extraKm}/km after</div>
+            <div class="rental-fare-total">â‚¹${f.totalFare.toLocaleString('en-IN')}</div>
+            <div class="rental-fare-sub">up to ${dist} km â€¢ â‚¹${f.extraKm}/km after</div>
           </div>
           <button type="button" class="btn-book-vehicle" onclick="selectRentalVehicle('${f.key}')">Book now</button>
         </div>
@@ -2136,7 +2136,7 @@ window.applyRentalCoupon = function () {
 };
 
 // Coupons are validated and priced by the server. The browser used to hardcode
-// FIRSTWHEELS / INTERCITY100 and invent the discount (P1-2) — a coupon added in
+// FIRSTWHEELS / INTERCITY100 and invent the discount (P1-2) â€” a coupon added in
 // the admin panel never worked, and an expired one still "applied".
 async function applyCouponCode() {
   const input = document.getElementById('cab-coupon-input');
@@ -2162,7 +2162,7 @@ async function applyCouponCode() {
 
   if (applied && applied.applied) {
     if (msgEl) {
-      msgEl.textContent = `🎉 Coupon ${val} applied — ₹${Number(applied.discount).toLocaleString('en-IN')} off.`;
+      msgEl.textContent = `ðŸŽ‰ Coupon ${val} applied â€” â‚¹${Number(applied.discount).toLocaleString('en-IN')} off.`;
       msgEl.style.color = '#16a34a';
     }
     showToast(`Promo code ${val} applied successfully!`, 'success');
@@ -2170,7 +2170,7 @@ async function applyCouponCode() {
     state.cab.appliedCoupon = null;
     const reason = (applied && applied.message) || state.cab.quoteError || 'Coupon could not be applied.';
     if (msgEl) {
-      msgEl.textContent = '❌ ' + reason;
+      msgEl.textContent = 'âŒ ' + reason;
       msgEl.style.color = '#dc2626';
     }
     showToast(reason, 'warning');
@@ -2190,7 +2190,7 @@ window.goToCabStep = function (step) {
       pill.classList.remove('active', 'completed');
       if (i < step) {
         pill.classList.add('completed');
-        if (num) num.innerHTML = '✓';
+        if (num) num.innerHTML = 'âœ“';
       } else if (i === step) {
         pill.classList.add('active');
         if (num) num.textContent = String(i);
@@ -2287,17 +2287,17 @@ function updateRouteRecapTexts() {
 
   // Step 1 strip
   const s1Route = document.getElementById('step1-route-name');
-  if (s1Route) s1Route.textContent = `${fromName} → ${toName}`;
+  if (s1Route) s1Route.textContent = `${fromName} â†’ ${toName}`;
   const s1Dist = document.getElementById('step1-dist');
   if (s1Dist) s1Dist.textContent = `${dist} km`;
   const s1Time = document.getElementById('step1-time');
   if (s1Time) s1Time.textContent = time;
   const s1Toll = document.getElementById('step1-toll');
-  if (s1Toll) s1Toll.textContent = `₹${toll} Included`;
+  if (s1Toll) s1Toll.textContent = `â‚¹${toll} Included`;
 
   // Step 2 banner
   const recapRoute = document.getElementById('recap-route');
-  if (recapRoute) recapRoute.textContent = `${fromName} → ${toName}`;
+  if (recapRoute) recapRoute.textContent = `${fromName} â†’ ${toName}`;
   const recapDatetime = document.getElementById('recap-datetime');
   if (recapDatetime) recapDatetime.textContent = dateDisplay;
   const recapTripType = document.getElementById('recap-trip-type');
@@ -2310,7 +2310,7 @@ function updateRouteRecapTexts() {
   const recapFleet = document.getElementById('recap-fleet-title');
   if (recapFleet) recapFleet.textContent = `${fleetData.name} (${fleetData.models.split(',')[0]})`;
   const recapRouteMini = document.getElementById('recap-route-mini');
-  if (recapRouteMini) recapRouteMini.textContent = `${fromName} → ${toName}`;
+  if (recapRouteMini) recapRouteMini.textContent = `${fromName} â†’ ${toName}`;
   if (typeof syncBeyondRegionNoticeUi === 'function') syncBeyondRegionNoticeUi();
 }
 
@@ -2565,7 +2565,7 @@ async function handleConfirmCabBooking() {
     // random reference, so a failed request still looked like a successful
     // booking. A booking only exists once the server says so.
     console.warn('Booking submission error:', err);
-    showToast('We could not reach the booking service. Please try again — no booking has been created.', 'danger');
+    showToast('We could not reach the booking service. Please try again â€” no booking has been created.', 'danger');
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -2592,13 +2592,13 @@ function handleCityChange() {
   state.cab.travelTime = route.time;
   state.cab.tollEstimate = route.toll;
 
-  // Update DOM stats (safe — element may not exist on all tabs)
+  // Update DOM stats (safe â€” element may not exist on all tabs)
   const distEl = document.getElementById('cab-stat-distance');
   if (distEl) distEl.textContent = `${route.dist} km`;
   const timeEl = document.getElementById('cab-stat-time');
   if (timeEl) timeEl.textContent = route.time;
   const tollEl = document.getElementById('cab-stat-toll');
-  if (tollEl) tollEl.textContent = `₹${route.toll}`;
+  if (tollEl) tollEl.textContent = `â‚¹${route.toll}`;
 
   updateMapRoute(from, to);
   updateRouteRecapTexts();
@@ -2622,7 +2622,7 @@ function finalizeCabBookingUi(b, fromCityName, toCityName, customerName) {
   const localBooking = {
     id: b.booking_reference,
     type: 'Outstation Cab',
-    route: `${fromCityName} → ${toCityName}`,
+    route: `${fromCityName} â†’ ${toCityName}`,
     date: 'Scheduled',
     operator: `${FLEET_TYPES[state.cab.selectedFleet]?.name || 'Executive SUV'} (Intercity Wheels)`,
     berths: ['Private Car Rental'],
@@ -2637,9 +2637,9 @@ function finalizeCabBookingUi(b, fromCityName, toCityName, customerName) {
 
   state.bookings.unshift(localBooking);
   if (b.is_beyond_region) {
-    showToast(`⚠️ Booking request saved (Beyond Service Region — NOT Confirmed / Availability Not Guaranteed). Ref: ${b.booking_reference}`, 'warning');
+    showToast(`âš ï¸ Booking request saved (Beyond Service Region â€” NOT Confirmed / Availability Not Guaranteed). Ref: ${b.booking_reference}`, 'warning');
   } else {
-    showToast(`🎉 Booking confirmed! Reference: ${b.booking_reference}`, 'success');
+    showToast(`ðŸŽ‰ Booking confirmed! Reference: ${b.booking_reference}`, 'success');
   }
 
   const badge = document.querySelector('.nav-tab-badge.badge-primary');
@@ -2793,11 +2793,11 @@ function updateTotalCabFare() {
   const elDiscount = document.getElementById('fare-discount');
   const elTotal = document.getElementById('fare-grand-total');
 
-  if (elBase) elBase.textContent = `₹${Math.round(baseFare).toLocaleString('en-IN')}`;
-  if (elTolls) elTolls.textContent = `₹${Math.round(tolls).toLocaleString('en-IN')}`;
-  if (elAddons) elAddons.textContent = `₹${Math.round(addons).toLocaleString('en-IN')}`;
-  if (elDiscount) elDiscount.textContent = `-₹${Math.round(discount).toLocaleString('en-IN')}`;
-  if (elTotal) elTotal.textContent = `₹${Math.round(total).toLocaleString('en-IN')}`;
+  if (elBase) elBase.textContent = `â‚¹${Math.round(baseFare).toLocaleString('en-IN')}`;
+  if (elTolls) elTolls.textContent = `â‚¹${Math.round(tolls).toLocaleString('en-IN')}`;
+  if (elAddons) elAddons.textContent = `â‚¹${Math.round(addons).toLocaleString('en-IN')}`;
+  if (elDiscount) elDiscount.textContent = `-â‚¹${Math.round(discount).toLocaleString('en-IN')}`;
+  if (elTotal) elTotal.textContent = `â‚¹${Math.round(total).toLocaleString('en-IN')}`;
 
   if (typeof updateCheckoutPaymentDisplay === 'function') {
     updateCheckoutPaymentDisplay(total);
@@ -2809,7 +2809,7 @@ function updateTotalCabFare() {
     if (fPriceEl) {
       const quoted = serverFleetTotal(key);
       const fTotal = quoted !== null ? quoted : Math.round(dist * FLEET_TYPES[key].ratePerKm + (state.cab.includeTolls ? 400 : 0));
-      fPriceEl.textContent = `₹${fTotal.toLocaleString('en-IN')}`;
+      fPriceEl.textContent = `â‚¹${fTotal.toLocaleString('en-IN')}`;
     }
   }
 }
@@ -2849,13 +2849,13 @@ function updateMapRoute(fromKey, toKey) {
   // Custom marker icons
   const originIcon = L.divIcon({
     className: 'custom-map-pin origin-pin',
-    html: `<div style="background:#0b0f19;color:#fdfaf5;font-weight:700;font-size:11px;padding:4px 8px;border-radius:20px;border:2px solid #d49b4c;box-shadow:0 2px 6px rgba(0,0,0,0.3);white-space:nowrap;">📍 ${fromCity.name}</div>`,
+    html: `<div style="background:#0b0f19;color:#fdfaf5;font-weight:700;font-size:11px;padding:4px 8px;border-radius:20px;border:2px solid #d49b4c;box-shadow:0 2px 6px rgba(0,0,0,0.3);white-space:nowrap;">ðŸ“ ${fromCity.name}</div>`,
     iconSize: [80, 30]
   });
 
   const destIcon = L.divIcon({
     className: 'custom-map-pin dest-pin',
-    html: `<div style="background:linear-gradient(135deg, #ebcaa5 0%, #d49b4c 100%);color:#0b0f19;font-weight:800;font-size:11px;padding:4px 8px;border-radius:20px;border:2px solid #0b0f19;box-shadow:0 2px 6px rgba(0,0,0,0.3);white-space:nowrap;">🏁 ${toCity.name}</div>`,
+    html: `<div style="background:linear-gradient(135deg, #ebcaa5 0%, #d49b4c 100%);color:#0b0f19;font-weight:800;font-size:11px;padding:4px 8px;border-radius:20px;border:2px solid #0b0f19;box-shadow:0 2px 6px rgba(0,0,0,0.3);white-space:nowrap;">ðŸ ${toCity.name}</div>`,
     iconSize: [80, 30]
   });
 
@@ -2980,7 +2980,7 @@ function toggleBerthSelection(cellElement, seatCode, price) {
       icon.textContent = 'check_circle';
       icon.style.fontVariationSettings = "'FILL' 1";
     }
-    showToast(`Berth ${seatCode} selected (₹${price})`, 'success');
+    showToast(`Berth ${seatCode} selected (â‚¹${price})`, 'success');
   }
 
   renderPassengerForms();
@@ -3001,7 +3001,7 @@ function updateSchedulesTotal() {
     dockLabel.textContent = count > 0 ? `${count} Berth${count > 1 ? 's' : ''}: ${seatCodes}` : 'No berths selected';
   }
   if (dockTotal) {
-    dockTotal.innerHTML = `₹${total.toLocaleString('en-IN')} <small>all incl.</small>`;
+    dockTotal.innerHTML = `â‚¹${total.toLocaleString('en-IN')} <small>all incl.</small>`;
   }
   if (passengerBadge) {
     passengerBadge.textContent = `${count} Traveller${count > 1 ? 's' : ''}`;
@@ -3039,7 +3039,7 @@ function renderPassengerForms() {
             <span style="font-weight: 700; font-size: 13.5px;">Passenger ${i + 1}</span>
           </div>
           <span style="font-size: 11px; font-weight: 700; background: var(--primary-light); color: var(--primary); padding: 2px 7px; border-radius: 4px;">
-            ${seat.id} • ${seat.window ? 'Window' : 'Aisle'}
+            ${seat.id} â€¢ ${seat.window ? 'Window' : 'Aisle'}
           </span>
         </div>
         <input class="form-control" type="text" placeholder="Full Name" value="${existing.name}" style="margin-bottom: 8px; height: 40px;" onchange="updatePassengerData(${i}, 'name', this.value)">
@@ -3142,19 +3142,19 @@ function isAvatarUrl(value) {
   }
 }
 
-function renderAvatarHtml(avatar, fallback = '👤', alt = 'Profile avatar') {
+function renderAvatarHtml(avatar, fallback = 'ðŸ‘¤', alt = 'Profile avatar') {
   const val = typeof avatar === 'string' ? avatar.trim() : '';
-  const fb = fallback || '👤';
+  const fb = fallback || 'ðŸ‘¤';
   if (isAvatarUrl(val)) {
-    return `<img src="${auctionEscape(val)}" alt="${auctionEscape(alt)}" class="avatar-img" referrerpolicy="no-referrer" data-fallback="${auctionEscape(fb)}" onerror="this.replaceWith(document.createTextNode(this.dataset.fallback || '👤'))">`;
+    return `<img src="${auctionEscape(val)}" alt="${auctionEscape(alt)}" class="avatar-img" referrerpolicy="no-referrer" data-fallback="${auctionEscape(fb)}" onerror="this.replaceWith(document.createTextNode(this.dataset.fallback || 'ðŸ‘¤'))">`;
   }
   return auctionEscape(val || fb);
 }
 
-function setAvatarContent(el, avatar, fallback = '👤', alt = 'Profile avatar') {
+function setAvatarContent(el, avatar, fallback = 'ðŸ‘¤', alt = 'Profile avatar') {
   if (!el) return;
   const val = typeof avatar === 'string' ? avatar.trim() : '';
-  const fb = fallback || '👤';
+  const fb = fallback || 'ðŸ‘¤';
   if (isAvatarUrl(val)) {
     const img = document.createElement('img');
     img.src = val;
@@ -3172,7 +3172,7 @@ function setAvatarContent(el, avatar, fallback = '👤', alt = 'Profile avatar')
 
 function auctionMoney(value) {
   const amount = Number(value || 0);
-  return '₹' + amount.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  return 'â‚¹' + amount.toLocaleString('en-IN', { maximumFractionDigits: 0 });
 }
 
 function auctionDateTime(iso) {
@@ -3201,7 +3201,7 @@ async function renderBiddingList() {
   const container = document.getElementById('bidding-cards-stream');
   if (!container) return;
 
-  container.innerHTML = '<div style="text-align:center; padding:26px; color:#94a3b8; font-size:12.5px;">Loading live auctions…</div>';
+  container.innerHTML = '<div style="text-align:center; padding:26px; color:#94a3b8; font-size:12.5px;">Loading live auctionsâ€¦</div>';
 
   try {
     const res = await fetch('/api/driver/auctions', { headers: { 'Accept': 'application/json' } });
@@ -3283,7 +3283,7 @@ function buildAuctionBidBoxHtml(auction, canBidNow, canBidRole, isAdminViewer) {
   if (canBidNow && remainingBids > 0 && auction.is_open !== false) {
     return '<div class="auction-bid-box">'
       + '<div class="auction-bid-box-head">'
-      + '<span>I will accept this booking at price (<strong style="color:var(--text-main);">' + auctionMoney(minFloor) + ' – ' + auctionMoney(effectiveMax) + '</strong> &bull; <span style="color:var(--success); font-weight:600;">' + auctionMoney(minFloor) + ' wins immediately</span>)</span>'
+      + '<span>I will accept this booking at price (<strong style="color:var(--text-main);">' + auctionMoney(minFloor) + ' â€“ ' + auctionMoney(effectiveMax) + '</strong> &bull; <span style="color:var(--success); font-weight:600;">' + auctionMoney(minFloor) + ' wins immediately</span>)</span>'
       + '<span style="color:var(--text-muted);">' + remainingBids + ' bid' + (remainingBids === 1 ? '' : 's') + ' left</span>'
       + '</div>'
       + '<div class="auction-bid-input-row">'
@@ -3293,7 +3293,7 @@ function buildAuctionBidBoxHtml(auction, canBidNow, canBidRole, isAdminViewer) {
       + '<span>' + action + '</span>'
       + '</button>'
       + '</div>'
-      + '<div id="console-bid-preview-' + auctionId + '" style="font-size:11.5px; color:var(--text-main); font-weight:600; background:var(--surface-card); border:1px dashed var(--outline); border-radius:6px; padding:6px 9px;">Enter your amount above: <em>"I will accept this booking (' + auctionEscape(auction.pickup_city) + ' &rarr; ' + auctionEscape(auction.drop_city) + ') at price ₹___."</em></div>'
+      + '<div id="console-bid-preview-' + auctionId + '" style="font-size:11.5px; color:var(--text-main); font-weight:600; background:var(--surface-card); border:1px dashed var(--outline); border-radius:6px; padding:6px 9px;">Enter your amount above: <em>"I will accept this booking (' + auctionEscape(auction.pickup_city) + ' &rarr; ' + auctionEscape(auction.drop_city) + ') at price â‚¹___."</em></div>'
       + '<label class="auction-bid-terms">'
       + '<input type="checkbox" id="console-bid-terms-' + auctionId + '" style="margin-top:2px; accent-color:var(--primary);">'
       + '<span>I agree to the <a href="' + auctionEscape(termsUrl) + '" target="_blank" rel="noopener" style="color:var(--primary); font-weight:600; text-decoration:underline;">Terms &amp; Conditions</a> and confirm I will accept and complete this booking at my quoted price if allotted.</span>'
@@ -3384,7 +3384,7 @@ function renderFilteredBiddingCards() {
     const openRowsHtml = filteredAuctions.map(function (auction) {
       const auctionId = Number(auction.id || 0);
       const { hasLowest, minFloor, effectiveMax } = getAuctionPricingBounds(auction);
-      const lowest = hasLowest ? auctionMoney(auction.current_lowest) : '—';
+      const lowest = hasLowest ? auctionMoney(auction.current_lowest) : 'â€”';
       const badge = getAuctionStatusBadgeHtml(auction);
       const distanceText = auction.distance_km ? (auction.distance_km + ' km') : 'On req';
       const departure = auction.departure_at ? auctionDateTime(auction.departure_at) : 'TBD';
@@ -3410,7 +3410,7 @@ function renderFilteredBiddingCards() {
         + '</td>'
         + '<td>'
         + '<div class="cell-primary-text text-tabular" style="color:var(--success);">' + (hasLowest ? lowest : ('Cap ' + auctionMoney(auction.start_amount))) + '</div>'
-        + '<div class="cell-subtext">Range ' + auctionMoney(minFloor) + ' – ' + auctionMoney(effectiveMax) + '</div>'
+        + '<div class="cell-subtext">Range ' + auctionMoney(minFloor) + ' â€“ ' + auctionMoney(effectiveMax) + '</div>'
         + '</td>'
         + '<td style="text-align:right; white-space:nowrap;">'
         + '<div class="admin-actions-compact">'
@@ -3443,7 +3443,7 @@ function renderFilteredBiddingCards() {
       const dep = item.departure_at ? auctionDateTime(item.departure_at) : 'Scheduled';
       const payout = (item.allotted_to_you && item.winning_amount !== null && item.winning_amount !== undefined)
         ? auctionMoney(item.winning_amount)
-        : '—';
+        : 'â€”';
 
       return '<tr style="background:#f8fafc;">'
         + '<td><span class="booking-ref-link">' + auctionEscape(item.booking_reference) + '</span><div class="cell-subtext">Driver allotted</div></td>'
@@ -3474,7 +3474,7 @@ function renderFilteredBiddingCards() {
   const openCardsHtml = filteredAuctions.map(function (auction) {
     const auctionId = Number(auction.id || 0);
     const { hasLowest, minFloor, effectiveMax } = getAuctionPricingBounds(auction);
-    const lowest = hasLowest ? auctionMoney(auction.current_lowest) : '—';
+    const lowest = hasLowest ? auctionMoney(auction.current_lowest) : 'â€”';
     const badge = getAuctionStatusBadgeHtml(auction);
     const distanceText = auction.distance_km ? (auction.distance_km + ' KM') : 'On request';
     const departure = auction.departure_at ? auctionDateTime(auction.departure_at) : 'TBD';
@@ -3500,7 +3500,7 @@ function renderFilteredBiddingCards() {
       + '</div>'
       + '<div style="text-align:right;">'
       + '<div class="cell-primary-text text-tabular" style="color:var(--success);">' + (hasLowest ? ('Lowest ' + lowest) : ('Cap ' + auctionMoney(auction.start_amount))) + '</div>'
-      + '<div class="cell-subtext">Range ' + auctionMoney(minFloor) + ' – ' + auctionMoney(effectiveMax) + (myLatestVal ? (' &bull; You: <strong>' + myLatestVal + '</strong>') : '') + '</div>'
+      + '<div class="cell-subtext">Range ' + auctionMoney(minFloor) + ' â€“ ' + auctionMoney(effectiveMax) + (myLatestVal ? (' &bull; You: <strong>' + myLatestVal + '</strong>') : '') + '</div>'
       + '</div>'
       + '</div>'
       + (isExpanded ? buildAuctionBidBoxHtml(auction, canBidNow, canBidRole, isAdminViewer) : '')
@@ -3559,7 +3559,7 @@ window.updateConsoleBidPreview = function (auctionId, pickupCity, dropCity) {
   if (val > 0) {
     preview.innerHTML = 'I will accept this booking (<strong>' + auctionEscape(pickupCity) + ' &rarr; ' + auctionEscape(dropCity) + '</strong>) at price <strong style="color:var(--gold-dark);">' + auctionMoney(val) + '</strong>.';
   } else {
-    preview.innerHTML = 'Enter your amount above: <em>"I will accept this booking (' + auctionEscape(pickupCity) + ' &rarr; ' + auctionEscape(dropCity) + ') at price ₹___."</em>';
+    preview.innerHTML = 'Enter your amount above: <em>"I will accept this booking (' + auctionEscape(pickupCity) + ' &rarr; ' + auctionEscape(dropCity) + ') at price â‚¹___."</em>';
   }
 };
 
@@ -3591,7 +3591,7 @@ window.submitConsoleAuctionBid = async function (token, auctionId) {
   const origHtml = btn ? btn.innerHTML : '';
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Submitting…';
+    btn.textContent = 'Submittingâ€¦';
   }
 
   try {
@@ -3675,13 +3675,13 @@ function openDriverVehicleDetails(v) {
   if (!v) return;
   const berths = Number(v.berth_capacity || 0) > 0 ? ', ' + v.berth_capacity + ' Berths' : '';
   showDriverDetailsScreen(v.vehicle_model || 'Vehicle Details', 'directions_car', [
-    { label: 'Registration Plate', value: v.vehicle_plate || '—' },
+    { label: 'Registration Plate', value: v.vehicle_plate || 'â€”' },
     { label: 'Approval Status', value: v.status || 'Pending' },
-    { label: 'Fleet Class', value: (v.fleet_category || '—').toUpperCase() },
+    { label: 'Fleet Class', value: (v.fleet_category || 'â€”').toUpperCase() },
     { label: 'Capacity', value: (v.seating_capacity || 0) + ' Seats' + berths },
     { label: 'Fuel Type', value: v.fuel_type || 'Diesel' },
-    { label: 'Year', value: v.manufacturing_year || '—' },
-    { label: 'RC Number', value: v.rc_number || '—' }
+    { label: 'Year', value: v.manufacturing_year || 'â€”' },
+    { label: 'RC Number', value: v.rc_number || 'â€”' }
   ], v.admin_notes ? 'Admin Note: ' + v.admin_notes : '');
 }
 
@@ -3711,10 +3711,10 @@ function openDriverTripDetails(dt) {
     ? (collected > 0 ? Math.max(0, totalFare - collected) : totalFare)
     : (dt.payment_status === 'partial_paid' ? Number(dt.advance_amount || 0) : 0);
   const collectionText = dt.driver_collected_at
-    ? `Collected ₹${collected.toLocaleString('en-IN')} on completion`
+    ? `Collected â‚¹${collected.toLocaleString('en-IN')} on completion`
     : (due > 0
-      ? `Collect ₹${due.toLocaleString('en-IN')} from passenger when drive completes`
-      : 'Prepaid (Confirmed by Platform — Collect ₹0)');
+      ? `Collect â‚¹${due.toLocaleString('en-IN')} from passenger when drive completes`
+      : 'Prepaid (Confirmed by Platform â€” Collect â‚¹0)');
   const unlockedStates = ['Driver Assigned', 'Confirmed', 'Started', 'Completed'];
   const canCallCustomer = unlockedStates.includes(dt.status) && dt.customer_phone;
   const custTel = canCallCustomer ? `tel:${String(dt.customer_phone).replace(/[^0-9+]/g, '') || dt.customer_phone}` : '';
@@ -3722,15 +3722,15 @@ function openDriverTripDetails(dt) {
     ? `<a href="${auctionEscape(custTel)}" class="btn btn-sm btn-primary" style="text-decoration:none;"><span class="material-symbols-outlined" style="font-size:15px;">call</span><span>Call Customer</span></a>`
     : '';
   showDriverDetailsScreen('Trip ' + (dt.booking_reference || ''), 'local_taxi', [
-    { label: 'Status', value: dt.status || '—' },
-    { label: 'Route', value: dt.route_summary || '—' },
-    { label: 'Passenger', value: (dt.customer_name || '—') + (dt.customer_phone ? ' (' + dt.customer_phone + ')' : '') },
-    { label: 'Pickup Location', value: dt.pickup_location || '—' },
-    { label: 'Drop Location', value: dt.drop_location || '—' },
-    { label: 'Total Fare', value: '₹' + totalFare.toLocaleString('en-IN') + ' (Tolls & taxes included)' },
-    { label: bidAmt != null ? 'Your Winning Bid' : 'Standard Payout (90%)', value: '₹' + payout.toLocaleString('en-IN') },
-    { label: 'Paid Online to Platform', value: '₹' + platformPaid.toLocaleString('en-IN') },
-    { label: 'Payment Status', value: `${(dt.payment_mode || 'full_online').toUpperCase()} · ${(dt.payment_status || 'paid').replace(/_/g, ' ')}` },
+    { label: 'Status', value: dt.status || 'â€”' },
+    { label: 'Route', value: dt.route_summary || 'â€”' },
+    { label: 'Passenger', value: (dt.customer_name || 'â€”') + (dt.customer_phone ? ' (' + dt.customer_phone + ')' : '') },
+    { label: 'Pickup Location', value: dt.pickup_location || 'â€”' },
+    { label: 'Drop Location', value: dt.drop_location || 'â€”' },
+    { label: 'Total Fare', value: 'â‚¹' + totalFare.toLocaleString('en-IN') + ' (Tolls & taxes included)' },
+    { label: bidAmt != null ? 'Your Winning Bid' : 'Standard Payout (90%)', value: 'â‚¹' + payout.toLocaleString('en-IN') },
+    { label: 'Paid Online to Platform', value: 'â‚¹' + platformPaid.toLocaleString('en-IN') },
+    { label: 'Payment Status', value: `${(dt.payment_mode || 'full_online').toUpperCase()} Â· ${(dt.payment_status || 'paid').replace(/_/g, ' ')}` },
     { label: 'Collection Duty', value: collectionText }
   ], due > 0 ? 'Take responsibility for collecting the due fare from the passenger before marking the drive completed.' : '', extraCallBtn);
 }
@@ -3740,7 +3740,7 @@ function openDriverAuctionDetails(auctionId) {
   const a = list.find(item => Number(item.id) === Number(auctionId));
   if (!a) return;
   showDriverDetailsScreen('Auction ' + (a.booking_reference || ''), 'gavel', [
-    { label: 'Route', value: (a.pickup_city || '—') + ' → ' + (a.drop_city || '—') },
+    { label: 'Route', value: (a.pickup_city || 'â€”') + ' â†’ ' + (a.drop_city || 'â€”') },
     { label: 'Distance', value: a.distance_km ? a.distance_km + ' KM' : 'On request' },
     { label: 'Departure', value: a.departure_at ? auctionDateTime(a.departure_at) : 'TBD' },
     { label: 'Start Price', value: auctionMoney(a.start_amount) },
@@ -4044,10 +4044,10 @@ function openPaymentModal(sourceType) {
 
     const fromName = CITY_DATABASE[state.cab.fromCity]?.name || state.cab.fromCity || 'Origin';
     const toName = CITY_DATABASE[state.cab.toCity]?.name || state.cab.toCity || 'Destination';
-    summary = `Outstation Cab: ${fromName} → ${toName}`;
+    summary = `Outstation Cab: ${fromName} â†’ ${toName}`;
   }
 
-  document.getElementById('payment-modal-amount').textContent = `₹${amount.toLocaleString('en-IN')}`;
+  document.getElementById('payment-modal-amount').textContent = `â‚¹${amount.toLocaleString('en-IN')}`;
   document.getElementById('payment-modal-desc').textContent = summary;
   modal.dataset.source = sourceType;
   modal.dataset.amount = amount;
@@ -4064,7 +4064,7 @@ window.confirmMockPayment = async function (method) {
   // Nothing is fabricated any more: no random reference, no random OTP.
   if (source === 'bus') {
     const route = state.schedules.route || '';
-    const [routeFrom, routeTo] = route.split('→').map(part => (part || '').trim());
+    const [routeFrom, routeTo] = route.split('â†’').map(part => (part || '').trim());
 
     const busPayload = {
       service_type: 'bus',
@@ -4130,7 +4130,7 @@ window.confirmMockPayment = async function (method) {
     };
 
     state.bookings.unshift(booking);
-    showToast(`Payment of ₹${booking.amount.toLocaleString('en-IN')} via ${method} recorded. Reference ${booking.id}.`, 'success');
+    showToast(`Payment of â‚¹${booking.amount.toLocaleString('en-IN')} via ${method} recorded. Reference ${booking.id}.`, 'success');
 
     // Same destination as cab bookings: the trip history, with this trip on top.
     switchTab('my-bookings');
@@ -4150,7 +4150,7 @@ function showTicketModal(booking) {
   document.getElementById('ticket-display-route').textContent = booking.route;
   document.getElementById('ticket-display-operator').textContent = booking.operator;
   document.getElementById('ticket-display-berths').textContent = (booking.berths || ['Private Cab']).join(', ');
-  document.getElementById('ticket-display-amount').textContent = `₹${Number(booking.amount || 0).toLocaleString('en-IN')}`;
+  document.getElementById('ticket-display-amount').textContent = `â‚¹${Number(booking.amount || 0).toLocaleString('en-IN')}`;
   document.getElementById('ticket-display-otp').textContent = booking.otp;
 
   const drv = booking.driver || null;
@@ -4160,8 +4160,8 @@ function showTicketModal(booking) {
   const callDrvBtn = document.getElementById('ticket-call-driver-btn');
 
   if (drv && drv.name) {
-    if (drvNameEl) drvNameEl.textContent = `${drv.name}${drv.rating ? ` (★${drv.rating})` : ''}`;
-    if (drvVehEl) drvVehEl.textContent = `${drv.vehicle_model || 'Cab'}${drv.vehicle_plate ? ` · ${drv.vehicle_plate}` : ''}${drv.phone ? ` · ${drv.phone}` : ''}`;
+    if (drvNameEl) drvNameEl.textContent = `${drv.name}${drv.rating ? ` (â˜…${drv.rating})` : ''}`;
+    if (drvVehEl) drvVehEl.textContent = `${drv.vehicle_model || 'Cab'}${drv.vehicle_plate ? ` Â· ${drv.vehicle_plate}` : ''}${drv.phone ? ` Â· ${drv.phone}` : ''}`;
     if (callDrvBtn) {
       if (drv.phone) {
         const cleanDrvTel = String(drv.phone).replace(/[^0-9+]/g, '') || String(drv.phone);
@@ -4804,7 +4804,7 @@ window.quickDemoLogin = async function (role) {
 };
 
 /* ======================================================== */
-/* BOOKING LOGIN GATE — sign-in required before confirming   */
+/* BOOKING LOGIN GATE â€” sign-in required before confirming   */
 /* ======================================================== */
 const PENDING_BOOKING_KEY = 'intercityPendingBooking';
 const PENDING_PAYMENT_DRAFT_KEY = 'intercityPendingPaymentDraft';
@@ -4944,7 +4944,7 @@ window.resumePendingBooking = async function () {
 
   try { sessionStorage.removeItem(PENDING_BOOKING_KEY); } catch (e) { }
 
-  showToast('Finishing your booking…', 'info');
+  showToast('Finishing your bookingâ€¦', 'info');
 
   try {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -5088,7 +5088,7 @@ window.handleAlternateLogin = async function (provider = 'firebase') {
       password: 'password123',
       vehicle_model: vehicleModel || (role === 'driver' ? 'Maruti Suzuki Ertiga' : null),
       vehicle_plate: vehiclePlate || (role === 'driver' ? 'WB 02 AB 9988' : null),
-      avatar: role === 'driver' ? '👨🏽‍✈️' : (role === 'admin' ? '🛡️' : '👤')
+      avatar: role === 'driver' ? 'ðŸ‘¨ðŸ½â€âœˆï¸' : (role === 'admin' ? 'ðŸ›¡ï¸' : 'ðŸ‘¤')
     });
   } else if (provider === 'clerk') {
     if (altConfig.clerk && altConfig.clerk.is_configured) {
@@ -5105,7 +5105,7 @@ window.handleAlternateLogin = async function (provider = 'firebase') {
       password: 'password123',
       vehicle_model: vehicleModel || (role === 'driver' ? 'Maruti Suzuki Ertiga' : null),
       vehicle_plate: vehiclePlate || (role === 'driver' ? 'WB 02 AB 9988' : null),
-      avatar: role === 'driver' ? '👨🏽‍✈️' : '👤'
+      avatar: role === 'driver' ? 'ðŸ‘¨ðŸ½â€âœˆï¸' : 'ðŸ‘¤'
     });
   }
 };
@@ -5131,20 +5131,20 @@ window.openAlternateAuthModal = function (provider = 'firebase', role = 'custome
   const fbIdInput = document.getElementById('alt-input-firebase-id');
 
   if (provider === 'firebase') {
-    if (brandIcon) brandIcon.textContent = '🔥';
+    if (brandIcon) brandIcon.textContent = 'ðŸ”¥';
     if (title) title.textContent = 'Firebase ID & Google Sign-In';
     if (subtitle) subtitle.textContent = 'Authenticate with your Firebase User ID or Google account';
     if (providerName) providerName.textContent = 'Firebase ID / Google';
     if (submitLabel) submitLabel.textContent = `Sign In as ${roleTitle} via Firebase ID`;
-    if (envTip) envTip.innerHTML = '💡 <strong>Live Firebase Setup:</strong> Set <code>FIREBASE_API_KEY</code> & <code>FIREBASE_PROJECT_ID</code> in <code>.env</code> to activate native Google popup.';
+    if (envTip) envTip.innerHTML = 'ðŸ’¡ <strong>Live Firebase Setup:</strong> Set <code>FIREBASE_API_KEY</code> & <code>FIREBASE_PROJECT_ID</code> in <code>.env</code> to activate native Google popup.';
     if (fbGroup) fbGroup.style.display = 'block';
   } else {
-    if (brandIcon) brandIcon.textContent = '⚡';
+    if (brandIcon) brandIcon.textContent = 'âš¡';
     if (title) title.textContent = 'Clerk Authentication';
     if (subtitle) subtitle.textContent = 'Fast Single Sign-On and multi-factor auth with Clerk';
     if (providerName) providerName.textContent = 'Clerk Auth';
     if (submitLabel) submitLabel.textContent = `Sign In as ${roleTitle} with Clerk`;
-    if (envTip) envTip.innerHTML = '💡 <strong>Live Clerk Setup:</strong> Set <code>CLERK_PUBLISHABLE_KEY</code> & <code>CLERK_SECRET_KEY</code> in <code>.env</code> to activate live Clerk SSO.';
+    if (envTip) envTip.innerHTML = 'ðŸ’¡ <strong>Live Clerk Setup:</strong> Set <code>CLERK_PUBLISHABLE_KEY</code> & <code>CLERK_SECRET_KEY</code> in <code>.env</code> to activate live Clerk SSO.';
     if (fbGroup) fbGroup.style.display = 'none';
   }
 
@@ -5221,7 +5221,7 @@ window.submitAlternateAuthForm = async function (event) {
     email,
     firebase_id: firebaseId,
     password: password,
-    avatar: role === 'driver' ? '👨🏽‍✈️' : '👤'
+    avatar: role === 'driver' ? 'ðŸ‘¨ðŸ½â€âœˆï¸' : 'ðŸ‘¤'
   });
 };
 
@@ -5300,9 +5300,9 @@ function describeFirebaseAuthError(err) {
 
   const known = {
     'auth/unauthorized-domain':
-      'This domain is not authorised in the Firebase project. Open the app at http://localhost:8004 (localhost is pre-authorised), or add this host under Firebase → Authentication → Settings → Authorized domains.',
+      'This domain is not authorised in the Firebase project. Open the app at http://localhost:8004 (localhost is pre-authorised), or add this host under Firebase â†’ Authentication â†’ Settings â†’ Authorized domains.',
     'auth/operation-not-allowed':
-      'Google sign-in is turned off for this Firebase project. Enable it under Authentication → Sign-in method → Google.',
+      'Google sign-in is turned off for this Firebase project. Enable it under Authentication â†’ Sign-in method â†’ Google.',
     'auth/invalid-api-key':
       'The Firebase API key is missing or invalid. Check FIREBASE_API_KEY in .env.',
     'auth/app-not-authorized':
@@ -5320,13 +5320,13 @@ function describeFirebaseAuthError(err) {
     'auth/account-exists-with-different-credential':
       'This email already uses a different sign-in method.',
     'auth/internal-error':
-      'Google rejected the sign-in request. If its page mentioned redirect_uri_mismatch, the project is using an OAuth client that does not list https://<your-auth-domain>/__/auth/handler — add it in Google Cloud → Credentials, or clear the custom client in Firebase → Authentication → Google.'
+      'Google rejected the sign-in request. If its page mentioned redirect_uri_mismatch, the project is using an OAuth client that does not list https://<your-auth-domain>/__/auth/handler â€” add it in Google Cloud â†’ Credentials, or clear the custom client in Firebase â†’ Authentication â†’ Google.'
   };
 
   if (known[code]) return known[code];
 
   if (code === 'auth/unknown' || code === '') {
-    return 'Firebase sign-in failed. If the Google page mentioned redirect_uri_mismatch or access_denied, fix the Firebase project settings — see docs/FIREBASE.md.';
+    return 'Firebase sign-in failed. If the Google page mentioned redirect_uri_mismatch or access_denied, fix the Firebase project settings â€” see docs/FIREBASE.md.';
   }
 
   return (err && err.message) || 'Firebase sign-in failed. Please try again.';
@@ -5405,7 +5405,7 @@ window.loginWithFirebaseLive = async function (role = 'customer') {
       // A blocked popup is recoverable: remember the role and redirect instead.
       if (popupError && popupError.code === 'auth/popup-blocked') {
         sessionStorage.setItem(FIREBASE_PENDING_ROLE_KEY, role);
-        showToast('Popup blocked — redirecting to Google...', 'info');
+        showToast('Popup blocked â€” redirecting to Google...', 'info');
         await firebase.auth().signInWithRedirect(provider);
 
         return;
@@ -5733,7 +5733,7 @@ function renderAdminBookingsTable(bookings) {
       ? `<span class="admin-badge badge-secondary" style="font-size:9.5px; padding:1px 5px;" title="Cab Type">${cabType}</span>`
       : '';
     const outOfRegionBadge = b.is_beyond_region
-      ? `<span class="admin-badge badge-warning" style="font-size:9px; padding:1px 5px;" title="Beyond service region — availability not guaranteed">OUT OF REGION</span>`
+      ? `<span class="admin-badge badge-warning" style="font-size:9px; padding:1px 5px;" title="Beyond service region â€” availability not guaranteed">OUT OF REGION</span>`
       : '';
     const dueAmt = Number(b.balance_amount || 0) > 0 ? Number(b.balance_amount) : Number(b.total_amount || 0);
     let payLabel = 'Prepaid (Escrow)';
@@ -5744,19 +5744,19 @@ function renderAdminBookingsTable(bookings) {
     } else if (b.payment_status === 'awaiting_upi_utr') {
       payLabel = 'Awaiting UPI UTR';
     } else if (b.payment_status === 'driver_collect') {
-      payLabel = `Driver Collects ₹${dueAmt.toLocaleString('en-IN')}`;
+      payLabel = `Driver Collects â‚¹${dueAmt.toLocaleString('en-IN')}`;
     } else if (b.payment_status === 'upi_rejected') {
-      payLabel = 'UTR Rejected · Driver Collects';
+      payLabel = 'UTR Rejected Â· Driver Collects';
     } else if (b.payment_status === 'pay_on_pickup') {
-      payLabel = `Pay Driver ₹${dueAmt.toLocaleString('en-IN')}`;
+      payLabel = `Pay Driver â‚¹${dueAmt.toLocaleString('en-IN')}`;
     } else if (b.payment_status === 'partial_paid') {
-      payLabel = `Part Paid (Bal ₹${Number(b.balance_amount || 0).toLocaleString('en-IN')} Driver)`;
+      payLabel = `Part Paid (Bal â‚¹${Number(b.balance_amount || 0).toLocaleString('en-IN')} Driver)`;
     } else if (b.payment_status === 'pending') {
       payLabel = 'Online Payment Pending';
     } else if (b.payment_mode === 'full_upi' || b.payment_gateway === 'upi_manual') {
       payLabel = b.driver_collected_at ? 'Collected by Driver' : `UPI Confirmed${b.upi_utr ? ' (' + b.upi_utr + ')' : ''}`;
     } else if (b.driver_collected_at) {
-      payLabel = `Driver Collected ₹${Number(b.driver_collected_amount || 0).toLocaleString('en-IN')}`;
+      payLabel = `Driver Collected â‚¹${Number(b.driver_collected_amount || 0).toLocaleString('en-IN')}`;
     }
     const warningStatuses = ['pending_availability', 'pending_upi_verification', 'awaiting_upi_utr', 'pending', 'driver_collect', 'pay_on_pickup', 'upi_rejected'];
     const payDotClass = b.status === 'Cancelled'
@@ -5789,13 +5789,13 @@ function renderAdminBookingsTable(bookings) {
             ${outOfRegionBadge}
             <span class="cell-primary-text">${b.route_summary || ''}</span>
           </div>
-          <div class="cell-subtext truncate-subtext" title="${b.pickup_location || ''} → ${b.drop_location || ''}">
-            ${b.pickup_location || ''} → ${b.drop_location || ''}
+          <div class="cell-subtext truncate-subtext" title="${b.pickup_location || ''} â†’ ${b.drop_location || ''}">
+            ${b.pickup_location || ''} â†’ ${b.drop_location || ''}
           </div>
         </td>
         <td>
           <div class="cell-primary-text text-tabular" style="font-weight:800; color:#0f172a;">
-            ₹${Number(b.total_amount).toLocaleString('en-IN')}
+            â‚¹${Number(b.total_amount).toLocaleString('en-IN')}
           </div>
           <div class="cell-subtext">
             <span class="status-indicator-dot ${payDotClass}"></span>
@@ -5855,10 +5855,10 @@ window.openAllotDriverModal = async function (bookingId) {
     const b = data.booking;
     document.getElementById('allot-booking-id').value = b.id;
     document.getElementById('allot-info-ref').textContent = b.booking_reference;
-    document.getElementById('allot-info-fare').textContent = `₹${Number(b.total_amount).toLocaleString('en-IN')}`;
+    document.getElementById('allot-info-fare').textContent = `â‚¹${Number(b.total_amount).toLocaleString('en-IN')}`;
     document.getElementById('allot-info-customer').textContent = `${b.customer_name} (${b.customer_phone})`;
     const cabType = getBookingCabType(b);
-    document.getElementById('allot-info-route').textContent = `${(b.service_type || 'Cab').toUpperCase()}${cabType ? ` (${cabType})` : ''} • ${b.route_summary || ''}`;
+    document.getElementById('allot-info-route').textContent = `${(b.service_type || 'Cab').toUpperCase()}${cabType ? ` (${cabType})` : ''} â€¢ ${b.route_summary || ''}`;
 
     const select = document.getElementById('allot-driver-select');
     if (select) {
@@ -5884,8 +5884,8 @@ window.onAllotDriverSelectChange = function (selectElem) {
     return;
   }
 
-  document.getElementById('allot-preview-name').textContent = selectedOpt.text.split('—')[0]?.trim() || '';
-  document.getElementById('allot-preview-rating').textContent = `★${selectedOpt.dataset.rating || '4.90'}`;
+  document.getElementById('allot-preview-name').textContent = selectedOpt.text.split('â€”')[0]?.trim() || '';
+  document.getElementById('allot-preview-rating').textContent = `â˜…${selectedOpt.dataset.rating || '4.90'}`;
   document.getElementById('allot-preview-vehicle').textContent = selectedOpt.dataset.vehicle || '';
   document.getElementById('allot-preview-plate').textContent = selectedOpt.dataset.plate || '';
   document.getElementById('allot-preview-phone').textContent = selectedOpt.dataset.phone || '';
@@ -5942,7 +5942,7 @@ window.openViewBookingModal = async function (bookingId) {
 
     const b = data.booking;
     document.getElementById('view-booking-ref-badge').textContent = b.booking_reference;
-    document.getElementById('view-booking-route').textContent = b.route_summary || `${b.pickup_location} → ${b.drop_location}`;
+    document.getElementById('view-booking-route').textContent = b.route_summary || `${b.pickup_location} â†’ ${b.drop_location}`;
     document.getElementById('view-booking-service-badge').textContent = (b.service_type || 'CAB').toUpperCase();
     const cabType = getBookingCabType(b);
     const cabTypeBadgeEl = document.getElementById('view-booking-cab-type');
@@ -5972,7 +5972,7 @@ window.openViewBookingModal = async function (bookingId) {
     const bookedByEl = document.getElementById('view-booking-booked-by-meta');
     if (bookedByEl) {
       bookedByEl.textContent = b.customer
-        ? `Booked by Account: ${b.customer.name} (#USR-${String(b.customer.id).padStart(4, '0')} · ${String(b.customer.role || 'customer').toUpperCase()})`
+        ? `Booked by Account: ${b.customer.name} (#USR-${String(b.customer.id).padStart(4, '0')} Â· ${String(b.customer.role || 'customer').toUpperCase()})`
         : 'Booked without account link (Guest / Admin entry)';
     }
     const profileLinkEl = document.getElementById('view-booking-profile-link');
@@ -5986,7 +5986,7 @@ window.openViewBookingModal = async function (bookingId) {
     if (createdEl) {
       createdEl.textContent = b.created_at
         ? new Date(b.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
-        : '—';
+        : 'â€”';
     }
     const extraEl = document.getElementById('view-booking-extra-meta');
     if (extraEl) {
@@ -5995,7 +5995,7 @@ window.openViewBookingModal = async function (bookingId) {
       const parts = [];
       if (units) parts.push(`<strong>Units / Vehicle:</strong> ${escapeHtml(units)}`);
       if (paxCount > 0) parts.push(`<strong>Passengers:</strong> ${paxCount}`);
-      extraEl.innerHTML = parts.join(' • ');
+      extraEl.innerHTML = parts.join(' â€¢ ');
     }
 
     // Chauffeur & Allocation box
@@ -6006,16 +6006,16 @@ window.openViewBookingModal = async function (bookingId) {
           <a href="javascript:void(0)" onclick="closeModal('admin-view-booking-modal'); openAdminDriverProfileModal(${b.driver.id});" style="color:var(--primary); text-decoration:underline;">${escapeHtml(b.driver.name)}</a>
         </div>
         <div style="font-size:12px; color:#15803d; margin-top:2px; font-weight:600;">
-          ${escapeHtml(b.driver.vehicle_model)} • <span class="driver-plate-pill">${escapeHtml(b.driver.vehicle_plate)}</span>
+          ${escapeHtml(b.driver.vehicle_model)} â€¢ <span class="driver-plate-pill">${escapeHtml(b.driver.vehicle_plate)}</span>
         </div>
         <div style="font-size:11.5px; color:#475569; margin-top:2px;">
-          Phone: <a href="tel:${escapeHtml(b.driver.phone)}" style="color:inherit; font-weight:600;">${escapeHtml(b.driver.phone)}</a> • ★${b.driver.rating || '4.90'}
+          Phone: <a href="tel:${escapeHtml(b.driver.phone)}" style="color:inherit; font-weight:600;">${escapeHtml(b.driver.phone)}</a> â€¢ â˜…${b.driver.rating || '4.90'}
         </div>
       `;
     } else {
       driverBox.innerHTML = `
         <div style="color:#d97706; font-size:12px; font-weight:600; padding:4px 0;">
-          ⚠️ No chauffeur allotted yet.
+          âš ï¸ No chauffeur allotted yet.
         </div>
         <button type="button" class="btn btn-xs btn-outline-gold" style="margin-top:4px;" onclick="openAllotDriverFromView()">
           <span class="material-symbols-outlined" style="font-size:13px;">person_add</span>
@@ -6028,7 +6028,7 @@ window.openViewBookingModal = async function (bookingId) {
     if (allocMetaEl) {
       const allocLines = [];
       if (b.assigned_bid) {
-        allocLines.push(`<div><strong>Allocation:</strong> Won via Driver Bidding (₹${Number(b.assigned_bid.bid_amount || b.driver_payout_amount || 0).toLocaleString('en-IN')})</div>`);
+        allocLines.push(`<div><strong>Allocation:</strong> Won via Driver Bidding (â‚¹${Number(b.assigned_bid.bid_amount || b.driver_payout_amount || 0).toLocaleString('en-IN')})</div>`);
       } else if (b.driver) {
         allocLines.push(`<div><strong>Allocation:</strong> Admin Dispatch Allotment</div>`);
       } else {
@@ -6041,23 +6041,23 @@ window.openViewBookingModal = async function (bookingId) {
       }
       if (b.driver_collected_at) {
         const colWhen = new Date(b.driver_collected_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
-        allocLines.push(`<div style="margin-top:2px; color:#15803d;"><strong>Driver Collected:</strong> ₹${Number(b.driver_collected_amount || 0).toLocaleString('en-IN')} (${colWhen})</div>`);
+        allocLines.push(`<div style="margin-top:2px; color:#15803d;"><strong>Driver Collected:</strong> â‚¹${Number(b.driver_collected_amount || 0).toLocaleString('en-IN')} (${colWhen})</div>`);
       }
       allocMetaEl.innerHTML = allocLines.join('');
     }
 
     // Financial breakdown
-    document.getElementById('view-booking-base-fare').textContent = `₹${Number(b.base_fare || 0).toLocaleString('en-IN')}`;
-    document.getElementById('view-booking-toll-fare').textContent = `₹${Number(b.toll_fare || 0).toLocaleString('en-IN')}`;
-    document.getElementById('view-booking-addon-fare').textContent = `₹${Number(b.addon_fare || 0).toLocaleString('en-IN')}`;
+    document.getElementById('view-booking-base-fare').textContent = `â‚¹${Number(b.base_fare || 0).toLocaleString('en-IN')}`;
+    document.getElementById('view-booking-toll-fare').textContent = `â‚¹${Number(b.toll_fare || 0).toLocaleString('en-IN')}`;
+    document.getElementById('view-booking-addon-fare').textContent = `â‚¹${Number(b.addon_fare || 0).toLocaleString('en-IN')}`;
     const discRow = document.getElementById('view-booking-discount-row');
     if (Number(b.discount_fare) > 0) {
       discRow.style.display = 'flex';
-      document.getElementById('view-booking-discount-fare').textContent = `-₹${Number(b.discount_fare).toLocaleString('en-IN')}`;
+      document.getElementById('view-booking-discount-fare').textContent = `-â‚¹${Number(b.discount_fare).toLocaleString('en-IN')}`;
     } else {
       discRow.style.display = 'none';
     }
-    document.getElementById('view-booking-total-fare').textContent = `₹${Number(b.total_amount || 0).toLocaleString('en-IN')}`;
+    document.getElementById('view-booking-total-fare').textContent = `â‚¹${Number(b.total_amount || 0).toLocaleString('en-IN')}`;
     const txnDisplay = b.razorpay_payment_id || (b.upi_utr ? `UTR: ${b.upi_utr}` : `TXN-${(b.booking_reference || '').replace('ICW-', 'ESC')}`);
     document.getElementById('view-booking-txnid').textContent = txnDisplay;
 
@@ -6082,7 +6082,7 @@ window.openViewBookingModal = async function (bookingId) {
         awaiting_upi_utr: ['AWAITING UPI UTR', 'admin-badge badge-warning'],
         driver_collect: ['DRIVER TO COLLECT', 'admin-badge badge-gold'],
         pay_on_pickup: ['PAY DRIVER ON COMPLETION', 'admin-badge badge-gold'],
-        upi_rejected: ['UTR REJECTED · DRIVER COLLECTS', 'admin-badge badge-danger'],
+        upi_rejected: ['UTR REJECTED Â· DRIVER COLLECTS', 'admin-badge badge-danger'],
         pending: ['ONLINE PAYMENT PENDING', 'admin-badge badge-warning'],
         pending_availability: ['UNCONFIRMED / OUT OF REGION', 'admin-badge badge-warning'],
       };
@@ -6094,10 +6094,10 @@ window.openViewBookingModal = async function (bookingId) {
     const collEl = document.getElementById('view-booking-collection-by');
     if (collEl) {
       if (b.driver_collected_at) {
-        collEl.textContent = `Driver Collected ₹${Number(b.driver_collected_amount || 0).toLocaleString('en-IN')}`;
+        collEl.textContent = `Driver Collected â‚¹${Number(b.driver_collected_amount || 0).toLocaleString('en-IN')}`;
       } else if (b.payment_collection_by === 'driver') {
         const due = Number(b.balance_amount || 0) > 0 ? Number(b.balance_amount) : Number(b.total_amount || 0);
-        collEl.textContent = `Driver collects ₹${due.toLocaleString('en-IN')} on completion`;
+        collEl.textContent = `Driver collects â‚¹${due.toLocaleString('en-IN')} on completion`;
       } else {
         collEl.textContent = b.upi_verified_at ? 'Platform (Admin Confirmed UTR)' : 'Platform';
       }
@@ -6129,13 +6129,13 @@ window.openViewBookingModal = async function (bookingId) {
             : (a.status === 'rejected' || a.status === 'failed' ? '#b91c1c' : '#b45309');
           const ch = String(a.payment_channel || 'manual').replace(/_/g, ' ').toUpperCase();
           const refInfo = a.upi_utr ? `UTR: ${escapeHtml(a.upi_utr)}` : (a.gateway_payment_id ? `PayID: ${escapeHtml(a.gateway_payment_id)}` : (a.gateway_order_id ? `Order: ${escapeHtml(a.gateway_order_id)}` : ''));
-          const who = a.user ? ` • ${escapeHtml(a.user.name || a.user.email || ('User #' + a.user.id))}` : '';
+          const who = a.user ? ` â€¢ ${escapeHtml(a.user.name || a.user.email || ('User #' + a.user.id))}` : '';
           const when = a.attempted_at ? new Date(a.attempted_at).toLocaleString('en-IN') : '';
           return `
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:6px 8px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px;">
               <div>
-                <div style="font-weight:700; color:#0f172a;">₹${Number(a.amount || 0).toLocaleString('en-IN')} • ${escapeHtml(ch)}</div>
-                <div style="font-size:10.5px; color:#64748b;">${refInfo}${who}${when ? ' • ' + escapeHtml(when) : ''}</div>
+                <div style="font-weight:700; color:#0f172a;">â‚¹${Number(a.amount || 0).toLocaleString('en-IN')} â€¢ ${escapeHtml(ch)}</div>
+                <div style="font-size:10.5px; color:#64748b;">${refInfo}${who}${when ? ' â€¢ ' + escapeHtml(when) : ''}</div>
               </div>
               <span style="font-size:10px; font-weight:800; color:${stColor}; white-space:nowrap;">${escapeHtml(st)}</span>
             </div>
@@ -6253,7 +6253,7 @@ window.recalcEditTotalFare = function () {
   const total = Math.max(0, Math.round(base + toll + addon - discount));
 
   const totalElem = document.getElementById('edit-computed-total');
-  if (totalElem) totalElem.textContent = `₹${total.toLocaleString('en-IN')}`;
+  if (totalElem) totalElem.textContent = `â‚¹${total.toLocaleString('en-IN')}`;
 };
 
 window.submitEditBooking = async function (e) {
@@ -6368,7 +6368,7 @@ window.recalcAddTotalFare = function () {
   const total = Math.max(0, Math.round(base + toll + addon - discount));
 
   const totalElem = document.getElementById('add-computed-total');
-  if (totalElem) totalElem.textContent = `₹${total.toLocaleString('en-IN')}`;
+  if (totalElem) totalElem.textContent = `â‚¹${total.toLocaleString('en-IN')}`;
 };
 
 window.submitAddBooking = async function (e) {
@@ -6436,10 +6436,10 @@ function applyInvoiceTemplateToDom(inv) {
   setTxt('inv-brand-name', comp.brand_name || tpl.brand_name || 'INTERCITY WHEELS');
   setTxt('inv-company-legal', comp.name || 'IntercityWheels Mobility Services Pvt. Ltd.');
   setTxt('inv-company-address', comp.address ? `Regd. Office: ${comp.address}` : '');
-  setTxt('inv-gstin', comp.gstin || '—');
-  setTxt('inv-sac-code', comp.hsn_sac || '—');
-  setTxt('inv-support-phone', comp.support_phone || '—');
-  setTxt('inv-support-email', comp.support_email || '—');
+  setTxt('inv-gstin', comp.gstin || 'â€”');
+  setTxt('inv-sac-code', comp.hsn_sac || 'â€”');
+  setTxt('inv-support-phone', comp.support_phone || 'â€”');
+  setTxt('inv-support-email', comp.support_email || 'â€”');
   setTxt('inv-badge-title', tpl.title || 'TAX INVOICE');
   setTxt('inv-place-of-supply', tpl.place_of_supply || comp.place_of_supply || 'Maharashtra (27)');
   setTxt('inv-cgst-label', `CGST (${tpl.cgst_pct ?? 2.5}%):`);
@@ -6496,13 +6496,13 @@ window.openInvoiceModal = async function (bookingId) {
     }
 
     // Charges Table
-    document.getElementById('inv-row-base').textContent = `₹${Number(inv.charges.base_fare).toFixed(2)}`;
-    document.getElementById('inv-row-toll').textContent = `₹${Number(inv.charges.toll_fare).toFixed(2)}`;
+    document.getElementById('inv-row-base').textContent = `â‚¹${Number(inv.charges.base_fare).toFixed(2)}`;
+    document.getElementById('inv-row-toll').textContent = `â‚¹${Number(inv.charges.toll_fare).toFixed(2)}`;
 
     const addonRow = document.getElementById('inv-addon-row');
     if (Number(inv.charges.addon_fare) > 0) {
       addonRow.style.display = '';
-      document.getElementById('inv-row-addon').textContent = `₹${Number(inv.charges.addon_fare).toFixed(2)}`;
+      document.getElementById('inv-row-addon').textContent = `â‚¹${Number(inv.charges.addon_fare).toFixed(2)}`;
     } else {
       addonRow.style.display = 'none';
     }
@@ -6510,16 +6510,16 @@ window.openInvoiceModal = async function (bookingId) {
     const discountRow = document.getElementById('inv-discount-row');
     if (Number(inv.charges.discount_fare) > 0) {
       discountRow.style.display = '';
-      document.getElementById('inv-row-discount').textContent = `-₹${Number(inv.charges.discount_fare).toFixed(2)}`;
+      document.getElementById('inv-row-discount').textContent = `-â‚¹${Number(inv.charges.discount_fare).toFixed(2)}`;
     } else {
       discountRow.style.display = 'none';
     }
 
     // Tax Totals
-    document.getElementById('inv-subtotal').textContent = `₹${Number(inv.charges.taxable_amount).toFixed(2)}`;
-    document.getElementById('inv-cgst').textContent = `₹${Number(inv.charges.cgst).toFixed(2)}`;
-    document.getElementById('inv-sgst').textContent = `₹${Number(inv.charges.sgst).toFixed(2)}`;
-    document.getElementById('inv-grand-total').textContent = `₹${Number(inv.charges.total_amount).toLocaleString('en-IN')}.00`;
+    document.getElementById('inv-subtotal').textContent = `â‚¹${Number(inv.charges.taxable_amount).toFixed(2)}`;
+    document.getElementById('inv-cgst').textContent = `â‚¹${Number(inv.charges.cgst).toFixed(2)}`;
+    document.getElementById('inv-sgst').textContent = `â‚¹${Number(inv.charges.sgst).toFixed(2)}`;
+    document.getElementById('inv-grand-total').textContent = `â‚¹${Number(inv.charges.total_amount).toLocaleString('en-IN')}.00`;
     document.getElementById('inv-amount-in-words').textContent = `(${numberToWordsINR(inv.charges.total_amount)})`;
 
     // Payment details
@@ -6572,18 +6572,18 @@ window.printAdminInvoice = function () {
       if (el) el.textContent = val;
     };
 
-    setTxt('dispatch-trip-ref', dt.booking_reference || '—');
-    setTxt('dispatch-trip-route', dt.route_summary || '—');
-    setTxt('dispatch-trip-payout', `₹${payout.toLocaleString('en-IN')}`);
+    setTxt('dispatch-trip-ref', dt.booking_reference || 'â€”');
+    setTxt('dispatch-trip-route', dt.route_summary || 'â€”');
+    setTxt('dispatch-trip-payout', `â‚¹${payout.toLocaleString('en-IN')}`);
 
     const whenStr = dt.departure_time
       ? new Date(dt.departure_time).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
-      : (dt.trip_date ? `${dt.trip_date}${dt.trip_time ? ' · ' + dt.trip_time : ''}` : 'Scheduled Departure');
+      : (dt.trip_date ? `${dt.trip_date}${dt.trip_time ? ' Â· ' + dt.trip_time : ''}` : 'Scheduled Departure');
     setTxt('dispatch-trip-when', whenStr);
-    setTxt('dispatch-trip-pickup', dt.pickup_location || '—');
-    setTxt('dispatch-trip-drop', dt.drop_location || '—');
+    setTxt('dispatch-trip-pickup', dt.pickup_location || 'â€”');
+    setTxt('dispatch-trip-drop', dt.drop_location || 'â€”');
     setTxt('dispatch-trip-customer-name', dt.customer_name || 'Passenger');
-    setTxt('dispatch-trip-customer-phone', dt.customer_phone || '—');
+    setTxt('dispatch-trip-customer-phone', dt.customer_phone || 'â€”');
 
     const callBtn = document.getElementById('dispatch-call-customer-btn');
     if (callBtn) {
@@ -6593,10 +6593,10 @@ window.printAdminInvoice = function () {
     }
 
     const colSummary = dt.driver_collected_at
-      ? `Collected ₹${collected.toLocaleString('en-IN')} from passenger on completion.`
+      ? `Collected â‚¹${collected.toLocaleString('en-IN')} from passenger on completion.`
       : (due > 0
-        ? `Collection Duty: Collect ₹${due.toLocaleString('en-IN')} from passenger on trip completion.`
-        : 'Prepaid by passenger (Collect ₹0 on completion).');
+        ? `Collection Duty: Collect â‚¹${due.toLocaleString('en-IN')} from passenger on trip completion.`
+        : 'Prepaid by passenger (Collect â‚¹0 on completion).');
     setTxt('dispatch-trip-collection-summary', colSummary);
 
     const badge = document.getElementById('dispatch-trip-status-badge');
@@ -6647,11 +6647,11 @@ window.printAdminInvoice = function () {
 
     if (isStarted) {
       setTxt('dispatch-active-collect-note', due > 0
-        ? `Collect ₹${due.toLocaleString('en-IN')} from ${dt.customer_name || 'passenger'} before marking this trip completed.`
+        ? `Collect â‚¹${due.toLocaleString('en-IN')} from ${dt.customer_name || 'passenger'} before marking this trip completed.`
         : 'This ride is prepaid. Tap below once drop-off is complete to credit your wallet.');
       const compBtn = document.getElementById('dispatch-complete-trip-btn');
       const compLbl = document.getElementById('dispatch-complete-trip-label');
-      if (compLbl) compLbl.textContent = due > 0 ? `Collect ₹${due.toLocaleString('en-IN')} & Complete Trip` : 'Complete Trip & Settle';
+      if (compLbl) compLbl.textContent = due > 0 ? `Collect â‚¹${due.toLocaleString('en-IN')} & Complete Trip` : 'Complete Trip & Settle';
       if (compBtn) {
         compBtn.onclick = () => completeDriverTrip(dt.id, due, dt.payment_status || '');
       }
@@ -6741,7 +6741,7 @@ window.printAdminInvoice = function () {
         if (actionsBox) {
           const due = data.booking ? computeDriverCollectDue(data.booking) : 0;
           const pStatus = data.booking?.payment_status || '';
-          const completeBtnLabel = due > 0 ? `Collect ₹${due.toLocaleString('en-IN')} & Complete` : 'Complete Trip & Settle Payout';
+          const completeBtnLabel = due > 0 ? `Collect â‚¹${due.toLocaleString('en-IN')} & Complete` : 'Complete Trip & Settle Payout';
           actionsBox.innerHTML = `
             <div style="display:flex; align-items:center; gap:6px; color:#0284c7; font-size:12px; font-weight:700;">
                 <span class="material-symbols-outlined" style="font-size:18px;">local_shipping</span>
@@ -6777,8 +6777,8 @@ window.printAdminInvoice = function () {
         const due = Number(collectDue || 0);
         const confirmMsg = due > 0
           ? (paymentStatus === 'pending_upi_verification' || paymentStatus === 'awaiting_upi_utr'
-            ? `Admin has NOT confirmed the customer's UPI UTR yet. Confirm you have collected ₹${due.toLocaleString('en-IN')} from the passenger (Cash/UPI) and complete this trip?`
-            : `Payment Collection Duty: Confirm you have collected ₹${due.toLocaleString('en-IN')} from the passenger and complete this trip?`)
+            ? `Admin has NOT confirmed the customer's UPI UTR yet. Confirm you have collected â‚¹${due.toLocaleString('en-IN')} from the passenger (Cash/UPI) and complete this trip?`
+            : `Payment Collection Duty: Confirm you have collected â‚¹${due.toLocaleString('en-IN')} from the passenger and complete this trip?`)
           : 'Confirm passenger drop-off and complete trip? Fare will be credited to your driver wallet.';
 
         if (!confirm(confirmMsg)) {
@@ -6815,7 +6815,7 @@ window.printAdminInvoice = function () {
             const actionsBox = document.getElementById(`driver-trip-actions-${bookingId}`);
             if (actionsBox) {
               const collectedInfo = Number(data.driver_collected_amount || 0) > 0
-                ? `Collected ₹${Number(data.driver_collected_amount).toLocaleString('en-IN')} & settled.`
+                ? `Collected â‚¹${Number(data.driver_collected_amount).toLocaleString('en-IN')} & settled.`
                 : 'Trip completed & payout credited.';
               actionsBox.innerHTML = `
             <div style="color:#16a34a; font-size:12px; font-weight:700; display:flex; align-items:center; gap:4px;">
@@ -6833,7 +6833,7 @@ window.printAdminInvoice = function () {
               const walletPanelEl = document.getElementById('driver-wallet-bal-display');
               const withdrawBtn = document.getElementById('driver-payout-withdraw-btn');
               const nextBal = Math.round(Number(data.wallet_balance) || 0);
-              const nextFormatted = `₹${nextBal.toLocaleString('en-IN')}`;
+              const nextFormatted = `â‚¹${nextBal.toLocaleString('en-IN')}`;
               if (walletEl) walletEl.textContent = nextFormatted;
               if (walletPanelEl) walletPanelEl.textContent = nextFormatted;
               if (withdrawBtn) withdrawBtn.dataset.walletBalance = String(Number(data.wallet_balance) || 0);
@@ -6843,7 +6843,7 @@ window.printAdminInvoice = function () {
               const walletPanelEl = document.getElementById('driver-wallet-bal-display');
               const currentRaw = (walletEl || walletPanelEl)?.textContent || '0';
               const curVal = parseInt(currentRaw.replace(/[^0-9-]/g, ''), 10) || 0;
-              const nextFormatted = `₹${(curVal + delta).toLocaleString('en-IN')}`;
+              const nextFormatted = `â‚¹${(curVal + delta).toLocaleString('en-IN')}`;
               if (walletEl) walletEl.textContent = nextFormatted;
               if (walletPanelEl) walletPanelEl.textContent = nextFormatted;
             }
@@ -6875,7 +6875,7 @@ window.printAdminInvoice = function () {
 
           const sum = data.summary || {};
           const bal = Number(sum.wallet_balance || 0);
-          const balText = `₹${Math.round(bal).toLocaleString('en-IN')}`;
+          const balText = `â‚¹${Math.round(bal).toLocaleString('en-IN')}`;
           const headerBal = document.getElementById('driver-header-wallet-bal');
           const panelBal = document.getElementById('driver-wallet-bal-display');
           const withdrawBtn = document.getElementById('driver-payout-withdraw-btn');
@@ -6888,7 +6888,7 @@ window.printAdminInvoice = function () {
           const dueAmtDisplay = document.getElementById('driver-company-due-amount-display');
           const dueAmtInput = document.getElementById('driver-due-amount-input');
           if (dueCard) dueCard.style.display = dueAmt > 0 ? 'block' : 'none';
-          if (dueAmtDisplay) dueAmtDisplay.textContent = `₹${Math.round(dueAmt).toLocaleString('en-IN')}`;
+          if (dueAmtDisplay) dueAmtDisplay.textContent = `â‚¹${Math.round(dueAmt).toLocaleString('en-IN')}`;
           if (dueAmtInput && dueAmt > 0 && !dueAmtInput.value) dueAmtInput.value = String(dueAmt);
           if (dueAmt > 0 && typeof window.updateDriverDueUpiLink === 'function') {
             window.updateDriverDueUpiLink();
@@ -6905,12 +6905,12 @@ window.printAdminInvoice = function () {
               let stBadge = '<span class="admin-badge badge-warning" style="font-size:10px;">PENDING VERIFICATION</span>';
               if (ds.status === 'paid') stBadge = '<span class="admin-badge badge-success" style="font-size:10px;">SETTLED &amp; CREDITED</span>';
               else if (ds.status === 'rejected') stBadge = '<span class="admin-badge badge-danger" style="font-size:10px;">REJECTED</span>';
-              const refCode = ds.upi_utr || ds.razorpay_payment_id || '—';
+              const refCode = ds.upi_utr || ds.razorpay_payment_id || 'â€”';
               return `
             <tr>
-              <th><div class="booking-ref-link">${escapeHtml(ds.settlement_reference || '')}</div><div class="cell-subtext">${escapeHtml(ds.submitted_at_label || '—')}</div></th>
+              <th><div class="booking-ref-link">${escapeHtml(ds.settlement_reference || '')}</div><div class="cell-subtext">${escapeHtml(ds.submitted_at_label || 'â€”')}</div></th>
               <td data-col-label="Channel & Ref"><div class="cell-primary-text">${ds.payment_channel === 'gateway' ? 'Payment Gateway' : 'Manual UPI'}</div><div class="cell-subtext" style="font-family:monospace;">${escapeHtml(refCode)}</div></td>
-              <td data-col-label="Amount" class="text-tabular"><strong>₹${Number(ds.amount || 0).toLocaleString('en-IN')}</strong></td>
+              <td data-col-label="Amount" class="text-tabular"><strong>â‚¹${Number(ds.amount || 0).toLocaleString('en-IN')}</strong></td>
               <td data-col-label="Status">${stBadge}</td>
               <td data-col-label="Notes"><div class="cell-subtext">${escapeHtml(ds.admin_notes || 'Awaiting Admin verification')}</div></td>
             </tr>`;
@@ -6920,8 +6920,8 @@ window.printAdminInvoice = function () {
           const colEl = document.getElementById('driver-wallet-collected-display');
           const earnEl = document.getElementById('driver-wallet-earnings-display');
           const tripsEl = document.getElementById('driver-wallet-trips-display');
-          if (colEl) colEl.textContent = `₹${Math.round(Number(sum.total_driver_collected || 0)).toLocaleString('en-IN')}`;
-          if (earnEl) earnEl.textContent = `₹${Math.round(Number(sum.total_driver_earnings || 0)).toLocaleString('en-IN')}`;
+          if (colEl) colEl.textContent = `â‚¹${Math.round(Number(sum.total_driver_collected || 0)).toLocaleString('en-IN')}`;
+          if (earnEl) earnEl.textContent = `â‚¹${Math.round(Number(sum.total_driver_earnings || 0)).toLocaleString('en-IN')}`;
           if (tripsEl) tripsEl.textContent = `${Number(sum.trips_count || 0)} Trips`;
 
           const payoutProfile = data.payout_profile || {};
@@ -6949,9 +6949,9 @@ window.printAdminInvoice = function () {
                 const noteText = pr.admin_notes || (pr.status === 'pending' ? 'Deducted from wallet; awaiting Admin review.' : 'Processed');
                 return `
             <tr>
-              <th><div class="booking-ref-link">${escapeHtml(pr.payout_reference || '')}</div><div class="cell-subtext">${escapeHtml(pr.requested_at_label || '—')}</div></th>
+              <th><div class="booking-ref-link">${escapeHtml(pr.payout_reference || '')}</div><div class="cell-subtext">${escapeHtml(pr.requested_at_label || 'â€”')}</div></th>
               <td data-col-label="Destination"><div class="cell-primary-text">${escapeHtml(String(pr.payout_method || 'bank').toUpperCase())}</div><div class="cell-subtext">${escapeHtml(pr.destination_summary || '')}</div></td>
-              <td data-col-label="Amount" class="text-tabular"><strong>₹${Number(pr.amount || 0).toLocaleString('en-IN')}</strong></td>
+              <td data-col-label="Amount" class="text-tabular"><strong>â‚¹${Number(pr.amount || 0).toLocaleString('en-IN')}</strong></td>
               <td data-col-label="Status & Mode">${stBadge}</td>
               <td data-col-label="Transaction Ref & Notes">${refHtml}<div class="cell-subtext">${escapeHtml(noteText)}</div></td>
             </tr>`;
@@ -6969,23 +6969,23 @@ window.printAdminInvoice = function () {
             } else {
               tripBody.innerHTML = records.map(tr => {
                 const bidHtml = tr.is_bid_won && tr.bidding_amount != null
-                  ? `<div style="margin-top:3px;"><span class="admin-badge badge-success" style="font-size:9.5px; padding:1px 6px;">Winning Bid: ₹${Number(tr.bidding_amount).toLocaleString('en-IN')}</span></div>`
-                  : `<div class="cell-subtext">Standard Payout (90%): ₹${Number(tr.driver_payout || 0).toLocaleString('en-IN')}</div>`;
-                let partsHtml = `<span class="driver-part-chip"><span>Online to Platform</span><strong>₹${Number(tr.platform_received_amount || 0).toLocaleString('en-IN')}</strong></span>`;
+                  ? `<div style="margin-top:3px;"><span class="admin-badge badge-success" style="font-size:9.5px; padding:1px 6px;">Winning Bid: â‚¹${Number(tr.bidding_amount).toLocaleString('en-IN')}</span></div>`
+                  : `<div class="cell-subtext">Standard Payout (90%): â‚¹${Number(tr.driver_payout || 0).toLocaleString('en-IN')}</div>`;
+                let partsHtml = `<span class="driver-part-chip"><span>Online to Platform</span><strong>â‚¹${Number(tr.platform_received_amount || 0).toLocaleString('en-IN')}</strong></span>`;
                 if (Number(tr.driver_collected_amount || 0) > 0) {
-                  partsHtml += `<span class="driver-part-chip is-collected"><span>Collected by You</span><strong>₹${Number(tr.driver_collected_amount).toLocaleString('en-IN')}</strong></span>`;
+                  partsHtml += `<span class="driver-part-chip is-collected"><span>Collected by You</span><strong>â‚¹${Number(tr.driver_collected_amount).toLocaleString('en-IN')}</strong></span>`;
                 } else if (Number(tr.pending_driver_collection || 0) > 0) {
-                  partsHtml += `<span class="driver-part-chip is-debit"><span>Due from Customer</span><strong>₹${Number(tr.pending_driver_collection).toLocaleString('en-IN')}</strong></span>`;
+                  partsHtml += `<span class="driver-part-chip is-debit"><span>Due from Customer</span><strong>â‚¹${Number(tr.pending_driver_collection).toLocaleString('en-IN')}</strong></span>`;
                 }
                 if (tr.status === 'Completed') {
                   if (Number(tr.wallet_credited_part || 0) > 0) {
-                    partsHtml += `<span class="driver-part-chip is-credit"><span>Wallet Credited</span><strong>+₹${Number(tr.wallet_credited_part).toLocaleString('en-IN')}</strong></span>`;
+                    partsHtml += `<span class="driver-part-chip is-credit"><span>Wallet Credited</span><strong>+â‚¹${Number(tr.wallet_credited_part).toLocaleString('en-IN')}</strong></span>`;
                   } else if (Number(tr.wallet_debited_part || 0) > 0) {
-                    partsHtml += `<span class="driver-part-chip is-debit"><span>Platform Margin Settled</span><strong>-₹${Number(tr.wallet_debited_part).toLocaleString('en-IN')}</strong></span>`;
+                    partsHtml += `<span class="driver-part-chip is-debit"><span>Platform Margin Settled</span><strong>-â‚¹${Number(tr.wallet_debited_part).toLocaleString('en-IN')}</strong></span>`;
                   } else {
-                    partsHtml += `<span class="driver-part-chip"><span>Wallet Adjustment</span><strong>₹0 (Exact Match)</strong></span>`;
+                    partsHtml += `<span class="driver-part-chip"><span>Wallet Adjustment</span><strong>â‚¹0 (Exact Match)</strong></span>`;
                   }
-                  partsHtml += `<span class="driver-part-chip is-collected"><span>Total Part Received</span><strong>₹${Number(tr.total_received_by_driver || 0).toLocaleString('en-IN')}</strong></span>`;
+                  partsHtml += `<span class="driver-part-chip is-collected"><span>Total Part Received</span><strong>â‚¹${Number(tr.total_received_by_driver || 0).toLocaleString('en-IN')}</strong></span>`;
                 }
                 return `
             <tr>
@@ -6995,7 +6995,7 @@ window.printAdminInvoice = function () {
                 <div class="cell-subtext">${escapeHtml(tr.payment_mode_label || '')} &bull; ${escapeHtml(tr.status || '')}</div>
               </th>
               <td data-col-label="Fare & Bid Amount" class="text-tabular">
-                <div class="cell-primary-text">Fare: ₹${Number(tr.total_fare || 0).toLocaleString('en-IN')}</div>
+                <div class="cell-primary-text">Fare: â‚¹${Number(tr.total_fare || 0).toLocaleString('en-IN')}</div>
                 ${bidHtml}
               </td>
               <td data-col-label="Payment Parts Received">
@@ -7025,15 +7025,15 @@ window.printAdminInvoice = function () {
                 const badgeCls = isZero ? 'badge-info' : (isCredit ? 'badge-success' : 'badge-warning');
                 const typeLabel = isZero ? 'SETTLED' : String(wt.type || '').toUpperCase();
                 const amtColor = isZero ? '#0284c7' : (isCredit ? 'var(--success)' : 'var(--danger)');
-                const amtText = isZero ? '₹0' : `${isCredit ? '+' : '-'}₹${amt.toLocaleString('en-IN')}`;
+                const amtText = isZero ? 'â‚¹0' : `${isCredit ? '+' : '-'}â‚¹${amt.toLocaleString('en-IN')}`;
                 const tb = wt.trip_breakdown;
                 const tbLine = tb
-                  ? `<div class="cell-subtext" style="margin-top:3px; font-size:10.5px; color:#64748b;">${escapeHtml(tb.route_summary || '')} &bull; Fare: ₹${Number(tb.total_fare || 0).toLocaleString('en-IN')} &bull; ${tb.is_bid_won ? 'Your Bid' : 'Payout'}: ₹${Number(tb.driver_payout || 0).toLocaleString('en-IN')}${Number(tb.driver_collected_amount || 0) > 0 ? ` &bull; Collected: ₹${Number(tb.driver_collected_amount).toLocaleString('en-IN')}` : ''}</div>`
+                  ? `<div class="cell-subtext" style="margin-top:3px; font-size:10.5px; color:#64748b;">${escapeHtml(tb.route_summary || '')} &bull; Fare: â‚¹${Number(tb.total_fare || 0).toLocaleString('en-IN')} &bull; ${tb.is_bid_won ? 'Your Bid' : 'Payout'}: â‚¹${Number(tb.driver_payout || 0).toLocaleString('en-IN')}${Number(tb.driver_collected_amount || 0) > 0 ? ` &bull; Collected: â‚¹${Number(tb.driver_collected_amount).toLocaleString('en-IN')}` : ''}</div>`
                   : '';
                 return `
             <tr>
               <th>
-                <div class="cell-primary-text">${escapeHtml(wt.date_label || '—')}</div>
+                <div class="cell-primary-text">${escapeHtml(wt.date_label || 'â€”')}</div>
                 <div class="cell-subtext">${escapeHtml(wt.time_label || '')}</div>
               </th>
               <td data-col-label="Transaction Record & Clarification">
@@ -7043,7 +7043,7 @@ window.printAdminInvoice = function () {
               </td>
               <td data-col-label="Type"><span class="admin-badge ${badgeCls}" style="font-size:10px;">${typeLabel}</span></td>
               <td data-col-label="Amount" style="text-align:right;" class="text-tabular"><strong style="color:${amtColor};">${amtText}</strong></td>
-              <td data-col-label="Balance After" style="text-align:right;" class="text-tabular"><span class="cell-primary-text">₹${Number(wt.balance_after || 0).toLocaleString('en-IN')}</span></td>
+              <td data-col-label="Balance After" style="text-align:right;" class="text-tabular"><span class="cell-primary-text">â‚¹${Number(wt.balance_after || 0).toLocaleString('en-IN')}</span></td>
             </tr>`;
               }).join('');
             }
@@ -7168,7 +7168,7 @@ window.printAdminInvoice = function () {
 
       window.requestDriverPayout = async function (balance, payoutMethod = null) {
         if (!balance || balance < 100) {
-          showToast('Minimum withdrawal amount is ₹100 (or insufficient wallet balance).', 'warning');
+          showToast('Minimum withdrawal amount is â‚¹100 (or insufficient wallet balance).', 'warning');
           return;
         }
 
@@ -7358,8 +7358,8 @@ window.printAdminInvoice = function () {
         <span class="cell-primary-text">${u.driver.vehicle_model}</span>
         <div style="display:flex; gap:4px; align-items:center; margin-top:2px;">
           <span class="driver-plate-pill">${u.driver.vehicle_plate}</span>
-          <span style="color:#f59e0b; font-weight:700; font-size:10px;">★${u.driver.rating || '4.90'}</span>
-          <span style="color:#15803d; font-weight:700; font-size:10px;">₹${Number(u.driver.wallet_balance || 0).toLocaleString('en-IN')}</span>
+          <span style="color:#f59e0b; font-weight:700; font-size:10px;">â˜…${u.driver.rating || '4.90'}</span>
+          <span style="color:#15803d; font-weight:700; font-size:10px;">â‚¹${Number(u.driver.wallet_balance || 0).toLocaleString('en-IN')}</span>
         </div>
       </div>
     ` : (u.role === 'driver' ? '<span style="color:#d97706; font-size:11px;">Vehicle Pending</span>' : '<span style="color:#94a3b8; font-size:11px;">Standard Passenger</span>');
@@ -7373,7 +7373,7 @@ window.printAdminInvoice = function () {
         <td>
           <div style="display:flex; align-items:center; gap:8px;">
             <span style="font-size:20px; width:30px; height:30px; border-radius:50%; background:#f1f5f9; display:inline-flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
-              ${renderAvatarHtml(u.avatar, u.role === 'admin' ? '🛡️' : (u.role === 'driver' ? '👨🏽‍✈️' : '👤'), u.name || 'User')}
+              ${renderAvatarHtml(u.avatar, u.role === 'admin' ? 'ðŸ›¡ï¸' : (u.role === 'driver' ? 'ðŸ‘¨ðŸ½â€âœˆï¸' : 'ðŸ‘¤'), u.name || 'User')}
             </span>
             <div>
               <div class="cell-primary-text">${auctionEscape(u.name)}</div>
@@ -7629,24 +7629,24 @@ window.printAdminInvoice = function () {
             setAvatarContent(
               document.getElementById('view-user-avatar'),
               u.avatar,
-              u.role === 'admin' ? '🛡️' : (u.role === 'driver' ? '👨🏽‍✈️' : '👤'),
+              u.role === 'admin' ? 'ðŸ›¡ï¸' : (u.role === 'driver' ? 'ðŸ‘¨ðŸ½â€âœˆï¸' : 'ðŸ‘¤'),
               u.name || 'User'
             );
             document.getElementById('view-user-name').textContent = u.name || 'User';
             const roleStr = String(u.role || 'customer');
             document.getElementById('view-user-role-badge').textContent = roleStr.toUpperCase();
             document.getElementById('view-user-role-badge').className = `admin-badge ${roleStr === 'admin' ? 'badge-gold' : (roleStr === 'driver' ? 'badge-success' : 'badge-primary')}`;
-            document.getElementById('view-user-email').textContent = u.email || '—';
-            document.getElementById('view-user-phone').textContent = u.phone || '—';
+            document.getElementById('view-user-email').textContent = u.email || 'â€”';
+            document.getElementById('view-user-phone').textContent = u.phone || 'â€”';
             document.getElementById('view-user-phone').href = u.phone ? `tel:${u.phone}` : '#';
 
             const driverCard = document.getElementById('view-user-driver-card');
             if (data.driver) {
               driverCard.style.display = 'block';
-              document.getElementById('view-user-driver-vehicle').textContent = data.driver.vehicle_model || '—';
-              document.getElementById('view-user-driver-plate').textContent = data.driver.vehicle_plate || '—';
-              document.getElementById('view-user-driver-wallet').textContent = `₹${Number(data.driver.wallet_balance || 0).toLocaleString('en-IN')}`;
-              document.getElementById('view-user-driver-rating').textContent = `★${data.driver.rating || '4.90'}`;
+              document.getElementById('view-user-driver-vehicle').textContent = data.driver.vehicle_model || 'â€”';
+              document.getElementById('view-user-driver-plate').textContent = data.driver.vehicle_plate || 'â€”';
+              document.getElementById('view-user-driver-wallet').textContent = `â‚¹${Number(data.driver.wallet_balance || 0).toLocaleString('en-IN')}`;
+              document.getElementById('view-user-driver-rating').textContent = `â˜…${data.driver.rating || '4.90'}`;
             } else {
               driverCard.style.display = 'none';
             }
@@ -7659,7 +7659,7 @@ window.printAdminInvoice = function () {
           <strong style="color:var(--primary); font-family:monospace; text-decoration:underline;">${b.booking_reference}</strong> &bull; ${b.route_summary}
         </div>
         <div>
-          <span class="admin-badge badge-secondary" style="font-size:9.5px;">${b.status}</span> &bull; <strong>₹${Number(b.total_amount).toLocaleString('en-IN')}</strong>
+          <span class="admin-badge badge-secondary" style="font-size:9.5px;">${b.status}</span> &bull; <strong>â‚¹${Number(b.total_amount).toLocaleString('en-IN')}</strong>
         </div>
       </div>
     `).join('');
@@ -7931,13 +7931,13 @@ window.printAdminInvoice = function () {
             tbody.innerHTML = items.map(disc => {
               const status = disc.approval_status || 'cached';
               let badgeStyle = 'background:#e0f2fe; color:#0369a1;';
-              let statusLabel = disc.is_beyond_region ? 'Beyond Region · Cached' : 'OSM Cached';
+              let statusLabel = disc.is_beyond_region ? 'Beyond Region Â· Cached' : 'OSM Cached';
               if (status === 'pending') {
                 badgeStyle = 'background:#fef3c7; color:#b45309;';
-                statusLabel = 'Beyond Region · Pending Approval';
+                statusLabel = 'Beyond Region Â· Pending Approval';
               } else if (status === 'approved') {
                 badgeStyle = 'background:#dcfce7; color:#15803d;';
-                statusLabel = 'Approved · In City List';
+                statusLabel = 'Approved Â· In City List';
               } else if (status === 'dismissed') {
                 badgeStyle = 'background:#f1f5f9; color:#64748b;';
                 statusLabel = 'Dismissed';
@@ -7947,7 +7947,7 @@ window.printAdminInvoice = function () {
               const lngStr = Number(disc.longitude || 0).toFixed(4);
               const hitsNum = Number(disc.hits || 0);
               const refHtml = disc.last_booking_reference
-                ? `<span style="font-weight:600; color:#0f172a;">${escapeDiscoveredHtml(disc.last_booking_reference)}</span> · `
+                ? `<span style="font-weight:600; color:#0f172a;">${escapeDiscoveredHtml(disc.last_booking_reference)}</span> Â· `
                 : '';
               const subDisplay = disc.display_name && disc.display_name !== disc.name
                 ? `<div style="font-size:11px; color:#64748b; max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeDiscoveredHtml(disc.display_name)}">${escapeDiscoveredHtml(disc.display_name)}</div>`
@@ -7967,7 +7967,7 @@ window.printAdminInvoice = function () {
               return `
       <tr id="admin-discovered-row-${disc.id}">
         <td><strong>${escapeDiscoveredHtml(disc.name)}</strong>${subDisplay}</td>
-        <td>${escapeDiscoveredHtml(disc.state || '—')}</td>
+        <td>${escapeDiscoveredHtml(disc.state || 'â€”')}</td>
         <td style="font-family:monospace; font-size:11.5px; color:#475569;">${latStr}, ${lngStr}</td>
         <td><span class="admin-badge" id="discovered-status-badge-${disc.id}" data-status="${escapeDiscoveredHtml(status)}" style="${badgeStyle}">${statusLabel}</span></td>
         <td style="font-size:12px; color:#475569;">${refHtml}<span>${hitsNum} ${hitsNum === 1 ? 'hit' : 'hits'}</span></td>
@@ -8165,7 +8165,7 @@ window.printAdminInvoice = function () {
               });
               const payload = await res.json();
               if (!res.ok || !payload.success || !payload.data) {
-                window.setCabRouteCalcMode('manual', 'API unavailable — Enter KM manually');
+                window.setCabRouteCalcMode('manual', 'API unavailable â€” Enter KM manually');
                 showToast(payload.message || 'Could not resolve distance via API. Enter KM manually.', 'warning');
                 return;
               }
@@ -8187,7 +8187,7 @@ window.printAdminInvoice = function () {
               showToast(`Distance calculated via ${sourceLabel}: ${d.distance_km} KM (${d.estimated_time})`, 'success');
             } catch (err) {
               console.error('Calculate cab route distance error:', err);
-              window.setCabRouteCalcMode('manual', 'API error — Enter KM manually');
+              window.setCabRouteCalcMode('manual', 'API error â€” Enter KM manually');
               showToast('Failed to reach distance API. You can enter KM manually.', 'warning');
             } finally {
               if (btn) {
@@ -8236,7 +8236,7 @@ window.printAdminInvoice = function () {
               if (!data.success || !data.route) return;
 
               const route = data.route;
-              document.getElementById('admin-cab-route-modal-title').textContent = `Edit Cab Route: ${route.from_city} ➔ ${route.to_city}`;
+              document.getElementById('admin-cab-route-modal-title').textContent = `Edit Cab Route: ${route.from_city} âž” ${route.to_city}`;
               document.getElementById('admin-cab-route-id').value = route.id;
               document.getElementById('admin-cab-route-from').value = route.from_city;
               document.getElementById('admin-cab-route-to').value = route.to_city;
@@ -8333,7 +8333,7 @@ window.printAdminInvoice = function () {
                   const rtCarCellHtml = r.default_car_type
                     ? `<span class="admin-badge badge-secondary" style="font-size:10px; padding:2px 6px;">Car: ${String(r.default_car_type).toUpperCase()}</span>`
                     : `<span style="font-size:11px; color:#94a3b8;">Any Car Type</span>`;
-                  const scheduleHtml = r.departure_schedule ? `<div style="font-size:11px; color:#0284c7; font-weight:600; margin-top:2px;">⏱️ ${r.departure_schedule} <span class="admin-badge badge-info" style="font-size:9px; padding:1px 5px;">${r.schedule_frequency || 'Daily Express'}</span></div>` : '<div style="font-size:11px; color:#64748b;">Daily Corridor &bull; On-Demand 24x7</div>';
+                  const scheduleHtml = r.departure_schedule ? `<div style="font-size:11px; color:#0284c7; font-weight:600; margin-top:2px;">â±ï¸ ${r.departure_schedule} <span class="admin-badge badge-info" style="font-size:9px; padding:1px 5px;">${r.schedule_frequency || 'Daily Express'}</span></div>` : '<div style="font-size:11px; color:#64748b;">Daily Corridor &bull; On-Demand 24x7</div>';
                   const fareScheduleHtml = window.buildRouteFareScheduleHtml(r, false);
                   const rtFareScheduleHtml = window.buildRouteFareScheduleHtml(r, true);
 
@@ -8345,14 +8345,14 @@ window.printAdminInvoice = function () {
                     row.cells[0].innerHTML = `
               <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
                 <span>${r.from_city}</span>
-                <span style="color:var(--primary);">➔</span>
+                <span style="color:var(--primary);">âž”</span>
                 <span>${r.to_city}</span>
               </div>
               ${scheduleHtml}
             `;
-                    row.cells[1].innerHTML = `<span class="admin-badge badge-primary" style="font-family:monospace; font-size:11.5px;">🛣️ ${r.distance_km} KM</span>`;
-                    row.cells[2].innerHTML = `<span style="font-size:11.5px; font-weight:600; color:#334155;">⏱️ ${r.estimated_time}</span>`;
-                    row.cells[3].innerHTML = `<strong style="color:#0f172a;">₹${Number(r.base_toll || 0).toLocaleString('en-IN')}</strong>`;
+                    row.cells[1].innerHTML = `<span class="admin-badge badge-primary" style="font-family:monospace; font-size:11.5px;">ðŸ›£ï¸ ${r.distance_km} KM</span>`;
+                    row.cells[2].innerHTML = `<span style="font-size:11.5px; font-weight:600; color:#334155;">â±ï¸ ${r.estimated_time}</span>`;
+                    row.cells[3].innerHTML = `<strong style="color:#0f172a;">â‚¹${Number(r.base_toll || 0).toLocaleString('en-IN')}</strong>`;
                     row.cells[4].innerHTML = fareScheduleHtml;
                     if (isBt) {
                       row.cells[5].innerHTML = `<span style="font-size:11px; color:#16a34a; font-weight:600;">${rtDisc}</span>${routeCarBadge}`;
@@ -8373,19 +8373,19 @@ window.printAdminInvoice = function () {
               <td>
                 <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
                   <span>${r.from_city}</span>
-                  <span style="color:var(--primary);">➔</span>
+                  <span style="color:var(--primary);">âž”</span>
                   <span>${r.to_city}</span>
                 </div>
                 ${scheduleHtml}
               </td>
               <td>
-                <span class="admin-badge badge-primary" style="font-family:monospace; font-size:11.5px;">🛣️ ${r.distance_km} KM</span>
+                <span class="admin-badge badge-primary" style="font-family:monospace; font-size:11.5px;">ðŸ›£ï¸ ${r.distance_km} KM</span>
               </td>
               <td>
-                <span style="font-size:11.5px; font-weight:600; color:#334155;">⏱️ ${r.estimated_time}</span>
+                <span style="font-size:11.5px; font-weight:600; color:#334155;">â±ï¸ ${r.estimated_time}</span>
               </td>
               <td>
-                <strong style="color:#0f172a;">₹${Number(r.base_toll || 0).toLocaleString('en-IN')}</strong>
+                <strong style="color:#0f172a;">â‚¹${Number(r.base_toll || 0).toLocaleString('en-IN')}</strong>
               </td>
               <td>
                 ${fareScheduleHtml}
@@ -8415,8 +8415,8 @@ window.printAdminInvoice = function () {
                     if (rtRow) {
                       rtRow.dataset.status = r.is_active ? 'active' : 'inactive';
                       rtRow.dataset.search = `${r.from_city} ${r.to_city}`.toLowerCase();
-                      rtRow.cells[0].innerHTML = `<div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;"><span>${r.from_city}</span><span style="color:#16a34a;">⇄</span><span>${r.to_city}</span></div><div style="font-size:11px; color:#64748b;">Round-Trip &bull; Night Halt ₹${nightRate.toLocaleString('en-IN')}/night</div>`;
-                      rtRow.cells[1].innerHTML = `<span class="admin-badge badge-primary" style="font-family:monospace; font-size:11.5px;">🔁 ${r.distance_km * 2} KM</span><div style="font-size:10.5px; color:#64748b; margin-top:2px;">${minKmPerDay} KM/Day Min</div>`;
+                      rtRow.cells[0].innerHTML = `<div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;"><span>${r.from_city}</span><span style="color:#16a34a;">â‡„</span><span>${r.to_city}</span></div><div style="font-size:11px; color:#64748b;">Round-Trip &bull; Night Halt â‚¹${nightRate.toLocaleString('en-IN')}/night</div>`;
+                      rtRow.cells[1].innerHTML = `<span class="admin-badge badge-primary" style="font-family:monospace; font-size:11.5px;">ðŸ” ${r.distance_km * 2} KM</span><div style="font-size:10.5px; color:#64748b; margin-top:2px;">${minKmPerDay} KM/Day Min</div>`;
                       rtRow.cells[2].innerHTML = `<span style="font-size:11.5px; color:#16a34a; font-weight:700;">${r.roundtrip_discount_pct > 0 ? `${r.roundtrip_discount_pct}% Return Disc.` : 'Standard (0% Disc.)'}</span>`;
                       rtRow.cells[3].innerHTML = rtFareScheduleHtml;
                       rtRow.cells[4].innerHTML = rtCarCellHtml;
@@ -8435,12 +8435,12 @@ window.printAdminInvoice = function () {
                       rtTr.innerHTML = `
               <td>
                 <div style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
-                  <span>${r.from_city}</span><span style="color:#16a34a;">⇄</span><span>${r.to_city}</span>
+                  <span>${r.from_city}</span><span style="color:#16a34a;">â‡„</span><span>${r.to_city}</span>
                 </div>
-                <div style="font-size:11px; color:#64748b;">Round-Trip &bull; Night Halt ₹${nightRate.toLocaleString('en-IN')}/night</div>
+                <div style="font-size:11px; color:#64748b;">Round-Trip &bull; Night Halt â‚¹${nightRate.toLocaleString('en-IN')}/night</div>
               </td>
               <td>
-                <span class="admin-badge badge-primary" style="font-family:monospace; font-size:11.5px;">🔁 ${r.distance_km * 2} KM</span>
+                <span class="admin-badge badge-primary" style="font-family:monospace; font-size:11.5px;">ðŸ” ${r.distance_km * 2} KM</span>
                 <div style="font-size:10.5px; color:#64748b; margin-top:2px;">${minKmPerDay} KM/Day Min</div>
               </td>
               <td><span style="font-size:11.5px; color:#16a34a; font-weight:700;">${r.roundtrip_discount_pct > 0 ? `${r.roundtrip_discount_pct}% Return Disc.` : 'Standard (0% Disc.)'}</span></td>
@@ -8643,14 +8643,14 @@ window.printAdminInvoice = function () {
 
           async function estimateCarTypeCompressedBlob() {
             const badge = document.getElementById('car-type-crop-size-badge');
-            if (badge) badge.textContent = 'Compressing…';
+            if (badge) badge.textContent = 'Compressingâ€¦';
             const res = await compressCanvasUnder30Kb();
             if (!res || !res.blob) return;
             carTypeCropState.lastBlob = res.blob;
             carTypeCropState.lastExt = res.ext;
             const kb = (res.blob.size / 1024).toFixed(1);
             if (badge) {
-              badge.textContent = `${res.width}×${res.height} · ${kb} KB / 30 KB (${res.ext.toUpperCase()})`;
+              badge.textContent = `${res.width}Ã—${res.height} Â· ${kb} KB / 30 KB (${res.ext.toUpperCase()})`;
               badge.className = `admin-badge ${res.blob.size <= CAR_TYPE_MAX_IMAGE_BYTES ? 'badge-success' : 'badge-warning'}`;
             }
           }
@@ -8752,7 +8752,7 @@ window.printAdminInvoice = function () {
               if (res.ok && data.success && data.image_url) {
                 const urlInput = document.getElementById('admin-car-type-image');
                 if (urlInput) urlInput.value = data.image_url;
-                window.syncCarTypeImagePreview(`Uploaded · ${data.size_kb || (compressed.blob.size / 1024).toFixed(1)} KB (≤ 30 KB)`);
+                window.syncCarTypeImagePreview(`Uploaded Â· ${data.size_kb || (compressed.blob.size / 1024).toFixed(1)} KB (â‰¤ 30 KB)`);
                 window.cancelCarTypeCropper();
                 showToast(data.message || 'Image cropped & uploaded under 30 KB!', 'success');
                 return true;
@@ -8889,10 +8889,10 @@ window.printAdminInvoice = function () {
               </div>
             `;
                     row.cells[1].innerHTML = `<span style="font-size:12px; color:#334155; font-weight:600;">${ct.models}</span>`;
-                    row.cells[2].innerHTML = `<div style="font-size:11.5px; color:#475569;"><span>💺 ${ct.seats}</span> &bull; <span>🧳 ${ct.luggage}</span></div>`;
-                    row.cells[3].innerHTML = `<strong style="color:#0f172a; font-size:13px;">₹${Number(ct.rate_per_km).toFixed(2)}</strong><span style="font-size:10.5px; color:#64748b;">/km</span>`;
-                    row.cells[4].innerHTML = `<span style="color:#334155; font-size:12px; font-weight:600;">₹${Number(ct.extra_km_rate || ct.rate_per_km).toFixed(2)}<span style="font-size:10.5px; color:#64748b;">/km</span></span>`;
-                    row.cells[5].innerHTML = `<span style="color:#0f172a; font-weight:700; font-size:12.5px;">₹${Number(ct.base_fare_min).toLocaleString('en-IN')}</span>`;
+                    row.cells[2].innerHTML = `<div style="font-size:11.5px; color:#475569;"><span>ðŸ’º ${ct.seats}</span> &bull; <span>ðŸ§³ ${ct.luggage}</span></div>`;
+                    row.cells[3].innerHTML = `<strong style="color:#0f172a; font-size:13px;">â‚¹${Number(ct.rate_per_km).toFixed(2)}</strong><span style="font-size:10.5px; color:#64748b;">/km</span>`;
+                    row.cells[4].innerHTML = `<span style="color:#334155; font-size:12px; font-weight:600;">â‚¹${Number(ct.extra_km_rate || ct.rate_per_km).toFixed(2)}<span style="font-size:10.5px; color:#64748b;">/km</span></span>`;
+                    row.cells[5].innerHTML = `<span style="color:#0f172a; font-weight:700; font-size:12.5px;">â‚¹${Number(ct.base_fare_min).toLocaleString('en-IN')}</span>`;
                     const badgeId = isBt ? `bt-car-type-status-badge-${ct.id}` : `car-type-status-badge-${ct.id}`;
                     row.cells[6].innerHTML = `<span class="admin-badge ${ct.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleCarTypeStatus(${ct.id})" id="${badgeId}" title="Click to toggle status">${ct.is_active ? 'Active' : 'Inactive'}</span>`;
                   };
@@ -8918,10 +8918,10 @@ window.printAdminInvoice = function () {
                 </div>
               </td>
               <td><span style="font-size:12px; color:#334155; font-weight:600;">${ct.models}</span></td>
-              <td><div style="font-size:11.5px; color:#475569;"><span>💺 ${ct.seats}</span> &bull; <span>🧳 ${ct.luggage}</span></div></td>
-              <td><strong style="color:#0f172a; font-size:13px;">₹${Number(ct.rate_per_km).toFixed(2)}</strong><span style="font-size:10.5px; color:#64748b;">/km</span></td>
-              <td><span style="color:#334155; font-size:12px; font-weight:600;">₹${Number(ct.extra_km_rate || ct.rate_per_km).toFixed(2)}<span style="font-size:10.5px; color:#64748b;">/km</span></span></td>
-              <td><span style="color:#0f172a; font-weight:700; font-size:12.5px;">₹${Number(ct.base_fare_min).toLocaleString('en-IN')}</span></td>
+              <td><div style="font-size:11.5px; color:#475569;"><span>ðŸ’º ${ct.seats}</span> &bull; <span>ðŸ§³ ${ct.luggage}</span></div></td>
+              <td><strong style="color:#0f172a; font-size:13px;">â‚¹${Number(ct.rate_per_km).toFixed(2)}</strong><span style="font-size:10.5px; color:#64748b;">/km</span></td>
+              <td><span style="color:#334155; font-size:12px; font-weight:600;">â‚¹${Number(ct.extra_km_rate || ct.rate_per_km).toFixed(2)}<span style="font-size:10.5px; color:#64748b;">/km</span></span></td>
+              <td><span style="color:#0f172a; font-weight:700; font-size:12.5px;">â‚¹${Number(ct.base_fare_min).toLocaleString('en-IN')}</span></td>
               <td>
                 <span class="admin-badge ${ct.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleCarTypeStatus(${ct.id})" id="${isBt ? 'bt-' : ''}car-type-status-badge-${ct.id}" title="Click to toggle status">
                   ${ct.is_active ? 'Active' : 'Inactive'}
@@ -9283,11 +9283,11 @@ window.printAdminInvoice = function () {
                       row.dataset.status = p.is_active ? 'active' : 'inactive';
                       row.dataset.search = `${p.package_code} ${p.name} ${p.city}`.toLowerCase();
                       row.cells[0].innerHTML = `<div style="font-weight:700; color:#0f172a;">${p.name}</div><div style="font-size:11px; font-family:monospace; color:#64748b;">Code: <strong>${p.package_code}</strong></div>`;
-                      row.cells[1].innerHTML = `<span class="admin-badge badge-info" style="font-size:11px;">📍 ${p.city}</span>`;
-                      row.cells[2].innerHTML = `<span style="font-size:11.5px; font-weight:600; color:#334155;">⏱️ ${p.duration_hours} hrs &bull; 🛣️ ${p.included_km} km</span>`;
-                      row.cells[3].innerHTML = `<strong style="color:var(--primary); font-size:13px;">₹${Number(p.sedan_fare).toLocaleString('en-IN')}</strong>`;
-                      row.cells[4].innerHTML = `<strong style="color:var(--primary); font-size:13px;">₹${Number(p.suv_fare).toLocaleString('en-IN')}</strong>`;
-                      row.cells[5].innerHTML = `<span style="font-size:11px; color:#64748b;">+₹${Number(p.extra_km_rate).toLocaleString('en-IN')}/km &bull; +₹${Number(p.extra_hour_rate).toLocaleString('en-IN')}/hr</span>${pkgCarBadge}`;
+                      row.cells[1].innerHTML = `<span class="admin-badge badge-info" style="font-size:11px;">ðŸ“ ${p.city}</span>`;
+                      row.cells[2].innerHTML = `<span style="font-size:11.5px; font-weight:600; color:#334155;">â±ï¸ ${p.duration_hours} hrs &bull; ðŸ›£ï¸ ${p.included_km} km</span>`;
+                      row.cells[3].innerHTML = `<strong style="color:var(--primary); font-size:13px;">â‚¹${Number(p.sedan_fare).toLocaleString('en-IN')}</strong>`;
+                      row.cells[4].innerHTML = `<strong style="color:var(--primary); font-size:13px;">â‚¹${Number(p.suv_fare).toLocaleString('en-IN')}</strong>`;
+                      row.cells[5].innerHTML = `<span style="font-size:11px; color:#64748b;">+â‚¹${Number(p.extra_km_rate).toLocaleString('en-IN')}/km &bull; +â‚¹${Number(p.extra_hour_rate).toLocaleString('en-IN')}/hr</span>${pkgCarBadge}`;
                       row.cells[6].innerHTML = `<span class="admin-badge ${p.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleLocalPackageStatus(${p.id})" id="local-pkg-status-badge-${p.id}" title="Click to toggle status">${p.is_active ? 'Active' : 'Inactive'}</span>`;
                     }
                   } else {
@@ -9303,19 +9303,19 @@ window.printAdminInvoice = function () {
                   <div style="font-size:11px; font-family:monospace; color:#64748b;">Code: <strong>${p.package_code}</strong></div>
                 </td>
                 <td>
-                  <span class="admin-badge badge-info" style="font-size:11px;">📍 ${p.city}</span>
+                  <span class="admin-badge badge-info" style="font-size:11px;">ðŸ“ ${p.city}</span>
                 </td>
                 <td>
-                  <span style="font-size:11.5px; font-weight:600; color:#334155;">⏱️ ${p.duration_hours} hrs &bull; 🛣️ ${p.included_km} km</span>
+                  <span style="font-size:11.5px; font-weight:600; color:#334155;">â±ï¸ ${p.duration_hours} hrs &bull; ðŸ›£ï¸ ${p.included_km} km</span>
                 </td>
                 <td>
-                  <strong style="color:var(--primary); font-size:13px;">₹${Number(p.sedan_fare).toLocaleString('en-IN')}</strong>
+                  <strong style="color:var(--primary); font-size:13px;">â‚¹${Number(p.sedan_fare).toLocaleString('en-IN')}</strong>
                 </td>
                 <td>
-                  <strong style="color:var(--primary); font-size:13px;">₹${Number(p.suv_fare).toLocaleString('en-IN')}</strong>
+                  <strong style="color:var(--primary); font-size:13px;">â‚¹${Number(p.suv_fare).toLocaleString('en-IN')}</strong>
                 </td>
                 <td>
-                  <span style="font-size:11px; color:#64748b;">+₹${Number(p.extra_km_rate).toLocaleString('en-IN')}/km &bull; +₹${Number(p.extra_hour_rate).toLocaleString('en-IN')}/hr</span>${pkgCarBadge}
+                  <span style="font-size:11px; color:#64748b;">+â‚¹${Number(p.extra_km_rate).toLocaleString('en-IN')}/km &bull; +â‚¹${Number(p.extra_hour_rate).toLocaleString('en-IN')}/hr</span>${pkgCarBadge}
                 </td>
                 <td>
                   <span class="admin-badge ${p.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleLocalPackageStatus(${p.id})" id="local-pkg-status-badge-${p.id}" title="Click to toggle status">${p.is_active ? 'Active' : 'Inactive'}</span>
@@ -9548,10 +9548,10 @@ window.printAdminInvoice = function () {
                 </div>
                 <div style="font-size:11px; font-family:monospace; color:#64748b;">IATA: <strong style="color:var(--primary);">${a.iata_code}</strong></div>
               `;
-                      row.cells[1].innerHTML = `<div style="font-weight:600; color:#1e293b;">📍 ${a.city}</div><div style="font-size:11px; color:#64748b;">${a.terminals}</div>`;
-                      row.cells[2].innerHTML = `<strong style="color:#0f172a;">₹${Number(a.pickup_surcharge).toLocaleString('en-IN')}</strong><div style="font-size:10px; color:#64748b;">Parking + Entry</div>`;
-                      row.cells[3].innerHTML = `<strong style="color:#0f172a;">₹${Number(a.drop_surcharge).toLocaleString('en-IN')}</strong><div style="font-size:10px; color:#64748b;">Departure Toll</div>`;
-                      row.cells[4].innerHTML = `<span style="font-size:11.5px; color:#475569;">Sedan: <strong>₹${Number(a.sedan_base_fare).toLocaleString('en-IN')}</strong> &bull; SUV: <strong>₹${Number(a.suv_base_fare).toLocaleString('en-IN')}</strong></span>${hubCarBadge}`;
+                      row.cells[1].innerHTML = `<div style="font-weight:600; color:#1e293b;">ðŸ“ ${a.city}</div><div style="font-size:11px; color:#64748b;">${a.terminals}</div>`;
+                      row.cells[2].innerHTML = `<strong style="color:#0f172a;">â‚¹${Number(a.pickup_surcharge).toLocaleString('en-IN')}</strong><div style="font-size:10px; color:#64748b;">Parking + Entry</div>`;
+                      row.cells[3].innerHTML = `<strong style="color:#0f172a;">â‚¹${Number(a.drop_surcharge).toLocaleString('en-IN')}</strong><div style="font-size:10px; color:#64748b;">Departure Toll</div>`;
+                      row.cells[4].innerHTML = `<span style="font-size:11.5px; color:#475569;">Sedan: <strong>â‚¹${Number(a.sedan_base_fare).toLocaleString('en-IN')}</strong> &bull; SUV: <strong>â‚¹${Number(a.suv_base_fare).toLocaleString('en-IN')}</strong></span>${hubCarBadge}`;
                       row.cells[5].innerHTML = `<span class="admin-badge ${a.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleAirportHubStatus(${a.id})" id="airport-status-badge-${a.id}" title="Click to toggle status">${a.is_active ? 'Active' : 'Inactive'}</span>`;
                     }
                   } else {
@@ -9570,19 +9570,19 @@ window.printAdminInvoice = function () {
                   <div style="font-size:11px; font-family:monospace; color:#64748b;">IATA: <strong style="color:var(--primary);">${a.iata_code}</strong></div>
                 </td>
                 <td>
-                  <div style="font-weight:600; color:#1e293b;">📍 ${a.city}</div>
+                  <div style="font-weight:600; color:#1e293b;">ðŸ“ ${a.city}</div>
                   <div style="font-size:11px; color:#64748b;">${a.terminals}</div>
                 </td>
                 <td>
-                  <strong style="color:#0f172a;">₹${Number(a.pickup_surcharge).toLocaleString('en-IN')}</strong>
+                  <strong style="color:#0f172a;">â‚¹${Number(a.pickup_surcharge).toLocaleString('en-IN')}</strong>
                   <div style="font-size:10px; color:#64748b;">Parking + Entry</div>
                 </td>
                 <td>
-                  <strong style="color:#0f172a;">₹${Number(a.drop_surcharge).toLocaleString('en-IN')}</strong>
+                  <strong style="color:#0f172a;">â‚¹${Number(a.drop_surcharge).toLocaleString('en-IN')}</strong>
                   <div style="font-size:10px; color:#64748b;">Departure Toll</div>
                 </td>
                 <td>
-                  <span style="font-size:11.5px; color:#475569;">Sedan: <strong>₹${Number(a.sedan_base_fare).toLocaleString('en-IN')}</strong> &bull; SUV: <strong>₹${Number(a.suv_base_fare).toLocaleString('en-IN')}</strong></span>${hubCarBadge}
+                  <span style="font-size:11.5px; color:#475569;">Sedan: <strong>â‚¹${Number(a.sedan_base_fare).toLocaleString('en-IN')}</strong> &bull; SUV: <strong>â‚¹${Number(a.suv_base_fare).toLocaleString('en-IN')}</strong></span>${hubCarBadge}
                 </td>
                 <td>
                   <span class="admin-badge ${a.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleAirportHubStatus(${a.id})" id="airport-status-badge-${a.id}" title="Click to toggle status">${a.is_active ? 'Active' : 'Inactive'}</span>
@@ -9769,7 +9769,7 @@ window.printAdminInvoice = function () {
               if (!data.success || !data.route) return;
 
               const r = data.route;
-              document.getElementById('admin-broute-modal-title').textContent = `Edit Berth Route: ${r.from_city} → ${r.to_city}`;
+              document.getElementById('admin-broute-modal-title').textContent = `Edit Berth Route: ${r.from_city} â†’ ${r.to_city}`;
               document.getElementById('admin-broute-id').value = r.id;
               document.getElementById('admin-broute-from').value = r.from_city;
               document.getElementById('admin-broute-to').value = r.to_city;
@@ -9830,11 +9830,11 @@ window.printAdminInvoice = function () {
                     const row = document.getElementById(`admin-broute-row-${br.id}`);
                     if (row) {
                       row.dataset.search = `${br.from_city} ${br.to_city} ${br.operator_name} ${br.coach_code || ''}`.toLowerCase();
-                      row.cells[0].innerHTML = `<strong>${br.from_city} → ${br.to_city}</strong><div style="font-size:11px; color:#64748b;">${br.vehicle_type}</div>`;
+                      row.cells[0].innerHTML = `<strong>${br.from_city} â†’ ${br.to_city}</strong><div style="font-size:11px; color:#64748b;">${br.vehicle_type}</div>`;
                       row.cells[1].innerHTML = `<span class="admin-badge badge-primary">${br.coach_code || 'N/A'}</span>`;
                       row.cells[2].textContent = br.operator_name;
                       row.cells[3].textContent = `${br.departure_time} - ${br.arrival_time}`;
-                      row.cells[4].innerHTML = `<strong>₹${Number(br.base_price).toLocaleString('en-IN')}</strong>`;
+                      row.cells[4].innerHTML = `<strong>â‚¹${Number(br.base_price).toLocaleString('en-IN')}</strong>`;
                       row.cells[5].innerHTML = br.is_active ? `<span class="admin-badge badge-success" style="cursor:pointer;" onclick="toggleBerthRouteStatus(${br.id})" id="broute-status-badge-${br.id}" title="Click to toggle">Active</span>` : `<span class="admin-badge badge-danger" style="cursor:pointer;" onclick="toggleBerthRouteStatus(${br.id})" id="broute-status-badge-${br.id}" title="Click to toggle">Inactive</span>`;
                     }
                   } else {
@@ -9844,11 +9844,11 @@ window.printAdminInvoice = function () {
                       tr.id = `admin-broute-row-${br.id}`;
                       tr.dataset.search = `${br.from_city} ${br.to_city} ${br.operator_name} ${br.coach_code || ''}`.toLowerCase();
                       tr.innerHTML = `
-                <td><strong>${br.from_city} → ${br.to_city}</strong><div style="font-size:11px; color:#64748b;">${br.vehicle_type}</div></td>
+                <td><strong>${br.from_city} â†’ ${br.to_city}</strong><div style="font-size:11px; color:#64748b;">${br.vehicle_type}</div></td>
                 <td><span class="admin-badge badge-primary">${br.coach_code || 'N/A'}</span></td>
                 <td>${br.operator_name}</td>
                 <td>${br.departure_time} - ${br.arrival_time}</td>
-                <td><strong>₹${Number(br.base_price).toLocaleString('en-IN')}</strong></td>
+                <td><strong>â‚¹${Number(br.base_price).toLocaleString('en-IN')}</strong></td>
                 <td><span class="admin-badge ${br.is_active ? 'badge-success' : 'badge-danger'}" style="cursor:pointer;" onclick="toggleBerthRouteStatus(${br.id})" id="broute-status-badge-${br.id}" title="Click to toggle">${br.is_active ? 'Active' : 'Inactive'}</span></td>
                 <td style="text-align:right;">
                   <div class="admin-action-btn-group" style="justify-content:flex-end;">
@@ -10036,7 +10036,7 @@ window.printAdminInvoice = function () {
                       row.cells[1].innerHTML = `<span class="admin-badge badge-primary">${b.coach_code}</span>`;
                       row.cells[2].textContent = b.deck.toUpperCase();
                       row.cells[3].textContent = b.berth_type;
-                      row.cells[4].innerHTML = `<strong>₹${Number(b.price).toLocaleString('en-IN')}</strong>`;
+                      row.cells[4].innerHTML = `<strong>â‚¹${Number(b.price).toLocaleString('en-IN')}</strong>`;
                       row.cells[5].innerHTML = b.is_booked ? `<span class="admin-badge badge-danger">Booked</span>` : `<span class="admin-badge badge-success">Available</span>`;
                     }
                   } else {
@@ -10051,7 +10051,7 @@ window.printAdminInvoice = function () {
                 <td><span class="admin-badge badge-primary">${b.coach_code}</span></td>
                 <td>${b.deck.toUpperCase()}</td>
                 <td>${b.berth_type}</td>
-                <td><strong>₹${Number(b.price).toLocaleString('en-IN')}</strong></td>
+                <td><strong>â‚¹${Number(b.price).toLocaleString('en-IN')}</strong></td>
                 <td>${b.is_ladies_quota ? '<span class="admin-badge badge-warning">Ladies</span>' : '<span style="color:#94a3b8; font-size:11px;">General</span>'}</td>
                 <td>${b.is_booked ? '<span class="admin-badge badge-danger">Booked</span>' : '<span class="admin-badge badge-success">Available</span>'}</td>
                 <td style="text-align:right;">
@@ -10148,11 +10148,11 @@ window.printAdminInvoice = function () {
             const driverBadge = document.getElementById(`driver-my-veh-badge-${id}`);
             if (driverBadge) {
               if (status === 'Approved') {
-                driverBadge.innerHTML = `<span class="admin-badge badge-success" style="font-size:10.5px; padding:4px 8px;">✅ Approved</span>`;
+                driverBadge.innerHTML = `<span class="admin-badge badge-success" style="font-size:10.5px; padding:4px 8px;">âœ… Approved</span>`;
               } else if (status === 'Pending') {
-                driverBadge.innerHTML = `<span class="admin-badge badge-warning" style="font-size:10.5px; padding:4px 8px;">⏳ Pending Approval</span>`;
+                driverBadge.innerHTML = `<span class="admin-badge badge-warning" style="font-size:10.5px; padding:4px 8px;">â³ Pending Approval</span>`;
               } else {
-                driverBadge.innerHTML = `<span class="admin-badge badge-danger" style="font-size:10.5px; padding:4px 8px;">❌ Rejected</span>`;
+                driverBadge.innerHTML = `<span class="admin-badge badge-danger" style="font-size:10.5px; padding:4px 8px;">âŒ Rejected</span>`;
               }
             }
             const driverNotes = document.getElementById(`driver-veh-notes-${id}`);
@@ -10241,7 +10241,7 @@ window.printAdminInvoice = function () {
                 ${window.vehicleFeatureChips(v.features, 4)}
               </div>
               <div id="driver-my-veh-badge-${v.id}">
-                <span class="admin-badge badge-warning" style="font-size:10.5px; padding:4px 8px;">⏳ Pending Approval</span>
+                <span class="admin-badge badge-warning" style="font-size:10.5px; padding:4px 8px;">â³ Pending Approval</span>
               </div>
             `;
                     grid.prepend(card);
@@ -10270,7 +10270,7 @@ window.printAdminInvoice = function () {
                 ${window.vehicleFeatureChips(v.features, 4)}
               </div>
               <div>
-                <span class="admin-badge badge-warning" style="font-size:10px; padding:3px 7px;">⏳ Pending</span>
+                <span class="admin-badge badge-warning" style="font-size:10px; padding:3px 7px;">â³ Pending</span>
               </div>
             `;
                     profileGrid.prepend(pcard);
@@ -10725,7 +10725,7 @@ window.printAdminInvoice = function () {
                 if (secretInput) secretInput.value = '';
                 const hint = document.getElementById('setting-clerk-secret-hint');
                 if (hint && data.settings?.clerk_secret_configured === '1') {
-                  hint.textContent = '(Saved — leave blank to keep)';
+                  hint.textContent = '(Saved â€” leave blank to keep)';
                   hint.style.color = '#16a34a';
                 }
                 if (window.ALTERNATE_AUTH_CONFIG && window.ALTERNATE_AUTH_CONFIG.clerk) {
@@ -10819,6 +10819,13 @@ window.printAdminInvoice = function () {
               },
               'admin-vehicles': {
                 tbodyId: 'admin-vehicles-tbody',
+                barId: 'pag-bar-admin-vehicles',
+                pageSize: 10,
+                sizes: [10, 25, 50],
+                page: 1,
+              },
+            };
+
             function getPaginatableRows(tbody) {
               if (!tbody) return [];
               return Array.from(tbody.querySelectorAll('tr')).filter(row => {

@@ -5853,6 +5853,41 @@ td[data-booking-part].notif-part-highlight {
 .app-notif-item-msg { font-size: 11.5px; color: #475569; line-height: 1.4; word-break: break-word; }
 .app-notif-item-time { font-size: 10.5px; color: #94a3b8; margin-top: 4px; }
 
+/* Mobile: keep the notification panel inside the viewport.
+   The panel is anchored `right: 0` to the bell button. On phones the bell sits
+   mid-header (the wide user-profile chip is to its right), so a 340px panel
+   would start left of the viewport edge and get cut off by the header's
+   `overflow-x: clip`. Re-anchor it to the header itself and clamp its width. */
+@media (max-width: 768px) {
+  /* static lets the panel anchor to .main-header (position: sticky) instead of
+     the 36px bell button, so it can be pinned to the screen edges. */
+  .app-notif-menu {
+    position: static;
+  }
+  .app-notif-dropdown {
+    left: auto;
+    right: 12px;
+    width: min(340px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+  }
+  /* Never let the list run under the fixed bottom dock / below the fold. */
+  .app-notif-list {
+    max-height: min(360px, calc(100vh - 190px));
+    max-height: min(360px, calc(100dvh - 190px));
+    overscroll-behavior: contain;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Use the full available width on small phones for comfortable reading. */
+  .app-notif-dropdown {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+  }
+}
+
 /* ===== Admin Dashboard & Table Pagination ===== */
 .admin-page-hidden { display: none !important; }
 .admin-pagination-bar {
