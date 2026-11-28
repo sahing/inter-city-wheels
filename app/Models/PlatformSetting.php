@@ -44,6 +44,10 @@ class PlatformSetting extends Model
             'waiting_charge_per_hour' => '150',
             'free_cancellation_hours' => '1',
             'other_booking_conditions' => 'Highway tolls, state taxes & parking as applicable. Night stay applies during configured night hours.',
+            'terms_oneway' => 'Point-to-point drop only. Highway tolls, state taxes & parking as applicable.',
+            'terms_roundtrip' => 'Round-trip min 250 km/day. Night stay, highway tolls, state taxes & parking as applicable.',
+            'terms_local' => 'Extra km and extra hour charges apply beyond selected package limits. Parking & tolls extra.',
+            'terms_airport' => 'Includes 45 min flight delay buffer. Airport parking & terminal entry charges as applicable.',
             'bidding_min_service_charge_pct' => '15',
             'bidding_max_service_charge_pct' => '75',
         ];

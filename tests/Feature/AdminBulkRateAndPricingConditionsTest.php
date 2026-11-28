@@ -262,4 +262,45 @@ class AdminBulkRateAndPricingConditionsTest extends TestCase
         // Seeded 8_80 SUV fare = 3200, SUV rate = 30.0, Hatch rate = 9.0 -> round(3200 * (9 / 30)) = 960
         $this->assertEquals(960.0, (float) $localHatch->json('quote.base_fare'));
     }
+
+    public function test_admin_can_configure_per_ride_type_terms_from_settings_and_booking_types(): void
+    {
+        // Non-admin blocked
+        $this->actingAs($this->customer)->postJson('/api/admin/settings/booking-type-terms', [
+            'trip_type' => 'oneway',
+            'terms' => 'Unauthorized',
+        ])->assertStatus(403);
+
+        // Save per-type terms from Booking Types card endpoint
+        $this->actingAs($this->admin)->postJson('/api/admin/settings/booking-type-terms', [
+            'trip_type' => 'roundtrip',
+            'terms' => 'Round-trip custom rule: 300 km/day min & toll extra.',
+        ])->assertOk()
+            ->assertJsonPath('settings.terms_roundtrip', 'Round-trip custom rule: 300 km/day min & toll extra.');
+
+        // Save all per-type terms from Pricing & Conditions settings endpoint
+        $this->actingAs($this->admin)->postJson('/api/admin/settings/pricing-conditions', [
+            'addon_pet_friendly_rate' => 350,
+            'addon_night_allowance_rate' => 400,
+            'addon_luggage_carrier_rate' => 200,
+            'night_stay_start_hour' => '23:00',
+            'night_stay_end_hour' => '06:00',
+            'roundtrip_min_km_per_day' => 250,
+            'terms_oneway' => 'One-way custom terms: single drop only.',
+            'terms_local' => 'Local custom terms: garage-to-garage.',
+            'terms_airport' => 'Airport custom terms: 60 min flight wait.',
+        ])->assertOk()
+            ->assertJsonPath('settings.terms_oneway', 'One-way custom terms: single drop only.')
+            ->assertJsonPath('settings.terms_local', 'Local custom terms: garage-to-garage.')
+            ->assertJsonPath('settings.terms_airport', 'Airport custom terms: 60 min flight wait.');
+
+        $adminHtml = $this->actingAs($this->admin)->get('/')->assertOk()->getContent();
+        $this->assertStringContainsString('id="rule-terms-oneway"', $adminHtml);
+        $this->assertStringContainsString('id="bt-terms-roundtrip"', $adminHtml);
+        $this->assertStringContainsString('Round-trip custom rule: 300 km/day min &amp; toll extra.', $adminHtml);
+
+        $custHtml = $this->actingAs($this->customer)->get('/')->assertOk()->getContent();
+        $this->assertStringContainsString('id="cab-fare-conditions-type-terms"', $custHtml);
+        $this->assertStringContainsString('One-way custom terms: single drop only.', $custHtml);
+    }
 }

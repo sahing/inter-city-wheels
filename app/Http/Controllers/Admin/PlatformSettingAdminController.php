@@ -155,6 +155,10 @@ class PlatformSettingAdminController extends Controller
             'waiting_charge_per_hour' => 'nullable|numeric|min:0',
             'free_cancellation_hours' => 'nullable|integer|min:0|max:168',
             'other_booking_conditions' => 'nullable|string|max:1000',
+            'terms_oneway' => 'nullable|string|max:1000',
+            'terms_roundtrip' => 'nullable|string|max:1000',
+            'terms_local' => 'nullable|string|max:1000',
+            'terms_airport' => 'nullable|string|max:1000',
             'bidding_min_service_charge_pct' => 'nullable|numeric|min:0|max:90',
             'bidding_max_service_charge_pct' => 'nullable|numeric|min:0|max:95|gte:bidding_min_service_charge_pct',
         ]);
@@ -174,6 +178,45 @@ class PlatformSettingAdminController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Night stay rate, hours, and booking conditions saved!',
+            'settings' => PlatformSetting::allAdminSettings(),
+        ]);
+    }
+
+    /**
+     * Persist per-booking-type fare terms & conditions (oneway, roundtrip, local, airport).
+     */
+    public function updateBookingTypeTerms(Request $request)
+    {
+        if (! auth()->check() || auth()->user()->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Admin role required.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'trip_type' => 'nullable|string|in:oneway,roundtrip,local,airport',
+            'terms' => 'nullable|string|max:1000',
+            'terms_oneway' => 'nullable|string|max:1000',
+            'terms_roundtrip' => 'nullable|string|max:1000',
+            'terms_local' => 'nullable|string|max:1000',
+            'terms_airport' => 'nullable|string|max:1000',
+        ]);
+
+        if (! empty($validated['trip_type'])) {
+            $key = 'terms_'.$validated['trip_type'];
+            PlatformSetting::set($key, trim((string) ($validated['terms'] ?? '')));
+        }
+
+        foreach (['terms_oneway', 'terms_roundtrip', 'terms_local', 'terms_airport'] as $key) {
+            if (array_key_exists($key, $validated)) {
+                PlatformSetting::set($key, trim((string) ($validated[$key] ?? '')));
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ride type terms & conditions saved!',
             'settings' => PlatformSetting::allAdminSettings(),
         ]);
     }

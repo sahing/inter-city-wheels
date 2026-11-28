@@ -632,6 +632,10 @@ window.switchRentalTab = function (type) {
     updateDynamicFieldsVisibility();
   }
 
+  if (typeof window.updateCabFareConditionsNote === 'function') {
+    window.updateCabFareConditionsNote(type);
+  }
+
   updateRentalRouteStats();
 };
 
@@ -12506,6 +12510,10 @@ window.printAdminInvoice = function () {
           bidding_min_service_charge_pct: parseFloat(document.getElementById('rule-bidding-min-pct')?.value ?? 15) || 0,
           bidding_max_service_charge_pct: parseFloat(document.getElementById('rule-bidding-max-pct')?.value ?? 75) || 0,
           other_booking_conditions: document.getElementById('rule-other-conditions')?.value || '',
+          terms_oneway: document.getElementById('rule-terms-oneway')?.value || '',
+          terms_roundtrip: document.getElementById('rule-terms-roundtrip')?.value || '',
+          terms_local: document.getElementById('rule-terms-local')?.value || '',
+          terms_airport: document.getElementById('rule-terms-airport')?.value || '',
         };
 
         try {
@@ -12544,6 +12552,13 @@ window.printAdminInvoice = function () {
 
             if (typeof refreshCabQuote === 'function') refreshCabQuote();
             if (typeof updateTotalCabFare === 'function') updateTotalCabFare();
+            ['oneway', 'roundtrip', 'local', 'airport'].forEach(t => {
+              const btEl = document.getElementById(`bt-terms-${t}`);
+              if (btEl) btEl.value = payload[`terms_${t}`] || '';
+            });
+            if (typeof window.updateCabFareConditionsNote === 'function') {
+              window.updateCabFareConditionsNote(state?.cab?.tripType || 'oneway');
+            }
             showToast(data.message || 'Night stay, hours & conditions saved!', 'success');
           } else {
             showToast(data.message || 'Failed to save pricing conditions.', 'warning');
@@ -12551,6 +12566,61 @@ window.printAdminInvoice = function () {
         } catch (err) {
           console.error('savePricingConditions', err);
           showToast('Network error while saving pricing conditions.', 'danger');
+        }
+      };
+
+      window.updateCabFareConditionsNote = function (tripType) {
+        const ps = window.PLATFORM_SETTINGS || {};
+        const type = tripType || state?.cab?.tripType || 'oneway';
+        const sumEl = document.getElementById('cab-fare-conditions-summary');
+        const typeEl = document.getElementById('cab-fare-conditions-type-terms');
+        const globalEl = document.getElementById('cab-fare-conditions-global');
+
+        if (sumEl) {
+          const rtMin = Number(ps.roundtrip_min_km_per_day ?? 250);
+          const freeWait = Number(ps.free_waiting_minutes ?? 45);
+          const waitRate = Number(ps.waiting_charge_per_hour ?? 150);
+          const freeCancel = Number(ps.free_cancellation_hours ?? 1);
+          sumEl.textContent = `Round-trip min ${rtMin} km/day • ${freeWait} min free wait (₹${waitRate.toLocaleString('en-IN')}/hr extra) • Free cancel ${freeCancel}h prior`;
+        }
+        if (typeEl) {
+          const tVal = (ps[`terms_${type}`] || '').trim();
+          typeEl.textContent = tVal;
+          typeEl.style.display = tVal ? 'block' : 'none';
+        }
+        if (globalEl) {
+          const gVal = (ps.other_booking_conditions || '').trim();
+          globalEl.textContent = gVal;
+          globalEl.style.display = gVal ? 'block' : 'none';
+        }
+      };
+
+      window.saveBookingTypeTerms = async function (tripType) {
+        const termsEl = document.getElementById(`bt-terms-${tripType}`);
+        const terms = termsEl ? termsEl.value.trim() : '';
+        try {
+          const res = await fetch('/api/admin/settings/booking-type-terms', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-TOKEN': getAdminCsrfToken(),
+            },
+            body: JSON.stringify({ trip_type: tripType, terms }),
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            window.PLATFORM_SETTINGS = { ...(window.PLATFORM_SETTINGS || {}), ...(data.settings || {}) };
+            const ruleEl = document.getElementById(`rule-terms-${tripType}`);
+            if (ruleEl) ruleEl.value = terms;
+            window.updateCabFareConditionsNote(state?.cab?.tripType || tripType);
+            showToast(data.message || 'Ride type terms & conditions saved!', 'success');
+          } else {
+            showToast(data.message || 'Failed to save ride type terms.', 'warning');
+          }
+        } catch (err) {
+          console.error('saveBookingTypeTerms', err);
+          showToast('Network error while saving ride type terms.', 'danger');
         }
       };
 

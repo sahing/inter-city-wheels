@@ -828,11 +828,12 @@
                             </div>
                             <div id="cab-fare-conditions-note" style="margin-top:10px; padding:8px 10px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0; font-size:11.5px; color:#475569; line-height:1.45;">
                                 <strong>Fare Conditions:</strong>
-                                <span>Round-trip min {{ $rtMinKm }} km/day</span> &bull;
-                                <span>{{ $freeWaitMins }} min free wait (₹{{ number_format($waitHrRate) }}/hr extra)</span> &bull;
-                                <span>Free cancel {{ $freeCancelHrs }}h prior</span>
+                                <span id="cab-fare-conditions-summary">Round-trip min {{ $rtMinKm }} km/day &bull; {{ $freeWaitMins }} min free wait (₹{{ number_format($waitHrRate) }}/hr extra) &bull; Free cancel {{ $freeCancelHrs }}h prior</span>
+                                <div id="cab-fare-conditions-type-terms" style="margin-top:3px; color:#0f172a; font-weight:600;">{{ $ps['terms_'.$initialRentalType] ?? '' }}</div>
                                 @if(!empty($otherCondText))
-                                    <div style="margin-top:2px; color:#64748b;">{{ $otherCondText }}</div>
+                                    <div id="cab-fare-conditions-global" style="margin-top:2px; color:#64748b;">{{ $otherCondText }}</div>
+                                @else
+                                    <div id="cab-fare-conditions-global" style="margin-top:2px; color:#64748b; display:none;"></div>
                                 @endif
                             </div>
                         </div>
@@ -4016,8 +4017,27 @@
                                                 </div>
 
                                                 <div class="form-group" style="margin:0;">
-                                                    <label class="form-label" for="rule-other-conditions">Other Booking Conditions / Notes</label>
+                                                    <label class="form-label" for="rule-other-conditions">Global Booking Conditions / Notes</label>
                                                     <textarea id="rule-other-conditions" class="form-control" rows="2" placeholder="e.g. Tolls, state taxes & parking as applicable.">{{ $otherCondText }}</textarea>
+                                                </div>
+
+                                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                                                    <div class="form-group" style="margin:0;">
+                                                        <label class="form-label" for="rule-terms-oneway" style="font-size:11px;">One-Way Terms</label>
+                                                        <textarea id="rule-terms-oneway" class="form-control" rows="2" style="font-size:11.5px;">{{ $ps['terms_oneway'] ?? '' }}</textarea>
+                                                    </div>
+                                                    <div class="form-group" style="margin:0;">
+                                                        <label class="form-label" for="rule-terms-roundtrip" style="font-size:11px;">Round-Trip Terms</label>
+                                                        <textarea id="rule-terms-roundtrip" class="form-control" rows="2" style="font-size:11.5px;">{{ $ps['terms_roundtrip'] ?? '' }}</textarea>
+                                                    </div>
+                                                    <div class="form-group" style="margin:0;">
+                                                        <label class="form-label" for="rule-terms-local" style="font-size:11px;">Local Rental Terms</label>
+                                                        <textarea id="rule-terms-local" class="form-control" rows="2" style="font-size:11.5px;">{{ $ps['terms_local'] ?? '' }}</textarea>
+                                                    </div>
+                                                    <div class="form-group" style="margin:0;">
+                                                        <label class="form-label" for="rule-terms-airport" style="font-size:11px;">Airport Transfer Terms</label>
+                                                        <textarea id="rule-terms-airport" class="form-control" rows="2" style="font-size:11.5px;">{{ $ps['terms_airport'] ?? '' }}</textarea>
+                                                    </div>
                                                 </div>
 
                                                 <button type="button" id="save-pricing-rules-btn" class="btn btn-gold btn-block" onclick="savePricingConditions()" style="margin-top:4px;">
@@ -4651,6 +4671,11 @@
                                                     @endforeach
                                                 </select>
                                             </div>
+                                            <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #e2e8f0;">
+                                                <label for="bt-terms-oneway" style="display:block; font-size:10.5px; font-weight:700; color:#475569; margin-bottom:4px;">One-Way Terms &amp; Conditions</label>
+                                                <textarea id="bt-terms-oneway" class="form-control" rows="2" style="font-size:11.5px; margin-bottom:6px;">{{ $ps['terms_oneway'] ?? '' }}</textarea>
+                                                <button type="button" class="btn btn-xs btn-primary" onclick="saveBookingTypeTerms('oneway')">Save One-Way Terms</button>
+                                            </div>
                                         </div>
 
                                         <!-- 2. ROUND TRIP -->
@@ -4676,6 +4701,11 @@
                                                         <option value="{{ strtolower($ct->category_key) }}" {{ ($platformSettings['default_car_type_roundtrip'] ?? '') === strtolower($ct->category_key) ? 'selected' : '' }}>{{ $ct->name }}</option>
                                                     @endforeach
                                                 </select>
+                                            </div>
+                                            <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #e2e8f0;">
+                                                <label for="bt-terms-roundtrip" style="display:block; font-size:10.5px; font-weight:700; color:#475569; margin-bottom:4px;">Round-Trip Terms &amp; Conditions</label>
+                                                <textarea id="bt-terms-roundtrip" class="form-control" rows="2" style="font-size:11.5px; margin-bottom:6px;">{{ $ps['terms_roundtrip'] ?? '' }}</textarea>
+                                                <button type="button" class="btn btn-xs btn-primary" onclick="saveBookingTypeTerms('roundtrip')">Save Round-Trip Terms</button>
                                             </div>
                                         </div>
 
@@ -4703,6 +4733,11 @@
                                                     @endforeach
                                                 </select>
                                             </div>
+                                            <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #e2e8f0;">
+                                                <label for="bt-terms-local" style="display:block; font-size:10.5px; font-weight:700; color:#475569; margin-bottom:4px;">Local Rental Terms &amp; Conditions</label>
+                                                <textarea id="bt-terms-local" class="form-control" rows="2" style="font-size:11.5px; margin-bottom:6px;">{{ $ps['terms_local'] ?? '' }}</textarea>
+                                                <button type="button" class="btn btn-xs btn-primary" onclick="saveBookingTypeTerms('local')">Save Local Terms</button>
+                                            </div>
                                         </div>
 
                                         <!-- 4. AIRPORT TRANSFERS -->
@@ -4728,6 +4763,11 @@
                                                         <option value="{{ strtolower($ct->category_key) }}" {{ ($platformSettings['default_car_type_airport'] ?? '') === strtolower($ct->category_key) ? 'selected' : '' }}>{{ $ct->name }}</option>
                                                     @endforeach
                                                 </select>
+                                            </div>
+                                            <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #e2e8f0;">
+                                                <label for="bt-terms-airport" style="display:block; font-size:10.5px; font-weight:700; color:#475569; margin-bottom:4px;">Airport Transfer Terms &amp; Conditions</label>
+                                                <textarea id="bt-terms-airport" class="form-control" rows="2" style="font-size:11.5px; margin-bottom:6px;">{{ $ps['terms_airport'] ?? '' }}</textarea>
+                                                <button type="button" class="btn btn-xs btn-primary" onclick="saveBookingTypeTerms('airport')">Save Airport Terms</button>
                                             </div>
                                         </div>
                                     </div>

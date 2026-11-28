@@ -347,6 +347,7 @@ Route::prefix('api')->middleware(['auth', 'role:admin'])->group(function () {
     Route::post('/admin/settings/policy-urls', [PlatformSettingAdminController::class, 'updatePolicyUrls'])->name('api.admin.settings.updatePolicyUrls');
     Route::post('/admin/settings/toggle-feature', [PlatformSettingAdminController::class, 'toggleFeature'])->name('api.admin.settings.toggleFeature');
     Route::post('/admin/settings/booking-type-car-types', [PlatformSettingAdminController::class, 'updateBookingTypeCarTypes'])->name('api.admin.settings.bookingTypeCarTypes');
+    Route::post('/admin/settings/booking-type-terms', [PlatformSettingAdminController::class, 'updateBookingTypeTerms'])->name('api.admin.settings.bookingTypeTerms');
     Route::post('/admin/settings/pricing-conditions', [PlatformSettingAdminController::class, 'updatePricingConditions'])->name('api.admin.settings.pricingConditions');
     Route::post('/admin/settings/bidding', [PlatformSettingAdminController::class, 'updateBiddingSettings'])->name('api.admin.settings.bidding');
     Route::post('/admin/settings/payment-options', [PlatformSettingAdminController::class, 'updatePaymentSettings'])->name('api.admin.settings.paymentOptions');
